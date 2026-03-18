@@ -19,6 +19,11 @@ except ModuleNotFoundError:
     np = None
 
 try:
+    import sentencepiece as spm
+except ModuleNotFoundError:
+    spm = None
+
+try:
     import torch
     import torch.nn as nn
     import torch.nn.functional as F
@@ -82,6 +87,7 @@ class Config:
     max_steps: int
     max_wallclock_seconds: int
     avg_bytes_per_token: float | None
+    tokenizer_path: str
     muon_lr: float
     adamw_lr: float
     weight_decay: float
@@ -117,6 +123,7 @@ class Config:
             max_steps=env_int("MAX_STEPS", 20),
             max_wallclock_seconds=env_int("MAX_WALLCLOCK_SECONDS", 0),
             avg_bytes_per_token=env_float_optional("AVG_BYTES_PER_TOKEN"),
+            tokenizer_path=os.environ.get("TOKENIZER_PATH", ""),
             muon_lr=env_float("MUON_LR", 0.02),
             adamw_lr=env_float("ADAMW_LR", 3e-4),
             weight_decay=env_float("WEIGHT_DECAY", 0.1),
@@ -404,6 +411,13 @@ class PackedTokenBatcher:
         return torch.from_numpy(batch).to(device)
 
 
+class SentencePieceBPBHelper:
+    def __init__(self, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut) -> None:
+        self.base_bytes_lut = base_bytes_lut
+        self.has_leading_space_lut = has_leading_space_lut
+        self.is_boundary_token_lut = is_boundary_token_lut
+
+
 def get_lr(step: int, total_steps: int, max_lr: float, warmup_steps: int, cooldown_fraction: float) -> float:
     if total_steps <= 1:
         return max_lr
@@ -539,11 +553,37 @@ def resolve_token_dtype(cfg: Config, val_path: str) -> tuple[str, str]:
     return "uint16", "default"
 
 
+def build_sentencepiece_bpb_helper(tokenizer_path: str, vocab_size: int) -> SentencePieceBPBHelper:
+    if spm is None:
+        raise RuntimeError("sentencepiece is required for exact tokenizer-aware val_bpb")
+    if np is None:
+        raise RuntimeError("numpy is required for exact tokenizer-aware val_bpb")
+    sp = spm.SentencePieceProcessor(model_file=tokenizer_path)
+    sp_vocab_size = int(sp.vocab_size())
+    table_size = max(sp_vocab_size, vocab_size)
+    base_bytes_lut = np.zeros((table_size,), dtype=np.int16)
+    has_leading_space_lut = np.zeros((table_size,), dtype=np.bool_)
+    is_boundary_token_lut = np.ones((table_size,), dtype=np.bool_)
+    for token_id in range(sp_vocab_size):
+        if sp.is_control(token_id) or sp.is_unknown(token_id) or sp.is_unused(token_id):
+            continue
+        is_boundary_token_lut[token_id] = False
+        if sp.is_byte(token_id):
+            base_bytes_lut[token_id] = 1
+            continue
+        piece = sp.id_to_piece(token_id)
+        if piece.startswith("▁"):
+            has_leading_space_lut[token_id] = True
+            piece = piece[1:]
+        base_bytes_lut[token_id] = len(piece.encode("utf-8"))
+    return SentencePieceBPBHelper(base_bytes_lut, has_leading_space_lut, is_boundary_token_lut)
+
+
 def build_batcher(cfg: Config, data_path: str, seed: int, split: str):
     if not data_path:
-        return SyntheticTokenBatcher(cfg.vocab_size, cfg.seq_len, seed), "synthetic"
+        return SyntheticTokenBatcher(cfg.vocab_size, cfg.seq_len, seed), "synthetic", None
     arrays = discover_token_arrays(data_path, cfg.token_dtype, cfg.seq_len + 1, split=split)
-    return PackedTokenBatcher(arrays, cfg.seq_len, seed), f"{len(arrays)} shard(s)"
+    return PackedTokenBatcher(arrays, cfg.seq_len, seed), f"{len(arrays)} shard(s)", arrays
 
 
 def build_optimizers(model, cfg: Config):
@@ -615,21 +655,96 @@ def format_bpb(loss_value: float, avg_bytes_per_token: float) -> float:
     return loss_value * LOG2_E / avg_bytes_per_token
 
 
-def run_validation(model, batcher, batch_size: int, device, cfg: Config) -> float:
+def format_exact_bpb(loss_value: float, total_tokens: int, total_bytes: float) -> float:
+    return (loss_value / math.log(2.0)) * (total_tokens / total_bytes)
+
+
+def count_target_bytes(prev_ids, tgt_ids, bpb_helper: SentencePieceBPBHelper) -> float:
+    if np is None:
+        raise RuntimeError("numpy is required for exact tokenizer-aware val_bpb")
+    prev_flat = np.asarray(prev_ids, dtype=np.int64).reshape(-1)
+    tgt_flat = np.asarray(tgt_ids, dtype=np.int64).reshape(-1)
+    bytes_np = bpb_helper.base_bytes_lut[tgt_flat].astype(np.int32, copy=True)
+    bytes_np += (
+        bpb_helper.has_leading_space_lut[tgt_flat] & ~bpb_helper.is_boundary_token_lut[prev_flat]
+    ).astype(np.int32, copy=False)
+    return float(bytes_np.astype(np.float64).sum())
+
+
+def compute_batch_bpb(
+    loss_value: float,
+    inputs_np,
+    targets_np,
+    avg_bytes_per_token: float,
+    bpb_helper: SentencePieceBPBHelper | None,
+) -> float:
+    if bpb_helper is None:
+        return format_bpb(loss_value, avg_bytes_per_token)
+    total_tokens = int(np.asarray(targets_np).size)
+    total_bytes = count_target_bytes(inputs_np, targets_np, bpb_helper)
+    return format_exact_bpb(loss_value, total_tokens, total_bytes)
+
+
+def run_validation(
+    model,
+    batcher,
+    val_arrays,
+    batch_size: int,
+    device,
+    cfg: Config,
+    avg_bytes_per_token: float,
+    bpb_helper: SentencePieceBPBHelper | None,
+) -> tuple[float, float]:
     if torch is None:
         raise RuntimeError("torch is required for validation")
     was_training = model.training
     model.eval()
-    losses = []
+    total_loss = 0.0
+    total_tokens = 0
+    total_bytes = 0.0
     with torch.no_grad():
-        for _ in range(cfg.val_steps):
-            batch = batcher.next_batch(batch_size, device)
-            logits = model(batch[:, :-1])
-            loss = F.cross_entropy(logits.reshape(-1, cfg.vocab_size), batch[:, 1:].reshape(-1))
-            losses.append(loss.item())
+        if cfg.val_steps > 0:
+            for _ in range(cfg.val_steps):
+                batch = batcher.next_batch(batch_size, device)
+                inputs = batch[:, :-1].contiguous()
+                targets = batch[:, 1:].contiguous()
+                logits = model(inputs)
+                loss = F.cross_entropy(logits.reshape(-1, cfg.vocab_size), targets.reshape(-1))
+                token_count = int(targets.numel())
+                total_loss += loss.item() * token_count
+                total_tokens += token_count
+                if bpb_helper is not None:
+                    batch_np = batch.detach().cpu().numpy()
+                    total_bytes += count_target_bytes(batch_np[:, :-1], batch_np[:, 1:], bpb_helper)
+        else:
+            if val_arrays is None:
+                raise ValueError("VAL_STEPS=0 requires token arrays on disk; synthetic validation is unsupported")
+            for arr in val_arrays:
+                total_seqs = (len(arr) - 1) // cfg.seq_len
+                for batch_seq_start in range(0, total_seqs, batch_size):
+                    batch_seq_end = min(batch_seq_start + batch_size, total_seqs)
+                    raw_start = batch_seq_start * cfg.seq_len
+                    raw_end = batch_seq_end * cfg.seq_len + 1
+                    chunk = np.asarray(arr[raw_start:raw_end], dtype=np.int64)
+                    inputs_np = chunk[:-1].reshape(-1, cfg.seq_len)
+                    targets_np = chunk[1:].reshape(-1, cfg.seq_len)
+                    inputs = torch.from_numpy(inputs_np).to(device)
+                    targets = torch.from_numpy(targets_np).to(device)
+                    logits = model(inputs)
+                    loss = F.cross_entropy(logits.reshape(-1, cfg.vocab_size), targets.reshape(-1))
+                    token_count = int(targets.numel())
+                    total_loss += loss.item() * token_count
+                    total_tokens += token_count
+                    if bpb_helper is not None:
+                        total_bytes += count_target_bytes(inputs_np, targets_np, bpb_helper)
     if was_training:
         model.train()
-    return sum(losses) / len(losses)
+    if total_tokens <= 0:
+        raise ValueError("Validation did not process any tokens")
+    mean_loss = total_loss / total_tokens
+    if bpb_helper is None:
+        return mean_loss, format_bpb(mean_loss, avg_bytes_per_token)
+    return mean_loss, format_exact_bpb(mean_loss, total_tokens, total_bytes)
 
 
 def main() -> int:
@@ -642,6 +757,9 @@ def main() -> int:
     if np is None and (cfg.data_path or cfg.val_data_path):
         print("NumPy is required for DATA_PATH/VAL_DATA_PATH loading. Run: uv sync")
         return 1
+    if cfg.tokenizer_path and spm is None:
+        print("sentencepiece is required for TOKENIZER_PATH exact val_bpb support. Run: uv sync")
+        return 1
 
     random.seed(cfg.seed)
     torch.manual_seed(cfg.seed)
@@ -653,13 +771,21 @@ def main() -> int:
     val_path = cfg.val_data_path or cfg.data_path
     cfg.vocab_size, vocab_size_source = resolve_vocab_size(cfg, val_path)
     cfg.token_dtype, token_dtype_source = resolve_token_dtype(cfg, val_path)
-    train_batcher, train_source = build_batcher(cfg, cfg.data_path, cfg.seed, split="train")
-    val_batcher, val_source = build_batcher(cfg, val_path, cfg.seed + 1, split="val")
+    train_batcher, train_source, _ = build_batcher(cfg, cfg.data_path, cfg.seed, split="train")
+    val_batcher, val_source, val_arrays = build_batcher(cfg, val_path, cfg.seed + 1, split="val")
     avg_bytes_per_token, avg_bytes_source = resolve_avg_bytes_per_token(cfg, val_path)
+    bpb_helper = None
+    bpb_mode = "avg_bytes_per_token"
+    if cfg.tokenizer_path:
+        bpb_helper = build_sentencepiece_bpb_helper(cfg.tokenizer_path, cfg.vocab_size)
+        bpb_mode = "sentencepiece_exact"
     print(f"train_source={train_source} val_source={val_source} device={device}")
     print(f"vocab_size={cfg.vocab_size} source={vocab_size_source}")
     print(f"token_dtype={cfg.token_dtype} source={token_dtype_source}")
     print(f"avg_bytes_per_token={avg_bytes_per_token:.4f} source={avg_bytes_source}")
+    print(f"bpb_mode={bpb_mode}")
+    if cfg.tokenizer_path:
+        print(f"tokenizer_path={Path(cfg.tokenizer_path).resolve()}")
 
     model = LoopedTransformer(
         vocab_size=cfg.vocab_size,
@@ -735,17 +861,33 @@ def main() -> int:
             adamw_opt.step()
         last_train_loss = loss.item()
 
-        if step % max(1, cfg.val_loss_every) == 0:
-            val_loss = run_validation(model, val_batcher, val_bsz, device, cfg)
+        if cfg.val_loss_every > 0 and step % cfg.val_loss_every == 0:
+            val_loss, val_bpb = run_validation(
+                model,
+                val_batcher,
+                val_arrays,
+                val_bsz,
+                device,
+                cfg,
+                avg_bytes_per_token,
+                bpb_helper,
+            )
             last_val_loss = val_loss
-            val_bpb = format_bpb(val_loss, avg_bytes_per_token)
             if best_val_loss is None or val_loss < best_val_loss:
                 best_val_loss = val_loss
                 best_val_bpb = val_bpb
+            batch_np = batch.detach().cpu().numpy()
+            train_bpb = compute_batch_bpb(
+                loss.item(),
+                batch_np[:, :-1],
+                batch_np[:, 1:],
+                avg_bytes_per_token,
+                bpb_helper,
+            )
             print(
                 f"step={step} "
                 f"train_loss={loss.item():.4f} "
-                f"train_bpb={format_bpb(loss.item(), avg_bytes_per_token):.4f} "
+                f"train_bpb={train_bpb:.4f} "
                 f"val_loss={val_loss:.4f} "
                 f"val_bpb={val_bpb:.4f} "
                 f"muon_lr={muon_lr:.3e} "
@@ -755,8 +897,16 @@ def main() -> int:
         step += 1
 
     total_time = time.perf_counter() - start_time
-    final_val_loss = run_validation(model, val_batcher, val_bsz, device, cfg)
-    final_val_bpb = format_bpb(final_val_loss, avg_bytes_per_token)
+    final_val_loss, final_val_bpb = run_validation(
+        model,
+        val_batcher,
+        val_arrays,
+        val_bsz,
+        device,
+        cfg,
+        avg_bytes_per_token,
+        bpb_helper,
+    )
     if best_val_loss is None or final_val_loss < best_val_loss:
         best_val_loss = final_val_loss
         best_val_bpb = final_val_bpb
@@ -775,6 +925,8 @@ def main() -> int:
         "vocab_size": cfg.vocab_size,
         "token_dtype": cfg.token_dtype,
         "avg_bytes_per_token": avg_bytes_per_token,
+        "bpb_mode": bpb_mode,
+        "tokenizer_path": cfg.tokenizer_path or None,
         "parameters": param_count,
         "steps": step,
         "seconds": total_time,
