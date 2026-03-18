@@ -2297,6 +2297,36 @@ Interpretation so far:
 - The longer schedule is behaving better than the earlier `100`-step run.
 - We should keep following this branch before widening the model again.
 
+## Experiment 26. External Review Packet Draft
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Create a single long-form document that summarizes the full project history for an outside reviewer.
+
+Artifact created:
+
+```text
+DRAFT1.md
+```
+
+What it contains:
+
+- complete commit history
+- competition understanding and rule alignment
+- full experiment timeline
+- current best numbers
+- major failures and dead ends
+- active hypotheses and review questions
+
+Interpretation:
+
+- `STRATEGY.md` remains the raw lab notebook.
+- `DRAFT1.md` is the cleaner handoff document for another engineer or researcher to review and critique.
+
 ## Current Working Hypothesis
 
 The best immediate path is now:
