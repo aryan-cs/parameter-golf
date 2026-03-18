@@ -368,7 +368,7 @@ Why this matters:
 
 Commit:
 
-- pending in current workspace
+- `5b10c5a` `Add official shard support and record packager`
 
 Purpose:
 
@@ -411,6 +411,37 @@ Why this matters:
 - Our trainer can now ingest the official shard format instead of only our own packed-sample format.
 - We can now generate official-style `records/...` folders directly from a finished run.
 - This still does not make our current runs competition-valid, but it removes two concrete workflow blockers.
+
+### 9. Add Official MLX Run Wrapper
+
+Commit:
+
+- `fd6e1ce` `Add official MLX run wrapper`
+
+Purpose:
+
+- Automate official `train_gpt_mlx.py` launches, parse exact final `val_bpb`, and save machine-readable summaries beside the logs.
+
+Key code from `run_official_mlx.py`:
+
+```python
+EXACT_METRIC_RE = re.compile(
+    r"final_int8_zlib_roundtrip_exact val_loss:(?P<val_loss>[-+0-9.eE]+) "
+    r"val_bpb:(?P<val_bpb>[-+0-9.eE]+)"
+)
+```
+
+Key code for persisted parsed summaries:
+
+```python
+summary_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+```
+
+Why this matters:
+
+- We no longer have to hand-scrape official MLX logs to know whether a run actually improved.
+- This is the first local automation layer aimed directly at official-path runs rather than only local proxy sweeps.
+- It also keeps the repo clean by ignoring transient `logs/` output.
 
 ## Experiment Log
 
@@ -1829,32 +1860,209 @@ Interpretation:
 - The generated README is intentionally conservative and should be edited before any real submission.
 - This removes another manual bottleneck between “good run” and “PR-ready record folder.”
 
+## Experiment 18. Official MLX Smoke on Real `sp1024` Data
+
+Status:
+
+- Aborted manually after step `200/200`
+
+Purpose:
+
+- Verify that the official Apple Silicon training path runs end-to-end against the real cached challenge data and tokenizer.
+
+Command:
+
+```bash
+RUN_ID=official_mlx_smoke ITERATIONS=200 TRAIN_BATCH_TOKENS=8192 VAL_LOSS_EVERY=0 VAL_BATCH_SIZE=8192 DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 TOKENIZER_PATH=/tmp/parameter-golf-official.BbMmsz/data/tokenizers/fineweb_1024_bpe.model .venv/bin/python /tmp/parameter-golf-official.BbMmsz/train_gpt_mlx.py
+```
+
+Observed terminal output from the log:
+
+```text
+run_id:official_mlx_smoke
+mlx_version:0.31.1
+train_loader:shards pattern=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024/fineweb_train_*.bin
+val_loader:shards pattern=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024/fineweb_val_*.bin tokens:62021632
+WARNING: train_loader:subset dataset:fineweb10B_sp1024 train_shards:1/195 new epochs will arrive sooner than the full dataset
+model_params:17059912 vocab_size:1024 layers:9 dim:512 heads:8 kv_heads:4 seq_len:1024 tie_embeddings:True
+iterations:200 train_batch_tokens:8192 grad_accum_steps:8 microbatch_tokens:1024 microbatch_batch_size:1 val_batch_size:8192 warmup_steps:20 max_wallclock_seconds:600.000
+step:1/200 train_loss:6.9428 train_time:147ms step_avg:146.52ms tok_s:55916
+step:10/200 train_loss:6.3728 train_time:4485ms step_avg:448.47ms tok_s:17440
+step:200/200 train_loss:3.8992 train_time:96143ms step_avg:480.71ms tok_s:17087
+```
+
+Process state before manual stop:
+
+```text
+19708 05:06  92.1  6.3 Rs   .venv/bin/python /tmp/parameter-golf-official.BbMmsz/train_gpt_mlx.py
+```
+
+Relevant code that explained the slowdown:
+
+```python
+val_batch_tokens = args.val_batch_size // args.grad_accum_steps
+```
+
+Interpretation:
+
+- The run itself was healthy and finished all `200` train steps.
+- The real problem was evaluation geometry, not model stability.
+- With `VAL_BATCH_SIZE=8192` and default `GRAD_ACCUM_STEPS=8`, the official script evaluated only `1024` tokens per validation chunk across the full `62,021,632`-token validation set.
+- That made the final exact metric path impractically slow on the Mac, so we stopped it and treated it as a negative-result workflow lesson rather than waiting indefinitely for a low-value smoke score.
+
+## Experiment 19. Expand Official `sp1024` Cache from 1 to 10 Train Shards
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Give the next official-path runs enough training data to matter.
+
+Commands:
+
+```bash
+python3 - <<'PY'
+from pathlib import Path
+root = Path('/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024')
+files = sorted(root.glob('fineweb_train_*.bin'))
+print({'train_shards': len(files), 'first': files[0].name if files else None, 'last': files[-1].name if files else None})
+PY
+
+.venv/bin/python /tmp/parameter-golf-official.BbMmsz/data/cached_challenge_fineweb.py --variant sp1024 --train-shards 10
+
+python3 - <<'PY'
+from pathlib import Path
+root = Path('/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024')
+files = sorted(root.glob('fineweb_train_*.bin'))
+print({'train_shards': len(files), 'first': files[0].name if files else None, 'last': files[-1].name if files else None})
+PY
+```
+
+Terminal output:
+
+```text
+{'train_shards': 1, 'first': 'fineweb_train_000000.bin', 'last': 'fineweb_train_000000.bin'}
+{'train_shards': 10, 'first': 'fineweb_train_000000.bin', 'last': 'fineweb_train_000009.bin'}
+```
+
+Interpretation:
+
+- We now have `10` official train shards locally instead of `1`.
+- That reduces the chance that our next local official-path run just overfits or cycles through the same tiny prefix too quickly.
+
+## Experiment 20. Baseline-Scale Official MLX Attempt on 10 Shards
+
+Status:
+
+- Failed with `SIGKILL`
+
+Purpose:
+
+- Try the closest local approximation to the official baseline geometry that still seemed plausible on a 25GB Apple Silicon machine.
+
+Command:
+
+```bash
+.venv/bin/python run_official_mlx.py --official-root /tmp/parameter-golf-official.BbMmsz --run-id official_mlx_s10_i600_tb524k_mb32k --output-dir runs/official_mlx_sp1024 --data-path /tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 --tokenizer-path /tmp/parameter-golf-official.BbMmsz/data/tokenizers/fineweb_1024_bpe.model --env ITERATIONS=600 --env TRAIN_BATCH_TOKENS=524288 --env VAL_BATCH_SIZE=524288 --env TRAIN_LOG_EVERY=50 --env MAX_WALLCLOCK_SECONDS=0 --env MLX_MAX_MICROBATCH_TOKENS=32768
+```
+
+Terminal output:
+
+```text
+run_id=official_mlx_s10_i600_tb524k_mb32k
+log_path=/Users/aryan/Desktop/golf/runs/official_mlx_sp1024/official_mlx_s10_i600_tb524k_mb32k.txt
+command=/Users/aryan/Desktop/golf/.venv/bin/python /private/tmp/parameter-golf-official.BbMmsz/train_gpt_mlx.py
+output_dir=/Users/aryan/Desktop/golf/runs/official_mlx_sp1024
+run_id:official_mlx_s10_i600_tb524k_mb32k
+mlx_version:0.31.1
+train_loader:shards pattern=/private/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024/fineweb_train_*.bin
+val_loader:shards pattern=/private/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024/fineweb_val_*.bin tokens:62021632
+WARNING: train_loader:subset dataset:fineweb10B_sp1024 train_shards:10/195 new epochs will arrive sooner than the full dataset
+iterations:600 train_batch_tokens:524288 grad_accum_steps:8 microbatch_tokens:65536 microbatch_batch_size:64 val_batch_size:524288 warmup_steps:20 max_wallclock_seconds:0.000
+mlx_max_microbatch_tokens:32768
+Traceback (most recent call last):
+  File "/Users/aryan/Desktop/golf/run_official_mlx.py", line 178, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/Users/aryan/Desktop/golf/run_official_mlx.py", line 144, in main
+    stream_process(command, env)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "/Users/aryan/Desktop/golf/run_official_mlx.py", line 110, in stream_process
+    raise subprocess.CalledProcessError(return_code, command)
+subprocess.CalledProcessError: Command '['/Users/aryan/Desktop/golf/.venv/bin/python', '/private/tmp/parameter-golf-official.BbMmsz/train_gpt_mlx.py']' died with <Signals.SIGKILL: 9>.
+```
+
+Interpretation:
+
+- This batch shape was too aggressive for the local machine.
+- The process died before warmup logging began, which strongly suggests memory pressure during compile or first graph materialization.
+- The right move was not to abandon official-path runs, but to preserve roughly the same total token budget with a smaller effective batch and more iterations.
+
+## Experiment 21. Safer Official MLX Medium-Batch Run on 10 Shards
+
+Status:
+
+- In progress
+
+Purpose:
+
+- Preserve roughly the same total token target as the failed baseline-scale attempt while dropping memory pressure enough to survive on the Mac.
+
+Command:
+
+```bash
+.venv/bin/python run_official_mlx.py --official-root /tmp/parameter-golf-official.BbMmsz --run-id official_mlx_s10_i1200_tb262k_mb16k_logit8k --output-dir runs/official_mlx_sp1024 --data-path /tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 --tokenizer-path /tmp/parameter-golf-official.BbMmsz/data/tokenizers/fineweb_1024_bpe.model --env ITERATIONS=1200 --env TRAIN_BATCH_TOKENS=262144 --env VAL_BATCH_SIZE=262144 --env TRAIN_LOG_EVERY=100 --env MAX_WALLCLOCK_SECONDS=0 --env MLX_MAX_MICROBATCH_TOKENS=16384 --env LOGIT_CHUNK_TOKENS=8192
+```
+
+Terminal output so far:
+
+```text
+run_id=official_mlx_s10_i1200_tb262k_mb16k_logit8k
+log_path=/Users/aryan/Desktop/golf/runs/official_mlx_sp1024/official_mlx_s10_i1200_tb262k_mb16k_logit8k.txt
+command=/Users/aryan/Desktop/golf/.venv/bin/python /private/tmp/parameter-golf-official.BbMmsz/train_gpt_mlx.py
+output_dir=/Users/aryan/Desktop/golf/runs/official_mlx_sp1024
+run_id:official_mlx_s10_i1200_tb262k_mb16k_logit8k
+mlx_version:0.31.1
+train_loader:shards pattern=/private/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024/fineweb_train_*.bin
+val_loader:shards pattern=/private/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024/fineweb_val_*.bin tokens:62021632
+WARNING: train_loader:subset dataset:fineweb10B_sp1024 train_shards:10/195 new epochs will arrive sooner than the full dataset
+iterations:1200 train_batch_tokens:262144 grad_accum_steps:8 microbatch_tokens:32768 microbatch_batch_size:32 val_batch_size:262144 warmup_steps:20 max_wallclock_seconds:0.000
+mlx_max_microbatch_tokens:16384
+```
+
+Interpretation so far:
+
+- This run has not been killed, which is already better than the previous baseline-scale attempt.
+- The compile window is still long, but the process remains active and the configuration is now in the regime we can keep pushing on.
+
 ## Current Working Hypothesis
 
 The best immediate path is now:
 
-1. keep the current local proxy search loop
-2. treat the 16k `d496_l4` run as the current best proxy reference
-3. continue aligning exact evaluation details with the official path
-4. only then spend more time on deeper model sweeps
+1. use the official `sp1024` data path and official MLX script for the main local search loop
+2. target roughly `300M` training tokens per serious run, because the official baseline crosses `1.5` around that scale
+3. push effective batch size upward until the local machine fails, then recover with more iterations instead of giving up tokens seen
+4. keep the older proxy pipeline available, but treat it as secondary until we have an official-path exact score below `1.5`
 
 Reasoning:
 
-- We closed two key workflow gaps:
-  - official shard ingestion
-  - record packaging
-- The next remaining mismatch is exact official evaluation semantics, especially for non-baseline tokenizer work.
-- That makes infrastructure alignment more valuable than another blind width/tokenizer search right now.
+- We now have the official dataset path, tokenizer, trainer, and a dedicated runner wired up locally.
+- The first official smoke exposed a concrete evaluation pitfall, which we fixed operationally by increasing `VAL_BATCH_SIZE`.
+- The first baseline-scale run found the machine's memory ceiling.
+- That gives us a much clearer official-path search loop than we had before.
 
 ## Next Command To Run
 
-This is the next command we want to execute:
+This is the command currently in progress:
 
 ```bash
-tmpout=$(mktemp -d /tmp/golf-records-smoke.XXXXXX) && .venv/bin/python package_record.py --stats runs/fineweb_16k_frontier_mps/fineweb16k_d496_l4.json --log runs/fineweb_16k_frontier_mps/fineweb16k_d496_l4.log --name "FineWeb 16k d496 l4" --slug fineweb16k_d496_l4 --author "Aryan" --github-id aryan-cs --blurb "Local proxy run packaged for records-folder iteration." --track-dir track_non_record_16mb --output-root "$tmpout"
+.venv/bin/python run_official_mlx.py --official-root /tmp/parameter-golf-official.BbMmsz --run-id official_mlx_s10_i1200_tb262k_mb16k_logit8k --output-dir runs/official_mlx_sp1024 --data-path /tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 --tokenizer-path /tmp/parameter-golf-official.BbMmsz/data/tokenizers/fineweb_1024_bpe.model --env ITERATIONS=1200 --env TRAIN_BATCH_TOKENS=262144 --env VAL_BATCH_SIZE=262144 --env TRAIN_LOG_EVERY=100 --env MAX_WALLCLOCK_SECONDS=0 --env MLX_MAX_MICROBATCH_TOKENS=16384 --env LOGIT_CHUNK_TOKENS=8192
 ```
 
 Why this exact command:
 
-- It is the shortest path to producing a concrete record-folder artifact from our best current local run.
-- Even though the run is still proxy-only, packaging it forces us to keep the submission format in view as we iterate.
+- It keeps us on the official `sp1024` track instead of another proxy-only branch.
+- It preserves roughly the same total training-token target as the failed larger-batch run.
+- If it survives and converges, it gives us the first exact official-path local score that actually matters for the `1.5` target.
