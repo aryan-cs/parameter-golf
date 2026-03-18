@@ -30,17 +30,18 @@ Dataset:
 
 Best real-data terminal result currently logged:
 
-- `val_bpb=3.3354` at step 10 on MPS during a 20-step run with:
-  - `d_model=256`
+- `final_val_bpb=3.2697` on MPS from the width sweep with:
+  - `d_model=320`
   - `n_heads=8`
-  - `d_ff=682`
+  - `d_ff=853`
   - `n_loops=4`
   - `vocab_size=8192`
 
-Most recent final value from that 20-step MPS run:
+Current best artifact details:
 
-- final compressed model size: `4,163,585` bytes
-- total artifact size: `4,190,769` bytes
+- compressed model size: `5,391,543` bytes
+- total artifact size: `5,420,968` bytes
+- parameters: `6,474,000`
 
 ## Code Strategy Timeline
 
@@ -569,30 +570,150 @@ Interpretation:
 - The `RUN_ID` bug is fixed.
 - The sweep runner is ready for actual MPS sweeps.
 
+## Experiment 8. Corrected MPS Sweep on Packed 8k Shards
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Compare multiple architecture shapes on the real MPS path using the same packed 8k-tokenizer dataset.
+
+Command:
+
+```bash
+uv run python sweep.py --preset m4-mini --data-path ./data/tokens/fineweb_8k_sample/train --val-data-path ./data/tokens/fineweb_8k_sample/val --max-steps 20 --device mps --output runs/fineweb_8k_sample_m4/results.jsonl
+```
+
+Terminal output:
+
+```text
+[1/4] run_id=m4_d192_l4
+config: {'run_id': 'm4_d192_l4', 'data_path': './data/tokens/fineweb_8k_sample/train', 'val_data_path': './data/tokens/fineweb_8k_sample/val', 'token_dtype': None, 'vocab_size': None, 'd_model': 192, 'n_heads': 6, 'd_ff': 512, 'n_loops': 4, 'seq_len': 128, 'train_batch_tokens': 8192, 'val_batch_tokens': 8192, 'val_steps': 4, 'val_loss_every': 10, 'max_steps': 20, 'max_wallclock_seconds': 0, 'avg_bytes_per_token': None, 'muon_lr': 0.02, 'adamw_lr': 0.0003, 'weight_decay': 0.1, 'warmup_steps': 20, 'cooldown_fraction': 0.3, 'qat_start_fraction': 0.6, 'grad_clip': 1.0, 'seed': 1337, 'device': 'mps', 'compile_model': False, 'use_smear': True, 'artifact_path': '', 'stats_path': 'runs/fineweb_8k_sample_m4/m4_d192_l4.json'}
+train_source=5 shard(s) val_source=1 shard(s) device=mps
+vocab_size=8192 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_8k_sample/val
+token_dtype=uint16 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_8k_sample/val
+avg_bytes_per_token=3.7298 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_8k_sample/val
+parameters=3,589,696
+step=0 train_loss=9.0137 train_bpb=3.4865 val_loss=9.0104 val_bpb=3.4853 muon_lr=1.000e-03 adamw_lr=1.500e-05 elapsed=0.0s
+step=10 train_loss=8.7261 train_bpb=3.3753 val_loss=8.6952 val_bpb=3.3633 muon_lr=1.100e-02 adamw_lr=1.650e-04 elapsed=1.6s
+step=12 qat=enabled
+=== final_stats ===
+steps=20
+seconds=3.00
+final_val_loss=8.6468
+final_val_bpb=3.3446
+compressed_model_size_bytes=3004124
+code_size_bytes=29425
+total_artifact_bytes=3033549
+artifact_budget_ok=True
+stats_path=runs/fineweb_8k_sample_m4/m4_d192_l4.json
+[2/4] run_id=m4_d256_l4
+config: {'run_id': 'm4_d256_l4', 'data_path': './data/tokens/fineweb_8k_sample/train', 'val_data_path': './data/tokens/fineweb_8k_sample/val', 'token_dtype': None, 'vocab_size': None, 'd_model': 256, 'n_heads': 8, 'd_ff': 682, 'n_loops': 4, 'seq_len': 128, 'train_batch_tokens': 8192, 'val_batch_tokens': 8192, 'val_steps': 4, 'val_loss_every': 10, 'max_steps': 20, 'max_wallclock_seconds': 0, 'avg_bytes_per_token': None, 'muon_lr': 0.02, 'adamw_lr': 0.0003, 'weight_decay': 0.1, 'warmup_steps': 20, 'cooldown_fraction': 0.3, 'qat_start_fraction': 0.6, 'grad_clip': 1.0, 'seed': 1337, 'device': 'mps', 'compile_model': False, 'use_smear': True, 'artifact_path': '', 'stats_path': 'runs/fineweb_8k_sample_m4/m4_d256_l4.json'}
+train_source=5 shard(s) val_source=1 shard(s) device=mps
+vocab_size=8192 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_8k_sample/val
+token_dtype=uint16 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_8k_sample/val
+avg_bytes_per_token=3.7298 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_8k_sample/val
+parameters=4,982,336
+step=0 train_loss=9.0753 train_bpb=3.5104 val_loss=9.0642 val_bpb=3.5061 muon_lr=1.000e-03 adamw_lr=1.500e-05 elapsed=0.0s
+step=10 train_loss=8.6763 train_bpb=3.3560 val_loss=8.6231 val_bpb=3.3354 muon_lr=1.100e-02 adamw_lr=1.650e-04 elapsed=2.0s
+step=12 qat=enabled
+=== final_stats ===
+steps=20
+seconds=3.83
+final_val_loss=8.5967
+final_val_bpb=3.3253
+compressed_model_size_bytes=4163605
+code_size_bytes=29425
+total_artifact_bytes=4193030
+artifact_budget_ok=True
+stats_path=runs/fineweb_8k_sample_m4/m4_d256_l4.json
+[3/4] run_id=m4_d256_l6
+config: {'run_id': 'm4_d256_l6', 'data_path': './data/tokens/fineweb_8k_sample/train', 'val_data_path': './data/tokens/fineweb_8k_sample/val', 'token_dtype': None, 'vocab_size': None, 'd_model': 256, 'n_heads': 8, 'd_ff': 682, 'n_loops': 6, 'seq_len': 128, 'train_batch_tokens': 8192, 'val_batch_tokens': 8192, 'val_steps': 4, 'val_loss_every': 10, 'max_steps': 20, 'max_wallclock_seconds': 0, 'avg_bytes_per_token': None, 'muon_lr': 0.02, 'adamw_lr': 0.0003, 'weight_decay': 0.1, 'warmup_steps': 20, 'cooldown_fraction': 0.3, 'qat_start_fraction': 0.6, 'grad_clip': 1.0, 'seed': 1337, 'device': 'mps', 'compile_model': False, 'use_smear': True, 'artifact_path': '', 'stats_path': 'runs/fineweb_8k_sample_m4/m4_d256_l6.json'}
+train_source=5 shard(s) val_source=1 shard(s) device=mps
+vocab_size=8192 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_8k_sample/val
+token_dtype=uint16 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_8k_sample/val
+avg_bytes_per_token=3.7298 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_8k_sample/val
+parameters=4,982,848
+step=0 train_loss=9.0388 train_bpb=3.4963 val_loss=9.0355 val_bpb=3.4950 muon_lr=1.000e-03 adamw_lr=1.500e-05 elapsed=0.0s
+step=10 train_loss=8.6721 train_bpb=3.3544 val_loss=8.6194 val_bpb=3.3340 muon_lr=1.100e-02 adamw_lr=1.650e-04 elapsed=2.6s
+step=12 qat=enabled
+=== final_stats ===
+steps=20
+seconds=5.20
+final_val_loss=8.6178
+final_val_bpb=3.3334
+compressed_model_size_bytes=4175527
+code_size_bytes=29425
+total_artifact_bytes=4204952
+artifact_budget_ok=True
+stats_path=runs/fineweb_8k_sample_m4/m4_d256_l6.json
+[4/4] run_id=m4_d320_l4
+config: {'run_id': 'm4_d320_l4', 'data_path': './data/tokens/fineweb_8k_sample/train', 'val_data_path': './data/tokens/fineweb_8k_sample/val', 'token_dtype': None, 'vocab_size': None, 'd_model': 320, 'n_heads': 8, 'd_ff': 853, 'n_loops': 4, 'seq_len': 128, 'train_batch_tokens': 8192, 'val_batch_tokens': 8192, 'val_steps': 4, 'val_loss_every': 10, 'max_steps': 20, 'max_wallclock_seconds': 0, 'avg_bytes_per_token': None, 'muon_lr': 0.02, 'adamw_lr': 0.0003, 'weight_decay': 0.1, 'warmup_steps': 20, 'cooldown_fraction': 0.3, 'qat_start_fraction': 0.6, 'grad_clip': 1.0, 'seed': 1337, 'device': 'mps', 'compile_model': False, 'use_smear': True, 'artifact_path': '', 'stats_path': 'runs/fineweb_8k_sample_m4/m4_d320_l4.json'}
+train_source=5 shard(s) val_source=1 shard(s) device=mps
+vocab_size=8192 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_8k_sample/val
+token_dtype=uint16 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_8k_sample/val
+avg_bytes_per_token=3.7298 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_8k_sample/val
+parameters=6,474,000
+step=0 train_loss=9.1175 train_bpb=3.5267 val_loss=9.0940 val_bpb=3.5176 muon_lr=1.000e-03 adamw_lr=1.500e-05 elapsed=0.0s
+step=10 train_loss=8.6097 train_bpb=3.3303 val_loss=8.5457 val_bpb=3.3055 muon_lr=1.100e-02 adamw_lr=1.650e-04 elapsed=3.0s
+step=12 qat=enabled
+=== final_stats ===
+steps=20
+seconds=5.52
+final_val_loss=8.4531
+final_val_bpb=3.2697
+compressed_model_size_bytes=5391543
+code_size_bytes=29425
+total_artifact_bytes=5420968
+artifact_budget_ok=True
+stats_path=runs/fineweb_8k_sample_m4/m4_d320_l4.json
+
+=== sweep_ranking ===
+1. m4_d320_l4 final_val_bpb=3.2697 params=6474000 artifact=5420968
+2. m4_d256_l4 final_val_bpb=3.3253 params=4982336 artifact=4193030
+3. m4_d256_l6 final_val_bpb=3.3334 params=4982848 artifact=4204952
+4. m4_d192_l4 final_val_bpb=3.3446 params=3589696 artifact=3033549
+results_path=runs/fineweb_8k_sample_m4/results.jsonl
+```
+
+Interpretation:
+
+- `m4_d320_l4` clearly won this sweep.
+- Wider helped again; extra loops did not beat the best width-matched baseline.
+- The winning run is still using only about `5.42MB` of the artifact budget, which means we have room both for larger models and for larger tokenizers.
+
+What this suggests:
+
+- Keep `n_loops=4` for now.
+- Prefer spending extra capacity on width before spending it on more loop repetitions.
+- Architecture is good enough to justify a tokenizer-size follow-up experiment now.
+
 ## Current Working Hypothesis
 
 The next most likely win on the current local setup is:
 
-1. Run the corrected MPS sweep over the 8k tokenizer sample.
-2. Promote the best local architecture from that sweep.
-3. Increase tokenizer size from 8k toward 16k or 32k once the architecture baseline is stable.
+1. Keep the current promoted architecture family width-focused.
+2. Probe whether wider models on the same 8k tokenizer continue to improve.
+3. If width keeps helping, then move to a larger tokenizer such as 16k while preserving the strongest local architecture.
 
 Reasoning:
 
-- We are still significantly below the artifact size cap.
-- The 8k tokenizer already gives around `3.73` bytes/token on validation, which is promising.
-- Local ablations suggest width is helping more than extra loop count at this stage.
+- The winning 8k run is still far below the artifact size cap.
+- Width is outperforming additional loops in the local ablations we have.
+- Before paying the cost of another full tokenizer prep cycle, we should see whether the current tokenizer still has easy architecture gains left.
 
 ## Next Command To Run
 
 This is the next command we want to execute:
 
 ```bash
-uv run python sweep.py --preset m4-mini --data-path ./data/tokens/fineweb_8k_sample/train --val-data-path ./data/tokens/fineweb_8k_sample/val --max-steps 20 --device mps --output runs/fineweb_8k_sample_m4/results.jsonl
+uv run python sweep.py --preset m4-promote --data-path ./data/tokens/fineweb_8k_sample/train --val-data-path ./data/tokens/fineweb_8k_sample/val --max-steps 20 --device mps --output runs/fineweb_8k_sample_promote/results.jsonl
 ```
 
 Why this exact command:
 
-- It uses the corrected sweep runner.
-- It uses the already prepared local packed FineWeb shards.
-- It evaluates multiple model shapes on the real MPS path rather than CPU smoke mode.
+- It keeps the dataset fixed, which makes the architecture comparison cleaner.
+- It focuses on wider models because width has been the best lever so far.
+- It uses the already prepared local packed FineWeb shards and avoids another HF streaming round for now.

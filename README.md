@@ -138,6 +138,11 @@ This writes per-run JSON summaries under `runs/` and a JSONL summary file you ca
 
 For a quick sanity check of just the first config, add `--limit 1`.
 
+Current presets:
+
+- `m4-mini`: small local architecture sweep
+- `m4-promote`: width-focused follow-up sweep after picking a local winner
+
 ## Recommended next steps
 
 1. Scale the `prepare_tokens.py` workflow from a small sample to larger FineWeb-derived runs.

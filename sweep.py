@@ -15,7 +15,13 @@ PRESETS = {
         {"run_id": "m4_d256_l4", "D_MODEL": "256", "N_HEADS": "8", "D_FF": "682", "N_LOOPS": "4"},
         {"run_id": "m4_d256_l6", "D_MODEL": "256", "N_HEADS": "8", "D_FF": "682", "N_LOOPS": "6"},
         {"run_id": "m4_d320_l4", "D_MODEL": "320", "N_HEADS": "8", "D_FF": "853", "N_LOOPS": "4"},
-    ]
+    ],
+    "m4-promote": [
+        {"run_id": "m4_d320_l4", "D_MODEL": "320", "N_HEADS": "8", "D_FF": "853", "N_LOOPS": "4"},
+        {"run_id": "m4_d384_l4", "D_MODEL": "384", "N_HEADS": "8", "D_FF": "1024", "N_LOOPS": "4"},
+        {"run_id": "m4_d448_l4", "D_MODEL": "448", "N_HEADS": "8", "D_FF": "1194", "N_LOOPS": "4"},
+        {"run_id": "m4_d512_l4", "D_MODEL": "512", "N_HEADS": "8", "D_FF": "1365", "N_LOOPS": "4"},
+    ],
 }
 
 
