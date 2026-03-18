@@ -56,7 +56,7 @@ uv run python train_gpt.py
 - `.npy` arrays containing token ids
 - flat `.bin` files readable with `numpy.memmap`
 
-If the token directory contains a `metadata.json` with `avg_bytes_per_token`, the trainer now picks that up automatically for bpb reporting.
+If the token directory contains a `metadata.json`, the trainer now auto-detects `vocab_size`, `token_dtype`, and `avg_bytes_per_token`.
 
 Example using pre-packed local tokens:
 
@@ -114,7 +114,6 @@ uv run python prepare_tokens.py \
 Then train against the packed shards:
 
 ```bash
-VOCAB_SIZE=32768 \
 DATA_PATH=./data/tokens/fineweb_32k_sample/train \
 VAL_DATA_PATH=./data/tokens/fineweb_32k_sample/val \
 MAX_STEPS=200 \

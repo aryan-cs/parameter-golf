@@ -34,6 +34,13 @@ def env_int(name: str, default: int) -> int:
     return int(os.environ.get(name, default))
 
 
+def env_int_optional(name: str) -> int | None:
+    raw = os.environ.get(name)
+    if raw is None or raw.strip() == "":
+        return None
+    return int(raw)
+
+
 def env_float(name: str, default: float) -> float:
     return float(os.environ.get(name, default))
 
@@ -57,8 +64,8 @@ class Config:
     run_id: str
     data_path: str
     val_data_path: str
-    token_dtype: str
-    vocab_size: int
+    token_dtype: str | None
+    vocab_size: int | None
     d_model: int
     n_heads: int
     d_ff: int
@@ -91,8 +98,8 @@ class Config:
             run_id=os.environ.get("RUN_ID", "dev_smoke"),
             data_path=os.environ.get("DATA_PATH", ""),
             val_data_path=os.environ.get("VAL_DATA_PATH", ""),
-            token_dtype=os.environ.get("TOKEN_DTYPE", "uint16"),
-            vocab_size=env_int("VOCAB_SIZE", 32768),
+            token_dtype=os.environ.get("TOKEN_DTYPE") or None,
+            vocab_size=env_int_optional("VOCAB_SIZE"),
             d_model=d_model,
             n_heads=env_int("N_HEADS", 8),
             d_ff=env_int("D_FF", max(4, int((8 * d_model) / 3))),
@@ -467,6 +474,36 @@ def resolve_avg_bytes_per_token(cfg: Config, val_path: str) -> tuple[float, str]
     return 3.5, "default"
 
 
+def resolve_vocab_size(cfg: Config, val_path: str) -> tuple[int, str]:
+    if cfg.vocab_size is not None:
+        return cfg.vocab_size, "env"
+
+    for candidate in (val_path, cfg.data_path):
+        metadata = read_split_metadata(candidate)
+        if metadata is None:
+            continue
+        vocab_size = metadata.get("vocab_size")
+        if vocab_size is not None:
+            return int(vocab_size), f"metadata:{Path(candidate).resolve()}"
+
+    return 32768, "default"
+
+
+def resolve_token_dtype(cfg: Config, val_path: str) -> tuple[str, str]:
+    if cfg.token_dtype:
+        return cfg.token_dtype, "env"
+
+    for candidate in (val_path, cfg.data_path):
+        metadata = read_split_metadata(candidate)
+        if metadata is None:
+            continue
+        token_dtype = metadata.get("token_dtype")
+        if token_dtype:
+            return str(token_dtype), f"metadata:{Path(candidate).resolve()}"
+
+    return "uint16", "default"
+
+
 def build_batcher(cfg: Config, data_path: str, seed: int):
     if not data_path:
         return SyntheticTokenBatcher(cfg.vocab_size, cfg.seq_len, seed), "synthetic"
@@ -578,11 +615,15 @@ def main() -> int:
     device = resolve_device(cfg.device)
     train_bsz = max(1, cfg.train_batch_tokens // cfg.seq_len)
     val_bsz = max(1, cfg.val_batch_tokens // cfg.seq_len)
-    train_batcher, train_source = build_batcher(cfg, cfg.data_path, cfg.seed)
     val_path = cfg.val_data_path or cfg.data_path
+    cfg.vocab_size, vocab_size_source = resolve_vocab_size(cfg, val_path)
+    cfg.token_dtype, token_dtype_source = resolve_token_dtype(cfg, val_path)
+    train_batcher, train_source = build_batcher(cfg, cfg.data_path, cfg.seed)
     val_batcher, val_source = build_batcher(cfg, val_path, cfg.seed + 1)
     avg_bytes_per_token, avg_bytes_source = resolve_avg_bytes_per_token(cfg, val_path)
     print(f"train_source={train_source} val_source={val_source} device={device}")
+    print(f"vocab_size={cfg.vocab_size} source={vocab_size_source}")
+    print(f"token_dtype={cfg.token_dtype} source={token_dtype_source}")
     print(f"avg_bytes_per_token={avg_bytes_per_token:.4f} source={avg_bytes_source}")
 
     model = LoopedTransformer(
