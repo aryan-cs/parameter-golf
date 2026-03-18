@@ -23,9 +23,60 @@ Build toward a strong Parameter Golf submission with:
 As of March 18, 2026, the official repo leaderboard shows:
 
 - rank 1: `Naive Baseline`
-- exact printed score: `1.22436570`
+- displayed README score: `1.2244`
+- exact record score from `submission.json`: `1.22436570`
 - record folder: `records/track_10min_16mb/2026-03-17_NaiveBaseline`
-- published post-quant roundtrip metric: `val_bpb:1.2244`
+- exact printed post-quant roundtrip metric: `final_int8_zlib_roundtrip_exact val_bpb:1.22436570`
+
+Official notable non-record reference:
+
+- run: `4-Hour Baseline`
+- displayed README score: `1.2074`
+- exact record score from `submission.json`: `1.20737944`
+- track: non-record unlimited compute under the same `16,000,000` byte cap
+
+## Scoreboard Snapshot
+
+This section should always answer two questions:
+
+1. What exact official score do we have to beat?
+2. Does our current best result actually qualify for a PR?
+
+Current score to beat for the main leaderboard:
+
+- exact `val_bpb` to beat: `1.22436570`
+- source: official `Naive Baseline` record on March 18, 2026
+
+Current interesting non-record comparison:
+
+- exact `val_bpb`: `1.20737944`
+- source: official `4-Hour Baseline` non-record run on March 18, 2026
+
+Our current best local result:
+
+- exact `final_val_bpb`: `3.1106495880562357`
+- short form: `3.1106`
+- run id: `fineweb16k_d496_l4`
+- artifact: `15,999,366` bytes
+- status: valid local proxy, not competition-valid yet
+
+Gap versus official main-track leader:
+
+- `3.1106495880562357 - 1.22436570 = 1.8862838880562356` bpb worse
+
+PR opening rule:
+
+- Open a main-track PR only when we have an exact competition-valid score strictly below `1.22436570`
+- And the run must also satisfy all official submission conditions:
+  - under `16,000,000` bytes total artifact size
+  - reproducible under `10 minutes` on `8xH100`
+  - official-style validation on the fixed full `fineweb_val_*` split
+  - record folder packaging under `records/track_10min_16mb/`
+  - enough evidence for the official significance and reproducibility requirements
+
+Non-record PR rule:
+
+- Even without beating `1.22436570`, we can still consider a PR for `records/track_non_record_16mb/` if the run is interesting, under the artifact cap, and well documented
 
 ## Current Best Logged Real-Data Result
 
