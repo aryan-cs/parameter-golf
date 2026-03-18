@@ -1325,3 +1325,185 @@ Why this exact command:
 - The 16k tokenizer improved the metric, so the next thing to test is whether a 24k tokenizer gives us another denominator win.
 - We deliberately shrink the width range because the 16k `d496` result already uses almost the full artifact budget.
 - This is the cleanest next comparison that can still run locally without adding more external dependencies or dataset churn.
+
+## Experiment 14. 24k Tokenizer Frontier Rejection Test
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Check whether a larger tokenizer than 16k can win overall if we compensate with a narrower model.
+
+Command:
+
+```bash
+.venv/bin/python train_tokenizer.py --input-file ./data/raw/fineweb_16k_sample/train.jsonl --vocab-size 24576 --output-dir ./data/tokenizers --prefix fineweb_24k_sample && .venv/bin/python prepare_tokens.py --train-input-file ./data/raw/fineweb_16k_sample/train.jsonl --val-input-file ./data/raw/fineweb_16k_sample/val.jsonl --tokenizer-prefix ./data/tokenizers/fineweb_24k_sample --output-dir ./data/tokens/fineweb_24k_sample && .venv/bin/python autopilot.py --data-path ./data/tokens/fineweb_24k_sample/train --val-data-path ./data/tokens/fineweb_24k_sample/val --widths 352 384 416 448 --max-steps 20 --output-dir runs/fineweb_24k_frontier_cpu --run-prefix fineweb24k
+```
+
+Terminal output:
+
+```text
+source=local-files
+vocab_path=data/tokenizers/fineweb_24k_sample-vocab.json
+merges_path=data/tokenizers/fineweb_24k_sample-merges.txt
+raw_size_bytes=598029
+compressed_size_bytes=249410
+{
+  "source": "local-files",
+  "output_dir": "data/tokens/fineweb_24k_sample",
+  "tokenizer_prefix": "./data/tokenizers/fineweb_24k_sample",
+  "train": {
+    "split": "train",
+    "source": "local-files",
+    "tokenizer_prefix": "./data/tokenizers/fineweb_24k_sample",
+    "vocab_size": 24576,
+    "token_dtype": "uint16",
+    "docs": 15000,
+    "shards": 6,
+    "total_bytes": 46410649,
+    "total_tokens": 10767318,
+    "avg_bytes_per_token": 4.310325839730934
+  },
+  "val": {
+    "split": "val",
+    "source": "local-files",
+    "tokenizer_prefix": "./data/tokenizers/fineweb_24k_sample",
+    "vocab_size": 24576,
+    "token_dtype": "uint16",
+    "docs": 1000,
+    "shards": 1,
+    "total_bytes": 3032792,
+    "total_tokens": 713604,
+    "avg_bytes_per_token": 4.249964966564089
+  }
+}
+[1/4] run_id=fineweb24k_d352_l4
+config: {'run_id': 'fineweb24k_d352_l4', 'data_path': './data/tokens/fineweb_24k_sample/train', 'val_data_path': './data/tokens/fineweb_24k_sample/val', 'token_dtype': None, 'vocab_size': None, 'd_model': 352, 'n_heads': 8, 'd_ff': 938, 'n_loops': 4, 'seq_len': 128, 'train_batch_tokens': 8192, 'val_batch_tokens': 8192, 'val_steps': 4, 'val_loss_every': 10, 'max_steps': 20, 'max_wallclock_seconds': 0, 'avg_bytes_per_token': None, 'muon_lr': 0.02, 'adamw_lr': 0.0003, 'weight_decay': 0.1, 'warmup_steps': 20, 'cooldown_fraction': 0.3, 'qat_start_fraction': 0.6, 'grad_clip': 1.0, 'seed': 1337, 'device': '', 'compile_model': False, 'use_smear': True, 'artifact_path': '', 'stats_path': 'runs/fineweb_24k_frontier_cpu/fineweb24k_d352_l4.json'}
+train_source=6 shard(s) val_source=1 shard(s) device=cpu
+vocab_size=24576 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_24k_sample/val
+token_dtype=uint16 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_24k_sample/val
+avg_bytes_per_token=4.2500 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_24k_sample/val
+parameters=18,790,552
+step=0 train_loss=10.2081 train_bpb=3.4652 val_loss=10.1993 val_bpb=3.4622 muon_lr=1.000e-03 adamw_lr=1.500e-05 elapsed=0.0s
+step=10 train_loss=9.5744 train_bpb=3.2501 val_loss=9.5415 val_bpb=3.2389 muon_lr=1.100e-02 adamw_lr=1.650e-04 elapsed=9.8s
+step=12 qat=enabled
+=== final_stats ===
+steps=20
+seconds=20.51
+final_val_loss=9.4388
+final_val_bpb=3.2041
+compressed_model_size_bytes=15619565
+code_size_bytes=29425
+total_artifact_bytes=15648990
+artifact_budget_ok=True
+stats_path=runs/fineweb_24k_frontier_cpu/fineweb24k_d352_l4.json
+[2/4] run_id=fineweb24k_d384_l4
+config: {'run_id': 'fineweb24k_d384_l4', 'data_path': './data/tokens/fineweb_24k_sample/train', 'val_data_path': './data/tokens/fineweb_24k_sample/val', 'token_dtype': None, 'vocab_size': None, 'd_model': 384, 'n_heads': 8, 'd_ff': 1024, 'n_loops': 4, 'seq_len': 128, 'train_batch_tokens': 8192, 'val_batch_tokens': 8192, 'val_steps': 4, 'val_loss_every': 10, 'max_steps': 20, 'max_wallclock_seconds': 0, 'avg_bytes_per_token': None, 'muon_lr': 0.02, 'adamw_lr': 0.0003, 'weight_decay': 0.1, 'warmup_steps': 20, 'cooldown_fraction': 0.3, 'qat_start_fraction': 0.6, 'grad_clip': 1.0, 'seed': 1337, 'device': '', 'compile_model': False, 'use_smear': True, 'artifact_path': '', 'stats_path': 'runs/fineweb_24k_frontier_cpu/fineweb24k_d384_l4.json'}
+train_source=6 shard(s) val_source=1 shard(s) device=cpu
+vocab_size=24576 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_24k_sample/val
+token_dtype=uint16 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_24k_sample/val
+avg_bytes_per_token=4.2500 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_24k_sample/val
+parameters=20,647,008
+step=0 train_loss=10.1246 train_bpb=3.4369 val_loss=10.1068 val_bpb=3.4309 muon_lr=1.000e-03 adamw_lr=1.500e-05 elapsed=0.0s
+step=10 train_loss=9.4617 train_bpb=3.2119 val_loss=9.4457 val_bpb=3.2064 muon_lr=1.100e-02 adamw_lr=1.650e-04 elapsed=10.2s
+step=12 qat=enabled
+=== final_stats ===
+steps=20
+seconds=20.48
+final_val_loss=9.2253
+final_val_bpb=3.1316
+compressed_model_size_bytes=17126552
+code_size_bytes=29425
+total_artifact_bytes=17155977
+artifact_budget_ok=False
+stats_path=runs/fineweb_24k_frontier_cpu/fineweb24k_d384_l4.json
+[3/4] run_id=fineweb24k_d416_l4
+config: {'run_id': 'fineweb24k_d416_l4', 'data_path': './data/tokens/fineweb_24k_sample/train', 'val_data_path': './data/tokens/fineweb_24k_sample/val', 'token_dtype': None, 'vocab_size': None, 'd_model': 416, 'n_heads': 8, 'd_ff': 1109, 'n_loops': 4, 'seq_len': 128, 'train_batch_tokens': 8192, 'val_batch_tokens': 8192, 'val_steps': 4, 'val_loss_every': 10, 'max_steps': 20, 'max_wallclock_seconds': 0, 'avg_bytes_per_token': None, 'muon_lr': 0.02, 'adamw_lr': 0.0003, 'weight_decay': 0.1, 'warmup_steps': 20, 'cooldown_fraction': 0.3, 'qat_start_fraction': 0.6, 'grad_clip': 1.0, 'seed': 1337, 'device': '', 'compile_model': False, 'use_smear': True, 'artifact_path': '', 'stats_path': 'runs/fineweb_24k_frontier_cpu/fineweb24k_d416_l4.json'}
+train_source=6 shard(s) val_source=1 shard(s) device=cpu
+vocab_size=24576 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_24k_sample/val
+token_dtype=uint16 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_24k_sample/val
+avg_bytes_per_token=4.2500 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_24k_sample/val
+parameters=22,526,920
+step=0 train_loss=10.1504 train_bpb=3.4457 val_loss=10.1389 val_bpb=3.4418 muon_lr=1.000e-03 adamw_lr=1.500e-05 elapsed=0.0s
+step=10 train_loss=9.3998 train_bpb=3.1909 val_loss=9.3670 val_bpb=3.1797 muon_lr=1.100e-02 adamw_lr=1.650e-04 elapsed=11.3s
+step=12 qat=enabled
+=== final_stats ===
+steps=20
+seconds=23.08
+final_val_loss=9.1357
+final_val_bpb=3.1012
+compressed_model_size_bytes=18800770
+code_size_bytes=29425
+total_artifact_bytes=18830195
+artifact_budget_ok=False
+stats_path=runs/fineweb_24k_frontier_cpu/fineweb24k_d416_l4.json
+[4/4] run_id=fineweb24k_d448_l4
+config: {'run_id': 'fineweb24k_d448_l4', 'data_path': './data/tokens/fineweb_24k_sample/train', 'val_data_path': './data/tokens/fineweb_24k_sample/val', 'token_dtype': None, 'vocab_size': None, 'd_model': 448, 'n_heads': 8, 'd_ff': 1194, 'n_loops': 4, 'seq_len': 128, 'train_batch_tokens': 8192, 'val_batch_tokens': 8192, 'val_steps': 4, 'val_loss_every': 10, 'max_steps': 20, 'max_wallclock_seconds': 0, 'avg_bytes_per_token': None, 'muon_lr': 0.02, 'adamw_lr': 0.0003, 'weight_decay': 0.1, 'warmup_steps': 20, 'cooldown_fraction': 0.3, 'qat_start_fraction': 0.6, 'grad_clip': 1.0, 'seed': 1337, 'device': '', 'compile_model': False, 'use_smear': True, 'artifact_path': '', 'stats_path': 'runs/fineweb_24k_frontier_cpu/fineweb24k_d448_l4.json'}
+train_source=6 shard(s) val_source=1 shard(s) device=cpu
+vocab_size=24576 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_24k_sample/val
+token_dtype=uint16 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_24k_sample/val
+avg_bytes_per_token=4.2500 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_24k_sample/val
+parameters=24,431,344
+step=0 train_loss=10.2190 train_bpb=3.4689 val_loss=10.1987 val_bpb=3.4621 muon_lr=1.000e-03 adamw_lr=1.500e-05 elapsed=0.0s
+step=10 train_loss=9.4437 train_bpb=3.2058 val_loss=9.4132 val_bpb=3.1954 muon_lr=1.100e-02 adamw_lr=1.650e-04 elapsed=12.3s
+step=12 qat=enabled
+=== final_stats ===
+steps=20
+seconds=25.31
+final_val_loss=9.1660
+final_val_bpb=3.1115
+compressed_model_size_bytes=20393176
+code_size_bytes=29425
+total_artifact_bytes=20422601
+artifact_budget_ok=False
+stats_path=runs/fineweb_24k_frontier_cpu/fineweb24k_d448_l4.json
+
+=== autopilot_ranking ===
+1. fineweb24k_d416_l4 final_val_bpb=3.1012 params=22526920 artifact=18830195
+2. fineweb24k_d448_l4 final_val_bpb=3.1115 params=24431344 artifact=20422601
+3. fineweb24k_d384_l4 final_val_bpb=3.1316 params=20647008 artifact=17155977
+4. fineweb24k_d352_l4 final_val_bpb=3.2041 params=18790552 artifact=15648990
+
+=== autopilot_under_budget_ranking ===
+1. fineweb24k_d352_l4 final_val_bpb=3.2041 params=18790552 artifact=15648990
+results_path=runs/fineweb_24k_frontier_cpu/results.jsonl
+leaderboard_path=runs/fineweb_24k_frontier_cpu/leaderboard.json
+```
+
+Interpretation:
+
+- The 24k tokenizer improved bytes/token again, but it made the model family much more expensive.
+- The only valid 24k point in this band was `d352_l4`, and it was much worse than the 16k best.
+- The best 24k metric point was `d416_l4`, but it was badly over budget at `18,830,195` bytes.
+- This is strong evidence that 24k is the wrong next step for this architecture family.
+
+## Current Working Hypothesis
+
+The best direction right now is no longer "keep increasing tokenizer size." It is:
+
+1. keep the tokenizer around `16k`
+2. keep the model near the `d496_l4` budget edge
+3. search intermediate tokenizer sizes only if they are close to 16k, not as large as 24k
+4. spend more effort on model-side efficiency and training quality instead of just pushing vocab upward
+
+Reasoning:
+
+- `16k` clearly beat `8k`.
+- `24k` did not produce a better valid point.
+- That suggests the optimum for this local setup is somewhere between `16k` and `24k`, or that `16k` is already near the sweet spot.
+
+## Next Command To Run
+
+This is the next command we want to execute:
+
+```bash
+.venv/bin/python train_tokenizer.py --input-file ./data/raw/fineweb_16k_sample/train.jsonl --vocab-size 20480 --output-dir ./data/tokenizers --prefix fineweb_20k_sample && .venv/bin/python prepare_tokens.py --train-input-file ./data/raw/fineweb_16k_sample/train.jsonl --val-input-file ./data/raw/fineweb_16k_sample/val.jsonl --tokenizer-prefix ./data/tokenizers/fineweb_20k_sample --output-dir ./data/tokens/fineweb_20k_sample && .venv/bin/python autopilot.py --data-path ./data/tokens/fineweb_20k_sample/train --val-data-path ./data/tokens/fineweb_20k_sample/val --widths 416 448 480 --max-steps 20 --output-dir runs/fineweb_20k_frontier_cpu --run-prefix fineweb20k
+```
+
+Why this exact command:
+
+- `20k` is the natural midpoint after learning that `16k` helps but `24k` is too large.
+- The width band starts at `416` because the 24k valid point at `352` was too weak, while `16k` worked all the way up to `496`.
+- This is the cleanest way to test whether the real sweet spot is between the two tokenizer sizes we have already checked.
