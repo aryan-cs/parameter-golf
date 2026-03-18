@@ -4,6 +4,7 @@ This repo started as a standalone plan. It now includes the first working slice 
 
 - `train_gpt.py`: a runnable looped-transformer training starter with Muon/AdamW splitting, delayed QAT hooks, artifact-size reporting, and synthetic-data smoke mode.
 - `train_tokenizer.py`: a ByteLevel BPE trainer for local text corpora or optional Hugging Face dataset streaming.
+- `cache_text.py`: a raw-text caching utility that snapshots a reusable local train/val corpus for tokenizer experiments.
 - `prepare_tokens.py`: a token-packing utility that writes local `train/` and `val/` token shards plus bytes/token metadata.
 - `pyproject.toml`: project metadata and `uv`-managed dependencies.
 
@@ -81,6 +82,8 @@ uv run python train_tokenizer.py \
   --prefix fineweb_32k_bpe
 ```
 
+You can also train from cached `.jsonl` text files produced by `cache_text.py`.
+
 Optional Hugging Face streaming mode:
 
 ```bash
@@ -97,25 +100,44 @@ uv run python train_tokenizer.py \
 
 ## Packing Real Token Shards
 
-After training a tokenizer, pack local `train/` and `val/` shards plus metadata:
+For repeatable tokenizer experiments, first cache raw text locally:
 
 ```bash
-uv run python prepare_tokens.py \
+uv run python cache_text.py \
   --hf-dataset HuggingFaceFW/fineweb \
   --hf-config sample-10BT \
   --hf-split train \
   --stream \
-  --train-docs 10000 \
+  --train-docs 15000 \
   --val-docs 1000 \
-  --tokenizer-prefix ./data/tokenizers/fineweb_32k_bpe \
-  --output-dir ./data/tokens/fineweb_32k_sample
+  --output-dir ./data/raw/fineweb_sample
+```
+
+Then train a tokenizer from the cached training corpus:
+
+```bash
+uv run python train_tokenizer.py \
+  --input-file ./data/raw/fineweb_sample/train.jsonl \
+  --vocab-size 16384 \
+  --output-dir ./data/tokenizers \
+  --prefix fineweb_16k_sample
+```
+
+After training a tokenizer, pack local `train/` and `val/` shards plus metadata:
+
+```bash
+uv run python prepare_tokens.py \
+  --train-input-file ./data/raw/fineweb_sample/train.jsonl \
+  --val-input-file ./data/raw/fineweb_sample/val.jsonl \
+  --tokenizer-prefix ./data/tokenizers/fineweb_16k_sample \
+  --output-dir ./data/tokens/fineweb_16k_sample
 ```
 
 Then train against the packed shards:
 
 ```bash
-DATA_PATH=./data/tokens/fineweb_32k_sample/train \
-VAL_DATA_PATH=./data/tokens/fineweb_32k_sample/val \
+DATA_PATH=./data/tokens/fineweb_16k_sample/train \
+VAL_DATA_PATH=./data/tokens/fineweb_16k_sample/val \
 MAX_STEPS=200 \
 uv run python train_gpt.py
 ```

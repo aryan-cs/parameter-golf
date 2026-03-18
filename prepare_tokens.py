@@ -13,6 +13,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--input-dir", default="", help="Directory containing local text files.")
     parser.add_argument("--glob", default="*.txt", help="Glob used under --input-dir.")
     parser.add_argument("--input-file", action="append", default=[], help="Individual text file(s) to include.")
+    parser.add_argument("--train-input-file", action="append", default=[], help="Explicit train split file(s).")
+    parser.add_argument("--val-input-file", action="append", default=[], help="Explicit val split file(s).")
     parser.add_argument("--hf-dataset", default="", help="Optional Hugging Face dataset id.")
     parser.add_argument("--hf-config", default=None, help="Optional Hugging Face dataset config.")
     parser.add_argument("--hf-split", default="train", help="Dataset split for Hugging Face loading.")
@@ -44,7 +46,22 @@ def iter_local_text(args: argparse.Namespace):
         files.extend(sorted(Path(args.input_dir).glob(args.glob)))
     if not files:
         raise FileNotFoundError("No local text files matched. Provide --input-file or --input-dir.")
+    yield from iter_text_files(files)
+
+
+def iter_text_files(files):
     for file_path in files:
+        if file_path.suffix.lower() == ".jsonl":
+            with file_path.open("r", encoding="utf-8") as handle:
+                for line in handle:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    record = json.loads(line)
+                    text = record["text"] if isinstance(record, dict) else str(record)
+                    if text:
+                        yield text
+            continue
         text = file_path.read_text(encoding="utf-8", errors="ignore")
         yield from split_local_documents(text)
 
@@ -181,14 +198,24 @@ def main() -> int:
     train_writer = SplitWriter("train", output_dir, dtype_name, typecode, args.shard_size_tokens, args.tokenizer_prefix, tokenizer.vocab_size, source)
     val_writer = SplitWriter("val", output_dir, dtype_name, typecode, args.shard_size_tokens, args.tokenizer_prefix, tokenizer.vocab_size, source)
 
-    total_needed = args.val_docs + args.train_docs
-    for index, text in enumerate(itertools.islice(documents, total_needed)):
-        token_ids = tokenizer.encode(text)
-        byte_count = len(text.encode("utf-8"))
-        if index < args.val_docs:
-            val_writer.add_document(token_ids, byte_count)
-        else:
-            train_writer.add_document(token_ids, byte_count)
+    if args.train_input_file or args.val_input_file:
+        if args.hf_dataset or args.input_file or args.input_dir:
+            raise ValueError("Use either explicit --train-input-file/--val-input-file or the shared input options, not both.")
+        for text in iter_text_files([Path(path) for path in args.val_input_file]):
+            token_ids = tokenizer.encode(text)
+            val_writer.add_document(token_ids, len(text.encode("utf-8")))
+        for text in iter_text_files([Path(path) for path in args.train_input_file]):
+            token_ids = tokenizer.encode(text)
+            train_writer.add_document(token_ids, len(text.encode("utf-8")))
+    else:
+        total_needed = args.val_docs + args.train_docs
+        for index, text in enumerate(itertools.islice(documents, total_needed)):
+            token_ids = tokenizer.encode(text)
+            byte_count = len(text.encode("utf-8"))
+            if index < args.val_docs:
+                val_writer.add_document(token_ids, byte_count)
+            else:
+                train_writer.add_document(token_ids, byte_count)
 
     train_meta = train_writer.finish()
     val_meta = val_writer.finish()

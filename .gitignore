@@ -5,3 +5,4 @@ __pycache__/
 data/tokenizers/
 data/tokens/
 runs/
+data/raw/

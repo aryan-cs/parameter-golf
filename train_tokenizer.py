@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import itertools
+import json
 import zlib
 from pathlib import Path
 
@@ -33,8 +34,25 @@ def iter_local_text(args: argparse.Namespace):
         raise FileNotFoundError("No local text files matched. Provide --input-file or --input-dir.")
     docs_seen = 0
     for file_path in files:
+        if file_path.suffix.lower() == ".jsonl":
+            with file_path.open("r", encoding="utf-8") as handle:
+                for line in handle:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    record = json.loads(line)
+                    text = record["text"] if isinstance(record, dict) else str(record)
+                    if text:
+                        yield text
+                        docs_seen += 1
+                        if docs_seen >= args.max_docs:
+                            return
+            continue
+
         text = file_path.read_text(encoding="utf-8", errors="ignore")
-        for chunk in filter(None, (part.strip() for part in text.splitlines())):
+        blocks = [block.strip() for block in text.split("\n\n") if block.strip()]
+        source_iter = blocks if len(blocks) > 1 else (part.strip() for part in text.splitlines())
+        for chunk in filter(None, source_iter):
             yield chunk
             docs_seen += 1
             if docs_seen >= args.max_docs:
