@@ -1,9 +1,11 @@
 # Parameter Golf — Winning Plan
 
+> Note: This is our working strategy document, not the official rules source. For the current competition rules, submission format, and alignment notes, see `RULES.md`.
+
 > **Goal:** First place on the [OpenAI Parameter Golf](https://github.com/openai/parameter-golf) leaderboard.
 > **Metric:** Lowest `val_bpb` (bits per byte) on the FineWeb validation set.
 > **Constraints:** ≤16MB artifact (code + compressed weights), ≤10 min training on 8×H100s.
-> **Deadline:** April 30, 2025.
+> **Deadline:** April 30, 2026.
 
 ---
 
