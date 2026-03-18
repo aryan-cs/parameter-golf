@@ -68,6 +68,13 @@ Current best official-tokenizer local exact-bpb result:
 - artifact: `3,530,127` bytes
 - status: exact SentencePiece byte accounting on sampled validation batches (`VAL_STEPS=16`), not a full fixed-split scan yet
 
+Current best observed exact sampled checkpoint from an in-progress run:
+
+- exact sampled `val_bpb`: `2.4833`
+- checkpoint: `step=50`
+- run id: `torch_sp1024_d512_l4_b64k_s200`
+- status: in progress, not yet finalized
+
 Gap versus official main-track leader:
 
 - `3.1106495880562357 - 1.22436570 = 1.8862838880562356` bpb worse
@@ -2261,6 +2268,35 @@ Interpretation:
 - That is roughly `15.6k` tokens/s for the `16k` run versus about `20.2k` tokens/s for the `64k` probe.
 - So larger batches are now part of the search space for longer runs.
 
+## Experiment 25. Longer `64k` Batch Exact Sampled Run
+
+Status:
+
+- In progress
+
+Purpose:
+
+- Test whether the exact sampled-bpb curve keeps improving when we keep the faster `64k` batch, delay cooldown, and give the model a longer horizon.
+
+Command:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=torch_sp1024_d512_l4_b64k_s200 TOKENIZER_PATH=/tmp/parameter-golf-official.BbMmsz/data/tokenizers/fineweb_1024_bpe.model DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VAL_DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VOCAB_SIZE=1024 TOKEN_DTYPE=uint16 AVG_BYTES_PER_TOKEN=2.442303811509075 D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 SEQ_LEN=128 TRAIN_BATCH_TOKENS=65536 VAL_BATCH_TOKENS=32768 VAL_STEPS=16 VAL_LOSS_EVERY=50 MAX_STEPS=200 COOLDOWN_FRACTION=0.05 QAT_START_FRACTION=0.98 DEVICE=mps STATS_PATH=runs/official_torch_sp1024/torch_sp1024_d512_l4_b64k_s200.json .venv/bin/python train_gpt.py
+```
+
+Terminal output so far:
+
+```text
+step=0 train_loss=7.0376 train_bpb=4.1401 val_loss=7.0164 val_bpb=4.1588 muon_lr=1.000e-03 adamw_lr=1.500e-05 elapsed=0.0s
+step=50 train_loss=4.2241 train_bpb=2.4879 val_loss=4.1846 val_bpb=2.4833 muon_lr=1.865e-02 adamw_lr=2.798e-04 elapsed=156.9s
+```
+
+Interpretation so far:
+
+- This is already the best exact sampled checkpoint we have seen locally.
+- The longer schedule is behaving better than the earlier `100`-step run.
+- We should keep following this branch before widening the model again.
+
 ## Current Working Hypothesis
 
 The best immediate path is now:
@@ -2283,7 +2319,7 @@ Reasoning:
 
 ## Next Command To Run
 
-This is the next command we want to run:
+This is the command currently in progress:
 
 ```bash
 PYTHONUNBUFFERED=1 RUN_ID=torch_sp1024_d512_l4_b64k_s200 TOKENIZER_PATH=/tmp/parameter-golf-official.BbMmsz/data/tokenizers/fineweb_1024_bpe.model DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VAL_DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VOCAB_SIZE=1024 TOKEN_DTYPE=uint16 AVG_BYTES_PER_TOKEN=2.442303811509075 D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 SEQ_LEN=128 TRAIN_BATCH_TOKENS=65536 VAL_BATCH_TOKENS=32768 VAL_STEPS=16 VAL_LOSS_EVERY=50 MAX_STEPS=200 COOLDOWN_FRACTION=0.05 QAT_START_FRACTION=0.98 DEVICE=mps STATS_PATH=runs/official_torch_sp1024/torch_sp1024_d512_l4_b64k_s200.json .venv/bin/python train_gpt.py
