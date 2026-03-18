@@ -60,9 +60,21 @@ Our current best local result:
 - artifact: `15,999,366` bytes
 - status: valid local proxy, not competition-valid yet
 
+Current best official-tokenizer local exact-bpb result:
+
+- exact sampled `best_val_bpb`: `2.580798659621066`
+- short form: `2.5808`
+- run id: `torch_sp1024_d512_l4_s100_v16`
+- artifact: `3,530,127` bytes
+- status: exact SentencePiece byte accounting on sampled validation batches (`VAL_STEPS=16`), not a full fixed-split scan yet
+
 Gap versus official main-track leader:
 
 - `3.1106495880562357 - 1.22436570 = 1.8862838880562356` bpb worse
+
+Gap versus the immediate `1.5` local target:
+
+- `2.580798659621066 - 1.5 = 1.080798659621066` bpb worse
 
 PR opening rule:
 
@@ -442,6 +454,37 @@ Why this matters:
 - We no longer have to hand-scrape official MLX logs to know whether a run actually improved.
 - This is the first local automation layer aimed directly at official-path runs rather than only local proxy sweeps.
 - It also keeps the repo clean by ignoring transient `logs/` output.
+
+### 10. Add Exact SentencePiece `val_bpb` to the Fast Trainer
+
+Commit:
+
+- `a1ff57b` `Add exact SentencePiece val_bpb support`
+
+Purpose:
+
+- Make the faster PyTorch/MPS trainer capable of tokenizer-aware byte accounting instead of only the old average-bytes approximation.
+
+Key code from `train_gpt.py`:
+
+```python
+def build_sentencepiece_bpb_helper(tokenizer_path: str, vocab_size: int) -> SentencePieceBPBHelper:
+    sp = spm.SentencePieceProcessor(model_file=tokenizer_path)
+```
+
+Key code for exact full-scan validation:
+
+```python
+if cfg.val_steps <= 0:
+    for arr in val_arrays:
+        total_seqs = (len(arr) - 1) // cfg.seq_len
+```
+
+Why this matters:
+
+- We now have a much faster local loop that still respects the official tokenizer's byte semantics.
+- `VAL_STEPS=0` now means "scan the validation shards sequentially" instead of falling back to a sampled estimate.
+- This is the first serious path in the repo that combines official shard ingestion, official tokenizer semantics, and MPS-friendly training speed.
 
 ## Experiment Log
 
@@ -2004,7 +2047,7 @@ Interpretation:
 
 Status:
 
-- In progress
+- Stopped after proving memory stability but rejected as the main local loop because throughput was too low
 
 Purpose:
 
@@ -2016,7 +2059,7 @@ Command:
 .venv/bin/python run_official_mlx.py --official-root /tmp/parameter-golf-official.BbMmsz --run-id official_mlx_s10_i1200_tb262k_mb16k_logit8k --output-dir runs/official_mlx_sp1024 --data-path /tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 --tokenizer-path /tmp/parameter-golf-official.BbMmsz/data/tokenizers/fineweb_1024_bpe.model --env ITERATIONS=1200 --env TRAIN_BATCH_TOKENS=262144 --env VAL_BATCH_SIZE=262144 --env TRAIN_LOG_EVERY=100 --env MAX_WALLCLOCK_SECONDS=0 --env MLX_MAX_MICROBATCH_TOKENS=16384 --env LOGIT_CHUNK_TOKENS=8192
 ```
 
-Terminal output so far:
+Terminal output:
 
 ```text
 run_id=official_mlx_s10_i1200_tb262k_mb16k_logit8k
@@ -2030,39 +2073,224 @@ val_loader:shards pattern=/private/tmp/parameter-golf-official.BbMmsz/data/datas
 WARNING: train_loader:subset dataset:fineweb10B_sp1024 train_shards:10/195 new epochs will arrive sooner than the full dataset
 iterations:1200 train_batch_tokens:262144 grad_accum_steps:8 microbatch_tokens:32768 microbatch_batch_size:32 val_batch_size:262144 warmup_steps:20 max_wallclock_seconds:0.000
 mlx_max_microbatch_tokens:16384
+warmup_step:1/20
+warmup_step:2/20
 ```
 
-Interpretation so far:
+Follow-up relaunch with warmups disabled:
+
+```text
+run_id=official_mlx_s10_i1000_tb262k_mb16k_logit8k_w0
+iterations:1000 train_batch_tokens:262144 grad_accum_steps:8 microbatch_tokens:32768 microbatch_batch_size:32 val_batch_size:262144 warmup_steps:0 max_wallclock_seconds:0.000
+step:1/1000 train_loss:6.9380 train_time:75920ms step_avg:75919.79ms tok_s:3453
+```
+
+Interpretation:
 
 - This run has not been killed, which is already better than the previous baseline-scale attempt.
-- The compile window is still long, but the process remains active and the configuration is now in the regime we can keep pushing on.
+- The configuration is memory-stable on the machine, so we learned that `262144` train tokens and `16384` microbatch chunks are feasible.
+- But the throughput was far too low for the MLX path to be the main local search loop.
+- That is why we pivoted to adding exact SentencePiece `val_bpb` support to the faster MPS trainer.
+
+## Experiment 22. Tiny Official-Shard Smoke for Exact SentencePiece `val_bpb`
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Prove that the new `TOKENIZER_PATH` plus `VAL_STEPS=0` path in `train_gpt.py` really executes exact SentencePiece-aware byte accounting on official-format shards.
+
+Command:
+
+```bash
+tmpdir=$(.venv/bin/python - <<'PY'
+from pathlib import Path
+import numpy as np
+import tempfile
+MAGIC = 20240520
+VERSION = 1
+HEADER_INTS = 256
+root = Path('/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024')
+out = Path(tempfile.mkdtemp(prefix='golf-sp-bpb-smoke.', dir='/tmp'))
+for split in ('train', 'val'):
+    src = root / f'fineweb_{split}_000000.bin'
+    token_count = 8193
+    tokens = np.fromfile(src, dtype='<u2', count=token_count, offset=HEADER_INTS * 4)
+    new_header = np.zeros((HEADER_INTS,), dtype='<i4')
+    new_header[0] = MAGIC
+    new_header[1] = VERSION
+    new_header[2] = token_count
+    dst = out / f'fineweb_{split}_000000.bin'
+    with dst.open('wb') as handle:
+        handle.write(new_header.tobytes())
+        handle.write(tokens.tobytes())
+print(out)
+PY
+) && TOKENIZER_PATH=/tmp/parameter-golf-official.BbMmsz/data/tokenizers/fineweb_1024_bpe.model DATA_PATH="$tmpdir" VAL_DATA_PATH="$tmpdir" VOCAB_SIZE=1024 TOKEN_DTYPE=uint16 AVG_BYTES_PER_TOKEN=2.442303811509075 D_MODEL=64 N_HEADS=4 D_FF=170 N_LOOPS=2 SEQ_LEN=128 TRAIN_BATCH_TOKENS=1024 VAL_BATCH_TOKENS=1024 VAL_STEPS=0 VAL_LOSS_EVERY=0 MAX_STEPS=1 DEVICE=cpu .venv/bin/python train_gpt.py
+```
+
+Terminal output:
+
+```text
+config: {'run_id': 'dev_smoke', 'data_path': '/tmp/golf-sp-bpb-smoke._e9mz3rg', 'val_data_path': '/tmp/golf-sp-bpb-smoke._e9mz3rg', 'token_dtype': 'uint16', 'vocab_size': 1024, 'd_model': 64, 'n_heads': 4, 'd_ff': 170, 'n_loops': 2, 'seq_len': 128, 'train_batch_tokens': 1024, 'val_batch_tokens': 1024, 'val_steps': 0, 'val_loss_every': 0, 'max_steps': 1, 'max_wallclock_seconds': 0, 'avg_bytes_per_token': 2.442303811509075, 'tokenizer_path': '/tmp/parameter-golf-official.BbMmsz/data/tokenizers/fineweb_1024_bpe.model', 'muon_lr': 0.02, 'adamw_lr': 0.0003, 'weight_decay': 0.1, 'warmup_steps': 20, 'cooldown_fraction': 0.3, 'qat_start_fraction': 0.6, 'grad_clip': 1.0, 'seed': 1337, 'device': 'cpu', 'compile_model': False, 'use_smear': True, 'artifact_path': '', 'stats_path': ''}
+train_source=1 shard(s) val_source=1 shard(s) device=cpu
+vocab_size=1024 source=env
+token_dtype=uint16 source=env
+avg_bytes_per_token=2.4423 source=env
+bpb_mode=sentencepiece_exact
+tokenizer_path=/private/tmp/parameter-golf-official.BbMmsz/data/tokenizers/fineweb_1024_bpe.model
+parameters=180,512
+=== final_stats ===
+steps=1
+seconds=0.06
+final_val_loss=6.9297
+final_val_bpb=4.0297
+compressed_model_size_bytes=160723
+code_size_bytes=37388
+total_artifact_bytes=198111
+artifact_budget_ok=True
+```
+
+Interpretation:
+
+- The exact SentencePiece path runs successfully in our trainer.
+- The trainer can now combine:
+  - official-format shard reading
+  - exact tokenizer-aware `val_bpb`
+  - sequential full-scan validation when requested
+
+## Experiment 23. First Exact Sampled-Validation MPS Run on Official `sp1024`
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Establish the first meaningful speed and score baseline on the new fast exact-bpb path.
+
+Command:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=torch_sp1024_d512_l4_s100_v16 TOKENIZER_PATH=/tmp/parameter-golf-official.BbMmsz/data/tokenizers/fineweb_1024_bpe.model DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VAL_DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VOCAB_SIZE=1024 TOKEN_DTYPE=uint16 AVG_BYTES_PER_TOKEN=2.442303811509075 D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 SEQ_LEN=128 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=32768 VAL_STEPS=16 VAL_LOSS_EVERY=20 MAX_STEPS=100 DEVICE=mps STATS_PATH=runs/official_torch_sp1024/torch_sp1024_d512_l4_s100_v16.json .venv/bin/python train_gpt.py
+```
+
+Terminal output:
+
+```text
+step=0 train_loss=7.0349 train_bpb=4.1259 val_loss=7.0171 val_bpb=4.1593 muon_lr=1.000e-03 adamw_lr=1.500e-05 elapsed=0.0s
+step=20 train_loss=5.8438 train_bpb=3.3846 val_loss=5.6938 val_bpb=3.3789 muon_lr=2.000e-02 adamw_lr=3.000e-04 elapsed=21.0s
+step=40 train_loss=4.7811 train_bpb=2.7607 val_loss=4.7556 val_bpb=2.8222 muon_lr=1.378e-02 adamw_lr=2.067e-04 elapsed=42.7s
+step=60 qat=enabled
+step=60 train_loss=4.3375 train_bpb=2.5592 val_loss=4.3541 val_bpb=2.5808 muon_lr=3.719e-03 adamw_lr=5.578e-05 elapsed=63.8s
+step=80 train_loss=4.5291 train_bpb=2.7209 val_loss=4.5187 val_bpb=2.6804 muon_lr=1.333e-03 adamw_lr=2.000e-05 elapsed=85.2s
+=== final_stats ===
+steps=100
+seconds=106.44
+final_val_loss=4.5915
+final_val_bpb=2.7163
+compressed_model_size_bytes=3492739
+code_size_bytes=37388
+total_artifact_bytes=3530127
+artifact_budget_ok=True
+stats_path=runs/official_torch_sp1024/torch_sp1024_d512_l4_s100_v16.json
+```
+
+Key parsed JSON result:
+
+```json
+{
+  "best_val_bpb": 2.580798659621066,
+  "final_val_bpb": 2.7162548714625445,
+  "parameters": 4198016,
+  "seconds": 106.44016912498046
+}
+```
+
+Interpretation:
+
+- This is the first local result that is both fast enough to iterate on and faithful to the official tokenizer's byte semantics.
+- The learning curve is clearly real.
+- The schedule is not good enough yet:
+  - cooldown starts too early for such a short run
+  - QAT likely arrived too soon for this regime
+- Even with those flaws, this run materially improved on the older proxy-only neighborhood.
+
+## Experiment 24. `64k` Batch Throughput Probe on the Exact Sampled MPS Path
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Check whether a much larger effective batch improves tokens-per-second enough to justify longer official-tokenizer runs.
+
+Command:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=torch_sp1024_d512_l4_b64k_s20 TOKENIZER_PATH=/tmp/parameter-golf-official.BbMmsz/data/tokenizers/fineweb_1024_bpe.model DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VAL_DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VOCAB_SIZE=1024 TOKEN_DTYPE=uint16 AVG_BYTES_PER_TOKEN=2.442303811509075 D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 SEQ_LEN=128 TRAIN_BATCH_TOKENS=65536 VAL_BATCH_TOKENS=32768 VAL_STEPS=4 VAL_LOSS_EVERY=10 MAX_STEPS=20 COOLDOWN_FRACTION=0.05 QAT_START_FRACTION=0.98 DEVICE=mps STATS_PATH=runs/official_torch_sp1024/torch_sp1024_d512_l4_b64k_s20.json .venv/bin/python train_gpt.py
+```
+
+Terminal output:
+
+```text
+step=0 train_loss=7.0376 train_bpb=4.1401 val_loss=7.0170 val_bpb=4.1681 muon_lr=1.000e-03 adamw_lr=1.500e-05 elapsed=0.0s
+step=10 train_loss=6.3463 train_bpb=3.7325 val_loss=6.2598 val_bpb=3.7078 muon_lr=1.100e-02 adamw_lr=1.650e-04 elapsed=32.5s
+step=19 qat=enabled
+=== final_stats ===
+steps=20
+seconds=132.00
+final_val_loss=5.7401
+final_val_bpb=3.4061
+compressed_model_size_bytes=3513871
+code_size_bytes=37388
+total_artifact_bytes=3551259
+artifact_budget_ok=True
+stats_path=runs/official_torch_sp1024/torch_sp1024_d512_l4_b64k_s20.json
+```
+
+Interpretation:
+
+- The `64k` train batch is viable on MPS for this model.
+- Throughput improved versus the `16k` batch loop:
+  - `16k` path reached `step=20` in about `21.0s`
+  - `64k` path reached `step=10` in about `32.5s`
+- That is roughly `15.6k` tokens/s for the `16k` run versus about `20.2k` tokens/s for the `64k` probe.
+- So larger batches are now part of the search space for longer runs.
 
 ## Current Working Hypothesis
 
 The best immediate path is now:
 
-1. use the official `sp1024` data path and official MLX script for the main local search loop
-2. target roughly `300M` training tokens per serious run, because the official baseline crosses `1.5` around that scale
-3. push effective batch size upward until the local machine fails, then recover with more iterations instead of giving up tokens seen
-4. keep the older proxy pipeline available, but treat it as secondary until we have an official-path exact score below `1.5`
+1. use the fast PyTorch/MPS trainer as the main local loop
+2. keep exact SentencePiece byte accounting enabled so we stay aligned with the official tokenizer semantics
+3. use sampled exact validation for iteration speed, then reserve full validation scans for the most promising checkpoints
+4. keep increasing effective batch size while the model still fits, because the `64k` probe improved tokens-per-second materially
 
 Reasoning:
 
-- We now have the official dataset path, tokenizer, trainer, and a dedicated runner wired up locally.
-- The first official smoke exposed a concrete evaluation pitfall, which we fixed operationally by increasing `VAL_BATCH_SIZE`.
-- The first baseline-scale run found the machine's memory ceiling.
-- That gives us a much clearer official-path search loop than we had before.
+- The official MLX path is correct but too slow on this Mac to be the main search engine.
+- The new exact SentencePiece path in `train_gpt.py` is much faster while still respecting official tokenizer byte semantics.
+- We now have a concrete score trajectory, not just infrastructure.
+- The next wins are likely to come from:
+  - longer schedules
+  - later QAT
+  - better cooldown placement
+  - larger train batches
 
 ## Next Command To Run
 
-This is the command currently in progress:
+This is the next command we want to run:
 
 ```bash
-.venv/bin/python run_official_mlx.py --official-root /tmp/parameter-golf-official.BbMmsz --run-id official_mlx_s10_i1200_tb262k_mb16k_logit8k --output-dir runs/official_mlx_sp1024 --data-path /tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 --tokenizer-path /tmp/parameter-golf-official.BbMmsz/data/tokenizers/fineweb_1024_bpe.model --env ITERATIONS=1200 --env TRAIN_BATCH_TOKENS=262144 --env VAL_BATCH_SIZE=262144 --env TRAIN_LOG_EVERY=100 --env MAX_WALLCLOCK_SECONDS=0 --env MLX_MAX_MICROBATCH_TOKENS=16384 --env LOGIT_CHUNK_TOKENS=8192
+PYTHONUNBUFFERED=1 RUN_ID=torch_sp1024_d512_l4_b64k_s200 TOKENIZER_PATH=/tmp/parameter-golf-official.BbMmsz/data/tokenizers/fineweb_1024_bpe.model DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VAL_DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VOCAB_SIZE=1024 TOKEN_DTYPE=uint16 AVG_BYTES_PER_TOKEN=2.442303811509075 D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 SEQ_LEN=128 TRAIN_BATCH_TOKENS=65536 VAL_BATCH_TOKENS=32768 VAL_STEPS=16 VAL_LOSS_EVERY=50 MAX_STEPS=200 COOLDOWN_FRACTION=0.05 QAT_START_FRACTION=0.98 DEVICE=mps STATS_PATH=runs/official_torch_sp1024/torch_sp1024_d512_l4_b64k_s200.json .venv/bin/python train_gpt.py
 ```
 
 Why this exact command:
 
-- It keeps us on the official `sp1024` track instead of another proxy-only branch.
-- It preserves roughly the same total training-token target as the failed larger-batch run.
-- If it survives and converges, it gives us the first exact official-path local score that actually matters for the `1.5` target.
+- It extends the now-proven `64k` batch path instead of guessing again.
+- It delays cooldown and QAT so the short-run schedule should stop fighting convergence.
+- It is the shortest next run that can tell us whether this exact sampled-bpb loop is actually heading toward the `1.5` target.
