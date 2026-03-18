@@ -30,18 +30,18 @@ Dataset:
 
 Best real-data terminal result currently logged:
 
-- `final_val_bpb=3.2697` on MPS from the width sweep with:
-  - `d_model=320`
+- `final_val_bpb=3.1385` on MPS from the promoted width sweep with:
+  - `d_model=512`
   - `n_heads=8`
-  - `d_ff=853`
+  - `d_ff=1365`
   - `n_loops=4`
   - `vocab_size=8192`
 
 Current best artifact details:
 
-- compressed model size: `5,391,543` bytes
-- total artifact size: `5,420,968` bytes
-- parameters: `6,474,000`
+- compressed model size: `9,730,938` bytes
+- total artifact size: `9,760,363` bytes
+- parameters: `11,538,048`
 
 ## Code Strategy Timeline
 
@@ -206,6 +206,44 @@ PRESETS = {
 Why this matters:
 
 - We can now compare local ablations systematically instead of relying on memory and scrollback.
+
+### 6. Add Local Raw-Text Caching Workflow
+
+Commit:
+
+- `c7c3561` `Add local raw text caching workflow`
+
+Purpose:
+
+- Stop relying on repeated live Hugging Face streaming for every tokenizer experiment.
+
+Key code from `cache_text.py`:
+
+```python
+cached_docs = list(itertools.islice(documents, total_needed))
+val_docs = cached_docs[: args.val_docs]
+train_docs = cached_docs[args.val_docs : args.val_docs + args.train_docs]
+
+val_count, val_bytes = write_jsonl(val_path, val_docs)
+train_count, train_bytes = write_jsonl(train_path, train_docs)
+```
+
+Key code from `prepare_tokens.py`:
+
+```python
+if args.train_input_file or args.val_input_file:
+    for text in iter_text_files([Path(path) for path in args.val_input_file]):
+        token_ids = tokenizer.encode(text)
+        val_writer.add_document(token_ids, len(text.encode("utf-8")))
+    for text in iter_text_files([Path(path) for path in args.train_input_file]):
+        token_ids = tokenizer.encode(text)
+        train_writer.add_document(token_ids, len(text.encode("utf-8")))
+```
+
+Why this matters:
+
+- Future tokenizer comparisons can now reuse a stable local raw corpus.
+- This reduces Hugging Face transport flakiness and keeps tokenizer experiments more comparable.
 
 ## Experiment Log
 
@@ -717,3 +755,150 @@ Why this exact command:
 - It keeps the dataset fixed, which makes the architecture comparison cleaner.
 - It focuses on wider models because width has been the best lever so far.
 - It uses the already prepared local packed FineWeb shards and avoids another HF streaming round for now.
+
+## Experiment 9. Promoted Width Sweep on Packed 8k Shards
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Test how much additional width we can exploit on the same 8k-tokenizer dataset before switching tokenizer size.
+
+Command:
+
+```bash
+uv run python sweep.py --preset m4-promote --data-path ./data/tokens/fineweb_8k_sample/train --val-data-path ./data/tokens/fineweb_8k_sample/val --max-steps 20 --device mps --output runs/fineweb_8k_sample_promote/results.jsonl
+```
+
+Terminal output:
+
+```text
+[1/4] run_id=m4_d320_l4
+config: {'run_id': 'm4_d320_l4', 'data_path': './data/tokens/fineweb_8k_sample/train', 'val_data_path': './data/tokens/fineweb_8k_sample/val', 'token_dtype': None, 'vocab_size': None, 'd_model': 320, 'n_heads': 8, 'd_ff': 853, 'n_loops': 4, 'seq_len': 128, 'train_batch_tokens': 8192, 'val_batch_tokens': 8192, 'val_steps': 4, 'val_loss_every': 10, 'max_steps': 20, 'max_wallclock_seconds': 0, 'avg_bytes_per_token': None, 'muon_lr': 0.02, 'adamw_lr': 0.0003, 'weight_decay': 0.1, 'warmup_steps': 20, 'cooldown_fraction': 0.3, 'qat_start_fraction': 0.6, 'grad_clip': 1.0, 'seed': 1337, 'device': 'mps', 'compile_model': False, 'use_smear': True, 'artifact_path': '', 'stats_path': 'runs/fineweb_8k_sample_promote/m4_d320_l4.json'}
+train_source=5 shard(s) val_source=1 shard(s) device=mps
+vocab_size=8192 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_8k_sample/val
+token_dtype=uint16 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_8k_sample/val
+avg_bytes_per_token=3.7298 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_8k_sample/val
+parameters=6,474,000
+step=0 train_loss=9.1175 train_bpb=3.5267 val_loss=9.0940 val_bpb=3.5176 muon_lr=1.000e-03 adamw_lr=1.500e-05 elapsed=0.0s
+step=10 train_loss=8.6097 train_bpb=3.3303 val_loss=8.5457 val_bpb=3.3055 muon_lr=1.100e-02 adamw_lr=1.650e-04 elapsed=2.5s
+step=12 qat=enabled
+=== final_stats ===
+steps=20
+seconds=4.90
+final_val_loss=8.4531
+final_val_bpb=3.2697
+compressed_model_size_bytes=5391534
+code_size_bytes=29425
+total_artifact_bytes=5420959
+artifact_budget_ok=True
+stats_path=runs/fineweb_8k_sample_promote/m4_d320_l4.json
+[2/4] run_id=m4_d384_l4
+config: {'run_id': 'm4_d384_l4', 'data_path': './data/tokens/fineweb_8k_sample/train', 'val_data_path': './data/tokens/fineweb_8k_sample/val', 'token_dtype': None, 'vocab_size': None, 'd_model': 384, 'n_heads': 8, 'd_ff': 1024, 'n_loops': 4, 'seq_len': 128, 'train_batch_tokens': 8192, 'val_batch_tokens': 8192, 'val_steps': 4, 'val_loss_every': 10, 'max_steps': 20, 'max_wallclock_seconds': 0, 'avg_bytes_per_token': None, 'muon_lr': 0.02, 'adamw_lr': 0.0003, 'weight_decay': 0.1, 'warmup_steps': 20, 'cooldown_fraction': 0.3, 'qat_start_fraction': 0.6, 'grad_clip': 1.0, 'seed': 1337, 'device': 'mps', 'compile_model': False, 'use_smear': True, 'artifact_path': '', 'stats_path': 'runs/fineweb_8k_sample_promote/m4_d384_l4.json'}
+train_source=5 shard(s) val_source=1 shard(s) device=mps
+vocab_size=8192 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_8k_sample/val
+token_dtype=uint16 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_8k_sample/val
+avg_bytes_per_token=3.7298 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_8k_sample/val
+parameters=8,064,096
+step=0 train_loss=9.1062 train_bpb=3.5223 val_loss=9.0903 val_bpb=3.5162 muon_lr=1.000e-03 adamw_lr=1.500e-05 elapsed=0.0s
+step=10 train_loss=8.5415 train_bpb=3.3039 val_loss=8.4767 val_bpb=3.2788 muon_lr=1.100e-02 adamw_lr=1.650e-04 elapsed=3.2s
+step=12 qat=enabled
+=== final_stats ===
+steps=20
+seconds=6.16
+final_val_loss=8.3979
+final_val_bpb=3.2483
+compressed_model_size_bytes=6751297
+code_size_bytes=29425
+total_artifact_bytes=6780722
+artifact_budget_ok=True
+stats_path=runs/fineweb_8k_sample_promote/m4_d384_l4.json
+[3/4] run_id=m4_d448_l4
+config: {'run_id': 'm4_d448_l4', 'data_path': './data/tokens/fineweb_8k_sample/train', 'val_data_path': './data/tokens/fineweb_8k_sample/val', 'token_dtype': None, 'vocab_size': None, 'd_model': 448, 'n_heads': 8, 'd_ff': 1194, 'n_loops': 4, 'seq_len': 128, 'train_batch_tokens': 8192, 'val_batch_tokens': 8192, 'val_steps': 4, 'val_loss_every': 10, 'max_steps': 20, 'max_wallclock_seconds': 0, 'avg_bytes_per_token': None, 'muon_lr': 0.02, 'adamw_lr': 0.0003, 'weight_decay': 0.1, 'warmup_steps': 20, 'cooldown_fraction': 0.3, 'qat_start_fraction': 0.6, 'grad_clip': 1.0, 'seed': 1337, 'device': 'mps', 'compile_model': False, 'use_smear': True, 'artifact_path': '', 'stats_path': 'runs/fineweb_8k_sample_promote/m4_d448_l4.json'}
+train_source=5 shard(s) val_source=1 shard(s) device=mps
+vocab_size=8192 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_8k_sample/val
+token_dtype=uint16 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_8k_sample/val
+avg_bytes_per_token=3.7298 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_8k_sample/val
+parameters=9,751,280
+step=0 train_loss=9.1051 train_bpb=3.5219 val_loss=9.0962 val_bpb=3.5184 muon_lr=1.000e-03 adamw_lr=1.500e-05 elapsed=0.0s
+step=10 train_loss=8.4657 train_bpb=3.2746 val_loss=8.3767 val_bpb=3.2401 muon_lr=1.100e-02 adamw_lr=1.650e-04 elapsed=3.9s
+step=12 qat=enabled
+=== final_stats ===
+steps=20
+seconds=7.44
+final_val_loss=8.3225
+final_val_bpb=3.2192
+compressed_model_size_bytes=8213480
+code_size_bytes=29425
+total_artifact_bytes=8242905
+artifact_budget_ok=True
+stats_path=runs/fineweb_8k_sample_promote/m4_d448_l4.json
+[4/4] run_id=m4_d512_l4
+config: {'run_id': 'm4_d512_l4', 'data_path': './data/tokens/fineweb_8k_sample/train', 'val_data_path': './data/tokens/fineweb_8k_sample/val', 'token_dtype': None, 'vocab_size': None, 'd_model': 512, 'n_heads': 8, 'd_ff': 1365, 'n_loops': 4, 'seq_len': 128, 'train_batch_tokens': 8192, 'val_batch_tokens': 8192, 'val_steps': 4, 'val_loss_every': 10, 'max_steps': 20, 'max_wallclock_seconds': 0, 'avg_bytes_per_token': None, 'muon_lr': 0.02, 'adamw_lr': 0.0003, 'weight_decay': 0.1, 'warmup_steps': 20, 'cooldown_fraction': 0.3, 'qat_start_fraction': 0.6, 'grad_clip': 1.0, 'seed': 1337, 'device': 'mps', 'compile_model': False, 'use_smear': True, 'artifact_path': '', 'stats_path': 'runs/fineweb_8k_sample_promote/m4_d512_l4.json'}
+train_source=5 shard(s) val_source=1 shard(s) device=mps
+vocab_size=8192 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_8k_sample/val
+token_dtype=uint16 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_8k_sample/val
+avg_bytes_per_token=3.7298 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_8k_sample/val
+parameters=11,538,048
+step=0 train_loss=9.0804 train_bpb=3.5123 val_loss=9.0604 val_bpb=3.5046 muon_lr=1.000e-03 adamw_lr=1.500e-05 elapsed=0.0s
+step=10 train_loss=8.3256 train_bpb=3.2204 val_loss=8.2467 val_bpb=3.1899 muon_lr=1.100e-02 adamw_lr=1.650e-04 elapsed=4.4s
+step=12 qat=enabled
+=== final_stats ===
+steps=20
+seconds=8.50
+final_val_loss=8.1138
+final_val_bpb=3.1385
+compressed_model_size_bytes=9730938
+code_size_bytes=29425
+total_artifact_bytes=9760363
+artifact_budget_ok=True
+stats_path=runs/fineweb_8k_sample_promote/m4_d512_l4.json
+
+=== sweep_ranking ===
+1. m4_d512_l4 final_val_bpb=3.1385 params=11538048 artifact=9760363
+2. m4_d448_l4 final_val_bpb=3.2192 params=9751280 artifact=8242905
+3. m4_d384_l4 final_val_bpb=3.2483 params=8064096 artifact=6780722
+4. m4_d320_l4 final_val_bpb=3.2697 params=6474000 artifact=5420959
+results_path=runs/fineweb_8k_sample_promote/results.jsonl
+```
+
+Interpretation:
+
+- Width kept helping all the way up through `d_model=512`.
+- The best current architecture is now `m4_d512_l4`.
+- Even this stronger model is still under the 16MB artifact cap at about `9.76MB`.
+
+What this suggests:
+
+- The next comparison should shift from architecture to tokenizer size.
+- A 16k tokenizer is the cleanest next test because it should improve bytes/token without making the artifact obviously impossible.
+
+## Current Working Hypothesis
+
+The next most likely win on the current local setup is:
+
+1. Keep `d_model=512`, `n_loops=4` as the promoted architecture.
+2. Move from the 8k tokenizer to a 16k tokenizer using the same cached raw text corpus.
+3. Re-run the 20-step local training sanity check and compare the new bytes/token and final validation bpb.
+
+Reasoning:
+
+- Width is still helping strongly.
+- The artifact budget still has headroom.
+- The next likely gain should come from the bpb denominator via tokenizer size rather than another local architecture-only sweep.
+
+## Next Command To Run
+
+This is the next command we want to execute:
+
+```bash
+uv run python cache_text.py --hf-dataset HuggingFaceFW/fineweb --hf-config sample-10BT --hf-split train --stream --train-docs 15000 --val-docs 1000 --output-dir ./data/raw/fineweb_16k_sample && uv run python train_tokenizer.py --input-file ./data/raw/fineweb_16k_sample/train.jsonl --vocab-size 16384 --output-dir ./data/tokenizers --prefix fineweb_16k_sample && uv run python prepare_tokens.py --train-input-file ./data/raw/fineweb_16k_sample/train.jsonl --val-input-file ./data/raw/fineweb_16k_sample/val.jsonl --tokenizer-prefix ./data/tokenizers/fineweb_16k_sample --output-dir ./data/tokens/fineweb_16k_sample && RUN_ID=fineweb16k_d512_l4 D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 MAX_STEPS=20 DATA_PATH=./data/tokens/fineweb_16k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_16k_sample/val uv run python train_gpt.py
+```
+
+Why this exact command:
+
+- It uses the new local raw-text cache instead of repeating multiple live HF reads.
+- It keeps the winning architecture fixed so the tokenizer comparison is cleaner.
+- It tests the next most likely source of improvement directly: a larger tokenizer.
