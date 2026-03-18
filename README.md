@@ -4,6 +4,7 @@ This repo started as a standalone plan. It now includes the first working slice 
 
 - `train_gpt.py`: a runnable looped-transformer training starter with Muon/AdamW splitting, delayed QAT hooks, artifact-size reporting, and synthetic-data smoke mode.
 - `train_tokenizer.py`: a ByteLevel BPE trainer for local text corpora or optional Hugging Face dataset streaming.
+- `prepare_tokens.py`: a token-packing utility that writes local `train/` and `val/` token shards plus bytes/token metadata.
 - `pyproject.toml`: project metadata and `uv`-managed dependencies.
 
 The current implementation is meant to get us from ideas to executable code quickly. It focuses on the first high-leverage pieces from `PLAN.md`:
@@ -50,21 +51,22 @@ uv run python train_gpt.py
 
 ## Local token data
 
-`train_gpt.py` can also sample from local packed token files:
+`train_gpt.py` can sample from local packed token files:
 
 - `.npy` arrays containing token ids
 - flat `.bin` files readable with `numpy.memmap`
 
-Example:
+If the token directory contains a `metadata.json` with `avg_bytes_per_token`, the trainer now picks that up automatically for bpb reporting.
+
+Example using pre-packed local tokens:
 
 ```bash
 DATA_PATH=./data/tokens \
-AVG_BYTES_PER_TOKEN=3.5 \
 MAX_STEPS=200 \
 uv run python train_gpt.py
 ```
 
-`AVG_BYTES_PER_TOKEN` is used to convert cross-entropy into estimated bpb. Once the tokenizer and dataset export are fixed, this should be measured from the real validation set.
+Override `AVG_BYTES_PER_TOKEN` only if you want to force a custom value.
 
 ## Tokenizer training
 
@@ -93,8 +95,34 @@ uv run python train_tokenizer.py \
   --prefix fineweb_32k_bpe
 ```
 
+## Packing Real Token Shards
+
+After training a tokenizer, pack local `train/` and `val/` shards plus metadata:
+
+```bash
+uv run python prepare_tokens.py \
+  --hf-dataset HuggingFaceFW/fineweb \
+  --hf-config sample-10BT \
+  --hf-split train \
+  --stream \
+  --train-docs 10000 \
+  --val-docs 1000 \
+  --tokenizer-prefix ./data/tokenizers/fineweb_32k_bpe \
+  --output-dir ./data/tokens/fineweb_32k_sample
+```
+
+Then train against the packed shards:
+
+```bash
+VOCAB_SIZE=32768 \
+DATA_PATH=./data/tokens/fineweb_32k_sample/train \
+VAL_DATA_PATH=./data/tokens/fineweb_32k_sample/val \
+MAX_STEPS=200 \
+uv run python train_gpt.py
+```
+
 ## Recommended next steps
 
-1. Wire in the actual FineWeb token export path and record measured bytes/token.
+1. Scale the `prepare_tokens.py` workflow from a small sample to larger FineWeb-derived runs.
 2. Add a `records/<submission_name>/` packaging flow once training outputs are real.
 3. Add multi-GPU training and test-time training only after the single-process path is stable.

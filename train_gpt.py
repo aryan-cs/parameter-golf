@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import io
+import json
 import math
 import os
 import random
@@ -37,6 +38,13 @@ def env_float(name: str, default: float) -> float:
     return float(os.environ.get(name, default))
 
 
+def env_float_optional(name: str) -> float | None:
+    raw = os.environ.get(name)
+    if raw is None or raw.strip() == "":
+        return None
+    return float(raw)
+
+
 def env_bool(name: str, default: bool) -> bool:
     raw = os.environ.get(name)
     if raw is None:
@@ -62,7 +70,7 @@ class Config:
     val_loss_every: int
     max_steps: int
     max_wallclock_seconds: int
-    avg_bytes_per_token: float
+    avg_bytes_per_token: float | None
     muon_lr: float
     adamw_lr: float
     weight_decay: float
@@ -96,7 +104,7 @@ class Config:
             val_loss_every=env_int("VAL_LOSS_EVERY", 10),
             max_steps=env_int("MAX_STEPS", 20),
             max_wallclock_seconds=env_int("MAX_WALLCLOCK_SECONDS", 0),
-            avg_bytes_per_token=env_float("AVG_BYTES_PER_TOKEN", 3.5),
+            avg_bytes_per_token=env_float_optional("AVG_BYTES_PER_TOKEN"),
             muon_lr=env_float("MUON_LR", 0.02),
             adamw_lr=env_float("ADAMW_LR", 3e-4),
             weight_decay=env_float("WEIGHT_DECAY", 0.1),
@@ -434,6 +442,31 @@ def discover_token_arrays(data_path: str, token_dtype: str, min_length: int):
     return arrays
 
 
+def read_split_metadata(data_path: str):
+    if not data_path:
+        return None
+    path = Path(data_path)
+    metadata_path = (path if path.is_dir() else path.parent) / "metadata.json"
+    if not metadata_path.exists():
+        return None
+    return json.loads(metadata_path.read_text(encoding="utf-8"))
+
+
+def resolve_avg_bytes_per_token(cfg: Config, val_path: str) -> tuple[float, str]:
+    if cfg.avg_bytes_per_token is not None:
+        return cfg.avg_bytes_per_token, "env"
+
+    for candidate in (val_path, cfg.data_path):
+        metadata = read_split_metadata(candidate)
+        if metadata is None:
+            continue
+        avg = metadata.get("avg_bytes_per_token")
+        if avg is not None:
+            return float(avg), f"metadata:{Path(candidate).resolve()}"
+
+    return 3.5, "default"
+
+
 def build_batcher(cfg: Config, data_path: str, seed: int):
     if not data_path:
         return SyntheticTokenBatcher(cfg.vocab_size, cfg.seq_len, seed), "synthetic"
@@ -548,7 +581,9 @@ def main() -> int:
     train_batcher, train_source = build_batcher(cfg, cfg.data_path, cfg.seed)
     val_path = cfg.val_data_path or cfg.data_path
     val_batcher, val_source = build_batcher(cfg, val_path, cfg.seed + 1)
+    avg_bytes_per_token, avg_bytes_source = resolve_avg_bytes_per_token(cfg, val_path)
     print(f"train_source={train_source} val_source={val_source} device={device}")
+    print(f"avg_bytes_per_token={avg_bytes_per_token:.4f} source={avg_bytes_source}")
 
     model = LoopedTransformer(
         vocab_size=cfg.vocab_size,
@@ -624,9 +659,9 @@ def main() -> int:
             print(
                 f"step={step} "
                 f"train_loss={loss.item():.4f} "
-                f"train_bpb={format_bpb(loss.item(), cfg.avg_bytes_per_token):.4f} "
+                f"train_bpb={format_bpb(loss.item(), avg_bytes_per_token):.4f} "
                 f"val_loss={val_loss:.4f} "
-                f"val_bpb={format_bpb(val_loss, cfg.avg_bytes_per_token):.4f} "
+                f"val_bpb={format_bpb(val_loss, avg_bytes_per_token):.4f} "
                 f"muon_lr={muon_lr:.3e} "
                 f"adamw_lr={adamw_lr:.3e} "
                 f"elapsed={elapsed:.1f}s"
