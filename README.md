@@ -165,6 +165,25 @@ Current presets:
 - `m4-mini`: small local architecture sweep
 - `m4-promote`: width-focused follow-up sweep after picking a local winner
 
+## Autopilot Frontier Runs
+
+For repeated budget-frontier checks, use `autopilot.py`. It keeps a per-run `.log`, writes structured JSON summaries, and prints both overall and under-budget rankings.
+
+Example:
+
+```bash
+uv run python autopilot.py \
+  --data-path ./data/tokens/fineweb_16k_sample/train \
+  --val-data-path ./data/tokens/fineweb_16k_sample/val \
+  --widths 448 464 480 496 512 \
+  --max-steps 20 \
+  --device mps \
+  --output-dir runs/fineweb_16k_frontier_mps \
+  --run-prefix fineweb16k
+```
+
+Add `--resume` to skip runs that already have a saved summary.
+
 ## Recommended next steps
 
 1. Scale the `prepare_tokens.py` workflow from a small sample to larger FineWeb-derived runs.
