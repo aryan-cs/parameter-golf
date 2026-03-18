@@ -18,30 +18,49 @@ Build toward a strong Parameter Golf submission with:
 - a compact looped transformer that fits well under the 16MB artifact cap
 - a reproducible local workflow for tokenizer training, token packing, and ablation sweeps
 
+## Official Leaderboard Reference
+
+As of March 18, 2026, the official repo leaderboard shows:
+
+- rank 1: `Naive Baseline`
+- exact printed score: `1.22436570`
+- record folder: `records/track_10min_16mb/2026-03-17_NaiveBaseline`
+- published post-quant roundtrip metric: `val_bpb:1.2244`
+
 ## Current Best Logged Real-Data Result
 
 Dataset:
 
 - FineWeb `sample-10BT` streamed from Hugging Face
-- Local tokenizer: `fineweb_8k_sample`
+- Local raw cache:
+  - `data/raw/fineweb_16k_sample/train.jsonl`
+  - `data/raw/fineweb_16k_sample/val.jsonl`
+- Local tokenizer: `fineweb_16k_sample`
 - Packed local shards:
-  - `data/tokens/fineweb_8k_sample/train`
-  - `data/tokens/fineweb_8k_sample/val`
+  - `data/tokens/fineweb_16k_sample/train`
+  - `data/tokens/fineweb_16k_sample/val`
 
 Best real-data terminal result currently logged:
 
-- `final_val_bpb=3.1385` on MPS from the promoted width sweep with:
-  - `d_model=512`
+- `final_val_bpb=3.1106` on MPS from the 16k width-frontier sweep with:
+  - `d_model=496`
   - `n_heads=8`
-  - `d_ff=1365`
+  - `d_ff=1322`
   - `n_loops=4`
-  - `vocab_size=8192`
+  - `vocab_size=16384`
 
 Current best artifact details:
 
-- compressed model size: `9,730,938` bytes
-- total artifact size: `9,760,363` bytes
-- parameters: `11,538,048`
+- compressed model size: `15,969,941` bytes
+- total artifact size: `15,999,366` bytes
+- parameters: `19,208,220`
+- budget headroom: `634` bytes
+
+Best currently observed but invalid comparison point:
+
+- `final_val_bpb=3.0801` on MPS from `d_model=512`, `n_loops=4`, `vocab_size=16384`
+- total artifact size: `16,587,520` bytes
+- conclusion: better metric, but over the 16,000,000 byte cap
 
 ## Code Strategy Timeline
 
@@ -244,6 +263,50 @@ Why this matters:
 
 - Future tokenizer comparisons can now reuse a stable local raw corpus.
 - This reduces Hugging Face transport flakiness and keeps tokenizer experiments more comparable.
+
+### 7. Add Autopilot Frontier Runner
+
+Commit:
+
+- `3c9c10e` `Add autopilot frontier runner`
+
+Purpose:
+
+- Automate repeatable width-frontier searches while preserving exact per-run console logs.
+
+Key code from `autopilot.py`:
+
+```python
+def stream_process(command: list[str], env: dict[str, str], log_path: Path) -> None:
+    with log_path.open("w", encoding="utf-8") as log_handle:
+        log_handle.write(f"$ {' '.join(command)}\n")
+        process = subprocess.Popen(
+            command,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+        for line in process.stdout:
+            print(line, end="")
+            log_handle.write(line)
+            log_handle.flush()
+```
+
+Key ranking logic:
+
+```python
+under_budget = [summary for summary in summaries if summary["artifact_budget_ok"]]
+print_ranking("autopilot_under_budget_ranking", under_budget)
+write_results(output_dir, summaries)
+```
+
+Why this matters:
+
+- We now keep durable `.log` files for every training run instead of relying on terminal scrollback.
+- We can search the exact budget frontier without manually rebuilding commands each time.
+- This makes `STRATEGY.md` updates easier because the raw outputs now live on disk.
 
 ## Experiment Log
 
@@ -902,3 +965,363 @@ Why this exact command:
 - It uses the new local raw-text cache instead of repeating multiple live HF reads.
 - It keeps the winning architecture fixed so the tokenizer comparison is cleaner.
 - It tests the next most likely source of improvement directly: a larger tokenizer.
+
+## Experiment 10. Train a 16k Tokenizer and Pack 16k Local Shards
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Test whether moving from the 8k tokenizer to a 16k tokenizer improves bytes/token enough to justify the larger embedding/output tables.
+
+Command:
+
+```bash
+.venv/bin/python train_tokenizer.py --input-file ./data/raw/fineweb_16k_sample/train.jsonl --vocab-size 16384 --output-dir ./data/tokenizers --prefix fineweb_16k_sample && .venv/bin/python prepare_tokens.py --train-input-file ./data/raw/fineweb_16k_sample/train.jsonl --val-input-file ./data/raw/fineweb_16k_sample/val.jsonl --tokenizer-prefix ./data/tokenizers/fineweb_16k_sample --output-dir ./data/tokens/fineweb_16k_sample
+```
+
+Terminal output:
+
+```text
+source=local-files
+vocab_path=data/tokenizers/fineweb_16k_sample-vocab.json
+merges_path=data/tokenizers/fineweb_16k_sample-merges.txt
+raw_size_bytes=385068
+compressed_size_bytes=159955
+{
+  "source": "local-files",
+  "output_dir": "data/tokens/fineweb_16k_sample",
+  "tokenizer_prefix": "./data/tokenizers/fineweb_16k_sample",
+  "train": {
+    "split": "train",
+    "source": "local-files",
+    "tokenizer_prefix": "./data/tokenizers/fineweb_16k_sample",
+    "vocab_size": 16384,
+    "token_dtype": "uint16",
+    "docs": 15000,
+    "shards": 6,
+    "total_bytes": 46410649,
+    "total_tokens": 11238367,
+    "avg_bytes_per_token": 4.129661275521613
+  },
+  "val": {
+    "split": "val",
+    "source": "local-files",
+    "tokenizer_prefix": "./data/tokenizers/fineweb_16k_sample",
+    "vocab_size": 16384,
+    "token_dtype": "uint16",
+    "docs": 1000,
+    "shards": 1,
+    "total_bytes": 3032792,
+    "total_tokens": 742828,
+    "avg_bytes_per_token": 4.0827647853877345
+  }
+}
+```
+
+Interpretation:
+
+- The validation bytes/token denominator improved from about `3.7298` on the 8k tokenizer to `4.0828` on the 16k tokenizer.
+- This is a meaningful tokenizer win and justified running a fresh architecture frontier.
+
+## Experiment 11. Single 16k Promotion Run with the Previous Best 8k Architecture
+
+Status:
+
+- Passed, but over budget
+
+Purpose:
+
+- Keep the best 8k architecture fixed and isolate the effect of the 16k tokenizer.
+
+Command:
+
+```bash
+RUN_ID=fineweb16k_d512_l4 D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 MAX_STEPS=20 DATA_PATH=./data/tokens/fineweb_16k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_16k_sample/val .venv/bin/python train_gpt.py
+```
+
+Terminal output:
+
+```text
+config: {'run_id': 'fineweb16k_d512_l4', 'data_path': './data/tokens/fineweb_16k_sample/train', 'val_data_path': './data/tokens/fineweb_16k_sample/val', 'token_dtype': None, 'vocab_size': None, 'd_model': 512, 'n_heads': 8, 'd_ff': 1365, 'n_loops': 4, 'seq_len': 128, 'train_batch_tokens': 8192, 'val_batch_tokens': 8192, 'val_steps': 4, 'val_loss_every': 10, 'max_steps': 20, 'max_wallclock_seconds': 0, 'avg_bytes_per_token': None, 'muon_lr': 0.02, 'adamw_lr': 0.0003, 'weight_decay': 0.1, 'warmup_steps': 20, 'cooldown_fraction': 0.3, 'qat_start_fraction': 0.6, 'grad_clip': 1.0, 'seed': 1337, 'device': '', 'compile_model': False, 'use_smear': True, 'artifact_path': '', 'stats_path': ''}
+train_source=6 shard(s) val_source=1 shard(s) device=cpu
+vocab_size=16384 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_16k_sample/val
+token_dtype=uint16 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_16k_sample/val
+avg_bytes_per_token=4.0828 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_16k_sample/val
+parameters=19,926,656
+step=0 train_loss=9.7808 train_bpb=3.4562 val_loss=9.7531 val_bpb=3.4464 muon_lr=1.000e-03 adamw_lr=1.500e-05 elapsed=0.0s
+step=10 train_loss=8.9222 train_bpb=3.1528 val_loss=8.8297 val_bpb=3.1201 muon_lr=1.100e-02 adamw_lr=1.650e-04 elapsed=10.9s
+step=12 qat=enabled
+=== final_stats ===
+steps=20
+seconds=22.79
+final_val_loss=8.7167
+final_val_bpb=3.0802
+compressed_model_size_bytes=16558092
+code_size_bytes=29425
+total_artifact_bytes=16587517
+artifact_budget_ok=False
+```
+
+Interpretation:
+
+- The 16k tokenizer improved the proxy metric materially relative to the 8k setup.
+- The exact old best shape, `d512_l4`, no longer fits under the artifact cap.
+- That made a budget-frontier sweep the obvious next move.
+
+## Experiment 12. 16k Width Sweep on CPU to Find the New Budget Frontier
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Find which width still fits under the 16MB cap once the tokenizer grows to 16k.
+
+Command:
+
+```bash
+MAX_STEPS=20 .venv/bin/python sweep.py --preset m4-promote --data-path ./data/tokens/fineweb_16k_sample/train --val-data-path ./data/tokens/fineweb_16k_sample/val --output runs/fineweb_16k_sample_promote_cpu/results.jsonl
+```
+
+Important note:
+
+- `MAX_STEPS=20` was set in the shell, but `sweep.py` uses its own `--max-steps` argument and therefore ran the preset at its default `30` steps.
+- This was an accidental mismatch, but the results were still useful.
+
+Terminal output:
+
+```text
+[4/4] run_id=m4_d512_l4
+config: {'run_id': 'm4_d512_l4', 'data_path': './data/tokens/fineweb_16k_sample/train', 'val_data_path': './data/tokens/fineweb_16k_sample/val', 'token_dtype': None, 'vocab_size': None, 'd_model': 512, 'n_heads': 8, 'd_ff': 1365, 'n_loops': 4, 'seq_len': 128, 'train_batch_tokens': 8192, 'val_batch_tokens': 8192, 'val_steps': 4, 'val_loss_every': 10, 'max_steps': 30, 'max_wallclock_seconds': 0, 'avg_bytes_per_token': None, 'muon_lr': 0.02, 'adamw_lr': 0.0003, 'weight_decay': 0.1, 'warmup_steps': 20, 'cooldown_fraction': 0.3, 'qat_start_fraction': 0.6, 'grad_clip': 1.0, 'seed': 1337, 'device': '', 'compile_model': False, 'use_smear': True, 'artifact_path': '', 'stats_path': 'runs/fineweb_16k_sample_promote_cpu/m4_d512_l4.json'}
+train_source=6 shard(s) val_source=1 shard(s) device=cpu
+vocab_size=16384 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_16k_sample/val
+token_dtype=uint16 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_16k_sample/val
+avg_bytes_per_token=4.0828 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_16k_sample/val
+parameters=19,926,656
+step=0 train_loss=9.7808 train_bpb=3.4562 val_loss=9.7531 val_bpb=3.4464 muon_lr=1.000e-03 adamw_lr=1.500e-05 elapsed=0.0s
+step=10 train_loss=8.9222 train_bpb=3.1528 val_loss=8.8297 val_bpb=3.1201 muon_lr=1.100e-02 adamw_lr=1.650e-04 elapsed=10.9s
+step=18 qat=enabled
+step=20 train_loss=8.1036 train_bpb=2.8635 val_loss=8.2035 val_bpb=2.8988 muon_lr=2.000e-02 adamw_lr=3.000e-04 elapsed=22.8s
+=== final_stats ===
+steps=30
+seconds=33.92
+final_val_loss=8.2106
+final_val_bpb=2.9013
+compressed_model_size_bytes=16576687
+code_size_bytes=29425
+total_artifact_bytes=16606112
+artifact_budget_ok=False
+stats_path=runs/fineweb_16k_sample_promote_cpu/m4_d512_l4.json
+
+=== sweep_ranking ===
+1. m4_d512_l4 final_val_bpb=2.9013 params=19926656 artifact=16606112
+2. m4_d448_l4 final_val_bpb=2.9547 params=17091312 artifact=14222955
+3. m4_d384_l4 final_val_bpb=3.0431 params=14355552 artifact=12034880
+4. m4_d320_l4 final_val_bpb=3.0711 params=11716880 artifact=9836247
+results_path=runs/fineweb_16k_sample_promote_cpu/results.jsonl
+```
+
+Interpretation:
+
+- The 16k tokenizer clearly beats the earlier 8k proxy runs.
+- `d512_l4` remained the best metric point overall but was invalid.
+- `d448_l4` emerged as the best valid 16k point from that CPU sweep, which made it the right anchor for a finer host-side MPS frontier search.
+
+## Experiment 13. Host-Side MPS Frontier Sweep with `autopilot.py`
+
+Status:
+
+- Passed after one sandbox-only MPS failure
+
+Purpose:
+
+- Search the exact valid/invalid edge around the new 16k tokenizer setup while keeping durable logs on disk.
+
+First attempt command:
+
+```bash
+MAX_STEPS=20 .venv/bin/python autopilot.py --data-path ./data/tokens/fineweb_16k_sample/train --val-data-path ./data/tokens/fineweb_16k_sample/val --widths 448 464 480 496 512 --max-steps 20 --device mps --output-dir runs/fineweb_16k_frontier_mps --run-prefix fineweb16k
+```
+
+First attempt terminal failure:
+
+```text
+[1/5] run_id=fineweb16k_d448_l4 d_ff=1194
+config: {'run_id': 'fineweb16k_d448_l4', 'data_path': './data/tokens/fineweb_16k_sample/train', 'val_data_path': './data/tokens/fineweb_16k_sample/val', 'token_dtype': None, 'vocab_size': None, 'd_model': 448, 'n_heads': 8, 'd_ff': 1194, 'n_loops': 4, 'seq_len': 128, 'train_batch_tokens': 8192, 'val_batch_tokens': 8192, 'val_steps': 4, 'val_loss_every': 10, 'max_steps': 20, 'max_wallclock_seconds': 0, 'avg_bytes_per_token': None, 'muon_lr': 0.02, 'adamw_lr': 0.0003, 'weight_decay': 0.1, 'warmup_steps': 20, 'cooldown_fraction': 0.3, 'qat_start_fraction': 0.6, 'grad_clip': 1.0, 'seed': 1337, 'device': 'mps', 'compile_model': False, 'use_smear': True, 'artifact_path': '', 'stats_path': 'runs/fineweb_16k_frontier_mps/fineweb16k_d448_l4.json'}
+train_source=6 shard(s) val_source=1 shard(s) device=mps
+vocab_size=16384 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_16k_sample/val
+token_dtype=uint16 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_16k_sample/val
+avg_bytes_per_token=4.0828 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_16k_sample/val
+RuntimeError: The MPS backend is supported on MacOS 14.0+. Current OS version can be queried using `sw_vers`
+```
+
+What we changed:
+
+- Re-ran the exact same command outside the sandbox so the host MPS backend was available.
+
+Successful terminal output:
+
+```text
+[1/5] run_id=fineweb16k_d448_l4 d_ff=1194
+config: {'run_id': 'fineweb16k_d448_l4', 'data_path': './data/tokens/fineweb_16k_sample/train', 'val_data_path': './data/tokens/fineweb_16k_sample/val', 'token_dtype': None, 'vocab_size': None, 'd_model': 448, 'n_heads': 8, 'd_ff': 1194, 'n_loops': 4, 'seq_len': 128, 'train_batch_tokens': 8192, 'val_batch_tokens': 8192, 'val_steps': 4, 'val_loss_every': 10, 'max_steps': 20, 'max_wallclock_seconds': 0, 'avg_bytes_per_token': None, 'muon_lr': 0.02, 'adamw_lr': 0.0003, 'weight_decay': 0.1, 'warmup_steps': 20, 'cooldown_fraction': 0.3, 'qat_start_fraction': 0.6, 'grad_clip': 1.0, 'seed': 1337, 'device': 'mps', 'compile_model': False, 'use_smear': True, 'artifact_path': '', 'stats_path': 'runs/fineweb_16k_frontier_mps/fineweb16k_d448_l4.json'}
+train_source=6 shard(s) val_source=1 shard(s) device=mps
+vocab_size=16384 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_16k_sample/val
+token_dtype=uint16 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_16k_sample/val
+avg_bytes_per_token=4.0828 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_16k_sample/val
+parameters=17,091,312
+step=0 train_loss=9.7302 train_bpb=3.4383 val_loss=9.7118 val_bpb=3.4318 muon_lr=1.000e-03 adamw_lr=1.500e-05 elapsed=0.0s
+step=10 train_loss=9.0493 train_bpb=3.1977 val_loss=8.9785 val_bpb=3.1727 muon_lr=1.100e-02 adamw_lr=1.650e-04 elapsed=4.7s
+step=12 qat=enabled
+=== final_stats ===
+steps=20
+seconds=9.86
+final_val_loss=8.8091
+final_val_bpb=3.1128
+compressed_model_size_bytes=14223410
+code_size_bytes=29425
+total_artifact_bytes=14252835
+artifact_budget_ok=True
+stats_path=runs/fineweb_16k_frontier_mps/fineweb16k_d448_l4.json
+[2/5] run_id=fineweb16k_d464_l4 d_ff=1237
+config: {'run_id': 'fineweb16k_d464_l4', 'data_path': './data/tokens/fineweb_16k_sample/train', 'val_data_path': './data/tokens/fineweb_16k_sample/val', 'token_dtype': None, 'vocab_size': None, 'd_model': 464, 'n_heads': 8, 'd_ff': 1237, 'n_loops': 4, 'seq_len': 128, 'train_batch_tokens': 8192, 'val_batch_tokens': 8192, 'val_steps': 4, 'val_loss_every': 10, 'max_steps': 20, 'max_wallclock_seconds': 0, 'avg_bytes_per_token': None, 'muon_lr': 0.02, 'adamw_lr': 0.0003, 'weight_decay': 0.1, 'warmup_steps': 20, 'cooldown_fraction': 0.3, 'qat_start_fraction': 0.6, 'grad_clip': 1.0, 'seed': 1337, 'device': 'mps', 'compile_model': False, 'use_smear': True, 'artifact_path': '', 'stats_path': 'runs/fineweb_16k_frontier_mps/fineweb16k_d464_l4.json'}
+train_source=6 shard(s) val_source=1 shard(s) device=mps
+vocab_size=16384 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_16k_sample/val
+token_dtype=uint16 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_16k_sample/val
+avg_bytes_per_token=4.0828 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_16k_sample/val
+parameters=17,791,268
+step=0 train_loss=9.8371 train_bpb=3.4761 val_loss=9.8263 val_bpb=3.4723 muon_lr=1.000e-03 adamw_lr=1.500e-05 elapsed=0.0s
+step=10 train_loss=9.0666 train_bpb=3.2038 val_loss=8.9936 val_bpb=3.1780 muon_lr=1.100e-02 adamw_lr=1.650e-04 elapsed=5.8s
+step=12 qat=enabled
+=== final_stats ===
+steps=20
+seconds=10.53
+final_val_loss=8.8168
+final_val_bpb=3.1155
+compressed_model_size_bytes=14829703
+code_size_bytes=29425
+total_artifact_bytes=14859128
+artifact_budget_ok=True
+stats_path=runs/fineweb_16k_frontier_mps/fineweb16k_d464_l4.json
+[3/5] run_id=fineweb16k_d480_l4 d_ff=1280
+config: {'run_id': 'fineweb16k_d480_l4', 'data_path': './data/tokens/fineweb_16k_sample/train', 'val_data_path': './data/tokens/fineweb_16k_sample/val', 'token_dtype': None, 'vocab_size': None, 'd_model': 480, 'n_heads': 8, 'd_ff': 1280, 'n_loops': 4, 'seq_len': 128, 'train_batch_tokens': 8192, 'val_batch_tokens': 8192, 'val_steps': 4, 'val_loss_every': 10, 'max_steps': 20, 'max_wallclock_seconds': 0, 'avg_bytes_per_token': None, 'muon_lr': 0.02, 'adamw_lr': 0.0003, 'weight_decay': 0.1, 'warmup_steps': 20, 'cooldown_fraction': 0.3, 'qat_start_fraction': 0.6, 'grad_clip': 1.0, 'seed': 1337, 'device': 'mps', 'compile_model': False, 'use_smear': True, 'artifact_path': '', 'stats_path': 'runs/fineweb_16k_frontier_mps/fineweb16k_d480_l4.json'}
+train_source=6 shard(s) val_source=1 shard(s) device=mps
+vocab_size=16384 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_16k_sample/val
+token_dtype=uint16 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_16k_sample/val
+avg_bytes_per_token=4.0828 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_16k_sample/val
+parameters=18,497,400
+step=0 train_loss=9.7873 train_bpb=3.4585 val_loss=9.7578 val_bpb=3.4480 muon_lr=1.000e-03 adamw_lr=1.500e-05 elapsed=0.0s
+step=10 train_loss=9.0020 train_bpb=3.1810 val_loss=8.9222 val_bpb=3.1528 muon_lr=1.100e-02 adamw_lr=1.650e-04 elapsed=5.3s
+step=12 qat=enabled
+=== final_stats ===
+steps=20
+seconds=10.09
+final_val_loss=8.8162
+final_val_bpb=3.1153
+compressed_model_size_bytes=15384433
+code_size_bytes=29425
+total_artifact_bytes=15413858
+artifact_budget_ok=True
+stats_path=runs/fineweb_16k_frontier_mps/fineweb16k_d480_l4.json
+[4/5] run_id=fineweb16k_d496_l4 d_ff=1322
+config: {'run_id': 'fineweb16k_d496_l4', 'data_path': './data/tokens/fineweb_16k_sample/train', 'val_data_path': './data/tokens/fineweb_16k_sample/val', 'token_dtype': None, 'vocab_size': None, 'd_model': 496, 'n_heads': 8, 'd_ff': 1322, 'n_loops': 4, 'seq_len': 128, 'train_batch_tokens': 8192, 'val_batch_tokens': 8192, 'val_steps': 4, 'val_loss_every': 10, 'max_steps': 20, 'max_wallclock_seconds': 0, 'avg_bytes_per_token': None, 'muon_lr': 0.02, 'adamw_lr': 0.0003, 'weight_decay': 0.1, 'warmup_steps': 20, 'cooldown_fraction': 0.3, 'qat_start_fraction': 0.6, 'grad_clip': 1.0, 'seed': 1337, 'device': 'mps', 'compile_model': False, 'use_smear': True, 'artifact_path': '', 'stats_path': 'runs/fineweb_16k_frontier_mps/fineweb16k_d496_l4.json'}
+train_source=6 shard(s) val_source=1 shard(s) device=mps
+vocab_size=16384 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_16k_sample/val
+token_dtype=uint16 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_16k_sample/val
+avg_bytes_per_token=4.0828 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_16k_sample/val
+parameters=19,208,220
+step=0 train_loss=9.8014 train_bpb=3.4634 val_loss=9.7812 val_bpb=3.4563 muon_lr=1.000e-03 adamw_lr=1.500e-05 elapsed=0.0s
+step=10 train_loss=9.0146 train_bpb=3.1854 val_loss=8.9263 val_bpb=3.1542 muon_lr=1.100e-02 adamw_lr=1.650e-04 elapsed=5.8s
+step=12 qat=enabled
+=== final_stats ===
+steps=20
+seconds=10.95
+final_val_loss=8.8030
+final_val_bpb=3.1106
+compressed_model_size_bytes=15969941
+code_size_bytes=29425
+total_artifact_bytes=15999366
+artifact_budget_ok=True
+stats_path=runs/fineweb_16k_frontier_mps/fineweb16k_d496_l4.json
+[5/5] run_id=fineweb16k_d512_l4 d_ff=1365
+config: {'run_id': 'fineweb16k_d512_l4', 'data_path': './data/tokens/fineweb_16k_sample/train', 'val_data_path': './data/tokens/fineweb_16k_sample/val', 'token_dtype': None, 'vocab_size': None, 'd_model': 512, 'n_heads': 8, 'd_ff': 1365, 'n_loops': 4, 'seq_len': 128, 'train_batch_tokens': 8192, 'val_batch_tokens': 8192, 'val_steps': 4, 'val_loss_every': 10, 'max_steps': 20, 'max_wallclock_seconds': 0, 'avg_bytes_per_token': None, 'muon_lr': 0.02, 'adamw_lr': 0.0003, 'weight_decay': 0.1, 'warmup_steps': 20, 'cooldown_fraction': 0.3, 'qat_start_fraction': 0.6, 'grad_clip': 1.0, 'seed': 1337, 'device': 'mps', 'compile_model': False, 'use_smear': True, 'artifact_path': '', 'stats_path': 'runs/fineweb_16k_frontier_mps/fineweb16k_d512_l4.json'}
+train_source=6 shard(s) val_source=1 shard(s) device=mps
+vocab_size=16384 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_16k_sample/val
+token_dtype=uint16 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_16k_sample/val
+avg_bytes_per_token=4.0828 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_16k_sample/val
+parameters=19,926,656
+step=0 train_loss=9.7808 train_bpb=3.4562 val_loss=9.7531 val_bpb=3.4464 muon_lr=1.000e-03 adamw_lr=1.500e-05 elapsed=0.0s
+step=10 train_loss=8.9222 train_bpb=3.1528 val_loss=8.8297 val_bpb=3.1201 muon_lr=1.100e-02 adamw_lr=1.650e-04 elapsed=4.9s
+step=12 qat=enabled
+=== final_stats ===
+steps=20
+seconds=9.80
+final_val_loss=8.7164
+final_val_bpb=3.0801
+compressed_model_size_bytes=16558095
+code_size_bytes=29425
+total_artifact_bytes=16587520
+artifact_budget_ok=False
+stats_path=runs/fineweb_16k_frontier_mps/fineweb16k_d512_l4.json
+
+=== autopilot_ranking ===
+1. fineweb16k_d512_l4 final_val_bpb=3.0801 params=19926656 artifact=16587520
+2. fineweb16k_d496_l4 final_val_bpb=3.1106 params=19208220 artifact=15999366
+3. fineweb16k_d448_l4 final_val_bpb=3.1128 params=17091312 artifact=14252835
+4. fineweb16k_d480_l4 final_val_bpb=3.1153 params=18497400 artifact=15413858
+5. fineweb16k_d464_l4 final_val_bpb=3.1155 params=17791268 artifact=14859128
+
+=== autopilot_under_budget_ranking ===
+1. fineweb16k_d496_l4 final_val_bpb=3.1106 params=19208220 artifact=15999366
+2. fineweb16k_d448_l4 final_val_bpb=3.1128 params=17091312 artifact=14252835
+3. fineweb16k_d480_l4 final_val_bpb=3.1153 params=18497400 artifact=15413858
+4. fineweb16k_d464_l4 final_val_bpb=3.1155 params=17791268 artifact=14859128
+results_path=runs/fineweb_16k_frontier_mps/results.jsonl
+leaderboard_path=runs/fineweb_16k_frontier_mps/leaderboard.json
+```
+
+Interpretation:
+
+- The best valid 16k point is now `fineweb16k_d496_l4` at `final_val_bpb=3.1106`.
+- It fits with only `634` bytes of headroom, so this is a true budget-edge result rather than a loose under-budget point.
+- `d512_l4` is still better numerically, but it remains invalid.
+- The non-monotonic ordering (`d496` better than `d480` and `d464`, while `d448` stays competitive) suggests we are in the noisy edge regime and should compare tokenizer size next rather than only keep widening.
+
+## Current Working Hypothesis
+
+The strongest local submission candidate we have right now is:
+
+1. `vocab_size=16384`
+2. `d_model=496`
+3. `n_loops=4`
+4. `n_heads=8`
+5. `d_ff=1322`
+
+Reasoning:
+
+- It is the best under-budget real-data result we have actually logged.
+- It sits almost exactly on the size cap, which is where we want to be.
+- The 16k tokenizer clearly helped, so the next likely improvement is another tokenizer-size jump paired with a narrower width search.
+
+What still keeps this far from first place:
+
+- The official tracked score on March 18, 2026 is `1.22436570`.
+- Our current local proxy is still much worse because we are using tiny local data slices and very short local runs.
+- These experiments are still useful because they help us choose architecture and tokenizer directions before expensive full-scale training.
+
+## Next Command To Run
+
+This is the next command we want to execute:
+
+```bash
+.venv/bin/python train_tokenizer.py --input-file ./data/raw/fineweb_16k_sample/train.jsonl --vocab-size 24576 --output-dir ./data/tokenizers --prefix fineweb_24k_sample && .venv/bin/python prepare_tokens.py --train-input-file ./data/raw/fineweb_16k_sample/train.jsonl --val-input-file ./data/raw/fineweb_16k_sample/val.jsonl --tokenizer-prefix ./data/tokenizers/fineweb_24k_sample --output-dir ./data/tokens/fineweb_24k_sample && .venv/bin/python autopilot.py --data-path ./data/tokens/fineweb_24k_sample/train --val-data-path ./data/tokens/fineweb_24k_sample/val --widths 352 384 416 448 --max-steps 20 --output-dir runs/fineweb_24k_frontier_cpu --run-prefix fineweb24k
+```
+
+Why this exact command:
+
+- The 16k tokenizer improved the metric, so the next thing to test is whether a 24k tokenizer gives us another denominator win.
+- We deliberately shrink the width range because the 16k `d496` result already uses almost the full artifact budget.
+- This is the cleanest next comparison that can still run locally without adding more external dependencies or dataset churn.
