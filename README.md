@@ -120,8 +120,27 @@ MAX_STEPS=200 \
 uv run python train_gpt.py
 ```
 
+Each training run now writes a structured stats JSON file and prints its path at the end. Set `STATS_PATH` if you want to choose the filename explicitly.
+
+## Local Sweep
+
+Run a small local ablation sweep over a few model sizes:
+
+```bash
+uv run python sweep.py \
+  --preset m4-mini \
+  --data-path ./data/tokens/fineweb_32k_sample/train \
+  --val-data-path ./data/tokens/fineweb_32k_sample/val \
+  --max-steps 20
+```
+
+This writes per-run JSON summaries under `runs/` and a JSONL summary file you can compare across experiments.
+
+For a quick sanity check of just the first config, add `--limit 1`.
+
 ## Recommended next steps
 
 1. Scale the `prepare_tokens.py` workflow from a small sample to larger FineWeb-derived runs.
-2. Add a `records/<submission_name>/` packaging flow once training outputs are real.
-3. Add multi-GPU training and test-time training only after the single-process path is stable.
+2. Use `sweep.py` to find the best local shape before spending time on larger tokenizers or longer runs.
+3. Add a `records/<submission_name>/` packaging flow once training outputs are real.
+4. Add multi-GPU training and test-time training only after the single-process path is stable.

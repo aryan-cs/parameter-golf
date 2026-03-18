@@ -6,6 +6,7 @@ import json
 import math
 import os
 import random
+import tempfile
 import time
 import zlib
 from contextlib import nullcontext
@@ -90,6 +91,7 @@ class Config:
     compile_model: bool
     use_smear: bool
     artifact_path: str
+    stats_path: str
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -124,6 +126,7 @@ class Config:
             compile_model=env_bool("COMPILE_MODEL", False),
             use_smear=env_bool("USE_SMEAR", True),
             artifact_path=os.environ.get("ARTIFACT_PATH", ""),
+            stats_path=os.environ.get("STATS_PATH", ""),
         )
 
 
@@ -650,6 +653,10 @@ def main() -> int:
     start_time = time.perf_counter()
     qat_enabled = False
     step = 0
+    last_train_loss = None
+    last_val_loss = None
+    best_val_loss = None
+    best_val_bpb = None
     while True:
         elapsed = time.perf_counter() - start_time
         if cfg.max_steps > 0 and step >= cfg.max_steps:
@@ -694,15 +701,21 @@ def main() -> int:
             torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
             muon_opt.step()
             adamw_opt.step()
+        last_train_loss = loss.item()
 
         if step % max(1, cfg.val_loss_every) == 0:
             val_loss = run_validation(model, val_batcher, val_bsz, device, cfg)
+            last_val_loss = val_loss
+            val_bpb = format_bpb(val_loss, avg_bytes_per_token)
+            if best_val_loss is None or val_loss < best_val_loss:
+                best_val_loss = val_loss
+                best_val_bpb = val_bpb
             print(
                 f"step={step} "
                 f"train_loss={loss.item():.4f} "
                 f"train_bpb={format_bpb(loss.item(), avg_bytes_per_token):.4f} "
                 f"val_loss={val_loss:.4f} "
-                f"val_bpb={format_bpb(val_loss, avg_bytes_per_token):.4f} "
+                f"val_bpb={val_bpb:.4f} "
                 f"muon_lr={muon_lr:.3e} "
                 f"adamw_lr={adamw_lr:.3e} "
                 f"elapsed={elapsed:.1f}s"
@@ -710,6 +723,11 @@ def main() -> int:
         step += 1
 
     total_time = time.perf_counter() - start_time
+    final_val_loss = run_validation(model, val_batcher, val_bsz, device, cfg)
+    final_val_bpb = format_bpb(final_val_loss, avg_bytes_per_token)
+    if best_val_loss is None or final_val_loss < best_val_loss:
+        best_val_loss = final_val_loss
+        best_val_bpb = final_val_bpb
     quantized_state = quantize_state_dict_int8(model.state_dict())
     buffer = io.BytesIO()
     torch.save(quantized_state, buffer)
@@ -717,13 +735,50 @@ def main() -> int:
     maybe_save_artifact(compressed, cfg.artifact_path)
     code_size = Path(__file__).read_bytes()
     total_artifact = len(compressed) + len(code_size)
+    summary = {
+        "run_id": cfg.run_id,
+        "device": str(device),
+        "train_source": train_source,
+        "val_source": val_source,
+        "vocab_size": cfg.vocab_size,
+        "token_dtype": cfg.token_dtype,
+        "avg_bytes_per_token": avg_bytes_per_token,
+        "parameters": param_count,
+        "steps": step,
+        "seconds": total_time,
+        "last_train_loss": last_train_loss,
+        "last_val_loss": last_val_loss,
+        "best_val_loss": best_val_loss,
+        "best_val_bpb": best_val_bpb,
+        "final_val_loss": final_val_loss,
+        "final_val_bpb": final_val_bpb,
+        "compressed_model_size_bytes": len(compressed),
+        "code_size_bytes": len(code_size),
+        "total_artifact_bytes": total_artifact,
+        "artifact_budget_ok": total_artifact <= 16_000_000,
+        "qat_enabled": qat_enabled,
+        "config": asdict(cfg),
+    }
     print("=== final_stats ===")
     print(f"steps={step}")
     print(f"seconds={total_time:.2f}")
+    print(f"final_val_loss={final_val_loss:.4f}")
+    print(f"final_val_bpb={final_val_bpb:.4f}")
     print(f"compressed_model_size_bytes={len(compressed)}")
     print(f"code_size_bytes={len(code_size)}")
     print(f"total_artifact_bytes={total_artifact}")
     print(f"artifact_budget_ok={total_artifact <= 16_000_000}")
+    if cfg.stats_path:
+        stats_path = Path(cfg.stats_path)
+        stats_path.parent.mkdir(parents=True, exist_ok=True)
+        stats_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+        print(f"stats_path={stats_path}")
+    else:
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
+            json.dump(summary, handle, indent=2)
+            handle.write("\n")
+            temp_stats_path = handle.name
+        print(f"stats_path={temp_stats_path}")
     return 0
 
 
