@@ -56,6 +56,11 @@ Current best artifact details:
 - parameters: `19,208,220`
 - budget headroom: `634` bytes
 
+Important scope note:
+
+- This is our best local proxy result, not a competition-valid leaderboard score.
+- It does not yet use the official distributed `8xH100` evaluation path or the official `records/...` submission packaging flow.
+
 Best currently observed but invalid comparison point:
 
 - `final_val_bpb=3.0801` on MPS from `d_model=512`, `n_loops=4`, `vocab_size=16384`
@@ -1507,3 +1512,104 @@ Why this exact command:
 - `20k` is the natural midpoint after learning that `16k` helps but `24k` is too large.
 - The width band starts at `416` because the 24k valid point at `352` was too weak, while `16k` worked all the way up to `496`.
 - This is the cleanest way to test whether the real sweet spot is between the two tokenizer sizes we have already checked.
+
+## Experiment 15. Official Repository Audit and Rules Alignment
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Review the official OpenAI Parameter Golf repository before continuing experiments, so local work stays aligned with the real rules, validation setup, and submission format.
+
+Command:
+
+```bash
+tmpdir=$(mktemp -d /tmp/parameter-golf-official.XXXXXX) && git clone --depth 1 https://github.com/openai/parameter-golf "$tmpdir" && printf '%s\n' "$tmpdir"
+```
+
+Supporting inspection commands:
+
+```bash
+sed -n '1,260p' /tmp/parameter-golf-official.BbMmsz/README.md
+sed -n '1,260p' /tmp/parameter-golf-official.BbMmsz/data/README.md
+sed -n '1,240p' /tmp/parameter-golf-official.BbMmsz/records/track_10min_16mb/2026-03-17_NaiveBaseline/README.md
+cat /tmp/parameter-golf-official.BbMmsz/records/track_10min_16mb/2026-03-17_NaiveBaseline/submission.json
+wc -l /tmp/parameter-golf-official.BbMmsz/train_gpt.py /tmp/parameter-golf-official.BbMmsz/train_gpt_mlx.py
+git remote -v
+```
+
+Terminal output:
+
+```text
+Cloning into '/tmp/parameter-golf-official.BbMmsz'...
+/tmp/parameter-golf-official.BbMmsz
+{
+  "author": "Baseline",
+  "github_id": "openai",
+  "name": "Naive Baseline",
+  "blurb": "SP-1024 9x512 KV4 run on pgut1 using the published Hugging Face fineweb10B_sp1024 export and the current train_gpt.py; score is the default final int8+zlib roundtrip metric under the 16,000,000-byte cap.",
+  "date": "2026-03-18T14:56:29Z",
+  "val_loss": 2.07269931,
+  "val_bpb": 1.2243657,
+  "bytes_total": 15863489,
+  "bytes_code": 47642
+}
+    1126 /tmp/parameter-golf-official.BbMmsz/train_gpt.py
+    1088 /tmp/parameter-golf-official.BbMmsz/train_gpt_mlx.py
+    2214 total
+origin	https://github.com/aryan-cs/parameter-golf.git (fetch)
+origin	https://github.com/aryan-cs/parameter-golf.git (push)
+```
+
+What we learned:
+
+- The real record track is lowest `val_bpb` under a decimal `16,000,000` byte cap and under `10 minutes` on `8xH100`.
+- The official validation set is the fixed full `fineweb_val_*` split, i.e. the first `50,000` documents.
+- The official FAQ explicitly forbids external downloads, training-data access, and network calls during evaluation.
+- Record submissions must be packaged as a new folder under `records/track_10min_16mb/` with `README.md`, `submission.json`, `train.log`, and a runnable `train_gpt.py`.
+- The root official `train_gpt.py` and `train_gpt_mlx.py` are starter scripts, not where final competitive submissions should live.
+- The current public #1 remains the `Naive Baseline` at exact `val_bpb=1.22436570`.
+
+What changed in our repo:
+
+- Added `RULES.md` as the local summary of the official competition rules and source links.
+- Updated `PLAN.md` to point at `RULES.md` and corrected the deadline year.
+- Committed that rules alignment as `888ddf0` with message `Document official competition rules and align plan`.
+
+Interpretation:
+
+- Our current local sweep workflow is still useful, but only as a proxy search loop.
+- We should stop treating local sample-slice scores as leaderboard-like.
+- The next high-leverage step is to align our workflow with the official data, validation, and `records/...` packaging path before spending more time on tokenizer-width frontier tuning.
+
+## Current Working Hypothesis
+
+The highest-value direction has changed slightly after the official audit:
+
+1. keep using the current local pipeline for fast proxy search
+2. label every proxy result clearly as non-official
+3. shift the next engineering work toward official-path alignment
+4. only resume deeper frontier search once we can package and validate runs in a competition-shaped way
+
+Reasoning:
+
+- We now know exactly what OpenAI will inspect for real submissions.
+- Our current local setup does not yet match the official validation and records flow.
+- Better local proxy scores alone do not help if the eventual submission path is mismatched.
+
+## Next Command To Run
+
+This is the next command we want to execute:
+
+```bash
+git push origin master
+```
+
+Why this exact command:
+
+- The repo now has three important checkpoints that should be on the remote:
+  - `69f2c93` `Log 24k tokenizer rejection experiment`
+  - `888ddf0` `Document official competition rules and align plan`
+- Keeping the remote current makes the audit trail durable and keeps the working branch in sync as we continue.
