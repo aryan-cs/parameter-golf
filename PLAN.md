@@ -123,23 +123,23 @@ git clone https://github.com/openai/parameter-golf.git
 cd parameter-golf
 ```
 
-### Step 2: Create a Python virtual environment
+### Step 2: Install `uv`
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
+brew install uv
 ```
 
-### Step 3: Install dependencies
+### Step 3: Sync the project environment
 ```bash
-pip install mlx numpy sentencepiece huggingface-hub datasets tqdm
-# For tokenizer training:
-pip install tokenizers  # HuggingFace tokenizers (faster BPE than SP for large vocabs)
+uv sync --extra mlx
 ```
+This creates and manages the virtual environment automatically, so you do not need to run `python3 -m venv` or `source .venv/bin/activate`.
+
+The `mlx` extra is only needed on Apple Silicon for `train_gpt_mlx.py`. On Linux or RunPod, plain `uv sync` is enough.
 
 ### Step 4: Download data (minimal subset for development)
 ```bash
 # Downloads 1 training shard (~100M tokens) + full validation set
-python3 data/cached_challenge_fineweb.py --variant sp1024 --train-shards 1
+uv run python data/cached_challenge_fineweb.py --variant sp1024 --train-shards 1
 ```
 
 This populates:
@@ -153,7 +153,7 @@ ITERATIONS=200 \
 TRAIN_BATCH_TOKENS=8192 \
 VAL_LOSS_EVERY=0 \
 VAL_BATCH_SIZE=8192 \
-python3 train_gpt_mlx.py
+uv run python train_gpt_mlx.py
 ```
 
 This skips periodic validation and just prints `val_loss` and `val_bpb` once at the end. It should complete in a few minutes on M4 Pro. If this runs cleanly, your environment is working.
@@ -162,7 +162,7 @@ This skips periodic validation and just prints `val_loss` and `val_bpb` once at 
 ```bash
 # We'll train a new BPE tokenizer from scratch on the val data
 # This uses the raw text (not pre-tokenized), so we need the HuggingFace dataset
-python3 -c "
+uv run python -c "
 from datasets import load_dataset
 ds = load_dataset('HuggingFaceFW/fineweb', split='train', streaming=True)
 # We only need a sample to train the tokenizer
@@ -193,16 +193,17 @@ ssh root@<pod-ip> -p <port> -i ~/.ssh/id_ed25519
 ```bash
 git clone https://github.com/openai/parameter-golf.git
 cd parameter-golf
-pip install sentencepiece huggingface-hub datasets tqdm tokenizers
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv sync
 ```
 
 ### Step 5: Download data on the pod
 ```bash
 # For experiments: 1 shard is enough
-python3 data/cached_challenge_fineweb.py --variant sp1024 --train-shards 1
+uv run python data/cached_challenge_fineweb.py --variant sp1024 --train-shards 1
 
 # For final submission run: download more shards (each is ~100M tokens)
-python3 data/cached_challenge_fineweb.py --variant sp1024 --train-shards 20
+uv run python data/cached_challenge_fineweb.py --variant sp1024 --train-shards 20
 ```
 
 ### Step 6: Run baseline on 1×H100
@@ -211,7 +212,7 @@ RUN_ID=baseline_sp1024 \
 DATA_PATH=./data/datasets/fineweb10B_sp1024/ \
 TOKENIZER_PATH=./data/tokenizers/fineweb_1024_bpe.model \
 VOCAB_SIZE=1024 \
-torchrun --standalone --nproc_per_node=1 train_gpt.py
+uv run torchrun --standalone --nproc_per_node=1 train_gpt.py
 ```
 
 Expected output at the end:
@@ -234,7 +235,7 @@ RUN_ID=baseline_sp1024 \
 DATA_PATH=./data/datasets/fineweb10B_sp1024/ \
 TOKENIZER_PATH=./data/tokenizers/fineweb_1024_bpe.model \
 VOCAB_SIZE=1024 \
-torchrun --standalone --nproc_per_node=1 train_gpt.py
+uv run torchrun --standalone --nproc_per_node=1 train_gpt.py
 ```
 
 **Useful environment variables:**
@@ -370,7 +371,7 @@ The challenge's data pipeline tokenizes training data ahead of time. You'll need
 ```bash
 MATCHED_FINEWEB_REPO_ID=your-hf-username/your-dataset-repo \
 MATCHED_FINEWEB_REMOTE_ROOT_PREFIX=your_export_root \
-python3 data/cached_challenge_fineweb.py --variant your_32k_variant --train-shards 20
+uv run python data/cached_challenge_fineweb.py --variant your_32k_variant --train-shards 20
 ```
 
 Alternatively for fast iteration: tokenize on-the-fly in your `train_gpt.py` using a streaming approach. This is slower but avoids the pre-tokenization step.
@@ -1029,7 +1030,7 @@ MUON_LR=0.02 \
 ADAMW_LR=3e-4 \
 TRAIN_BATCH_TOKENS=524288 \
 MAX_WALLCLOCK_SECONDS=0 \  # No cap for experiments
-torchrun --standalone --nproc_per_node=1 train_gpt.py
+uv run torchrun --standalone --nproc_per_node=1 train_gpt.py
 
 # On 8×H100 for final submission:
 RUN_ID=final_submission \
@@ -1042,7 +1043,7 @@ MUON_LR=0.02 \
 ADAMW_LR=3e-4 \
 TRAIN_BATCH_TOKENS=2097152 \  # Scale batch with GPU count
 MAX_WALLCLOCK_SECONDS=590 \
-torchrun --standalone --nproc_per_node=8 train_gpt.py
+uv run torchrun --standalone --nproc_per_node=8 train_gpt.py
 ```
 
 ---
@@ -1142,7 +1143,7 @@ records/
 1. **Architecture overview:** What makes your model different from the baseline
 2. **Key techniques:** Tokenizer choice, architecture details, optimizer, QAT setup
 3. **Ablation results:** bpb at each step of your development
-4. **Training command:** The exact `torchrun` command to reproduce your result
+4. **Training command:** The exact `uv run torchrun` command to reproduce your result
 5. **Results table:** `val_bpb`, `compressed_size`, `training_time`
 6. **What you tried that didn't work** (optional, but valued)
 

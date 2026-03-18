@@ -1,0 +1,22 @@
+[project]
+name = "parameter-golf-starter"
+version = "0.1.0"
+description = "Starter scaffold for Parameter Golf experiments."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "datasets>=2.18",
+  "numpy>=1.26",
+  "sentencepiece>=0.2",
+  "tokenizers>=0.15",
+  "torch>=2.3",
+  "tqdm>=4.66",
+]
+
+[project.optional-dependencies]
+mlx = [
+  "mlx>=0.29",
+]
+
+[tool.uv]
+package = false

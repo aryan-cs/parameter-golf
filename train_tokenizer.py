@@ -45,7 +45,7 @@ def iter_hf_text(args: argparse.Namespace):
     try:
         from datasets import load_dataset
     except ModuleNotFoundError as exc:
-        raise RuntimeError("datasets is not installed. Run: python3 -m pip install -r requirements.txt") from exc
+        raise RuntimeError("datasets is not installed. Run: uv sync") from exc
 
     dataset = load_dataset(
         args.hf_dataset,
@@ -64,7 +64,7 @@ def main() -> int:
     try:
         from tokenizers import ByteLevelBPETokenizer
     except ModuleNotFoundError:
-        print("tokenizers is not installed. Run: python3 -m pip install -r requirements.txt")
+        print("tokenizers is not installed. Run: uv sync")
         return 1
 
     if args.hf_dataset:

@@ -532,10 +532,10 @@ def main() -> int:
     print("config:", asdict(cfg))
 
     if torch is None:
-        print("PyTorch is not installed. Run: python3 -m pip install -r requirements.txt")
+        print("PyTorch is not installed. Run: uv sync")
         return 1
     if np is None and (cfg.data_path or cfg.val_data_path):
-        print("NumPy is required for DATA_PATH/VAL_DATA_PATH loading. Run: python3 -m pip install -r requirements.txt")
+        print("NumPy is required for DATA_PATH/VAL_DATA_PATH loading. Run: uv sync")
         return 1
 
     random.seed(cfg.seed)
@@ -566,7 +566,10 @@ def main() -> int:
 
     muon_opt, adamw_opt = build_optimizers(model, cfg)
     use_cuda_amp = device.type == "cuda"
-    scaler = torch.cuda.amp.GradScaler(enabled=use_cuda_amp)
+    if hasattr(torch, "amp") and hasattr(torch.amp, "GradScaler"):
+        scaler = torch.amp.GradScaler("cuda", enabled=use_cuda_amp)
+    else:
+        scaler = torch.cuda.amp.GradScaler(enabled=use_cuda_amp)
 
     start_time = time.perf_counter()
     qat_enabled = False

@@ -4,7 +4,7 @@ This repo started as a standalone plan. It now includes the first working slice 
 
 - `train_gpt.py`: a runnable looped-transformer training starter with Muon/AdamW splitting, delayed QAT hooks, artifact-size reporting, and synthetic-data smoke mode.
 - `train_tokenizer.py`: a ByteLevel BPE trainer for local text corpora or optional Hugging Face dataset streaming.
-- `requirements.txt`: baseline Python dependencies.
+- `pyproject.toml`: project metadata and `uv`-managed dependencies.
 
 The current implementation is meant to get us from ideas to executable code quickly. It focuses on the first high-leverage pieces from `PLAN.md`:
 
@@ -24,7 +24,13 @@ What is not built yet:
 ## Install
 
 ```bash
-python3 -m pip install -r requirements.txt
+uv sync
+```
+
+If you want to experiment with the MLX path on Apple Silicon, install the optional extra:
+
+```bash
+uv sync --extra mlx
 ```
 
 ## Smoke test
@@ -39,7 +45,7 @@ N_HEADS=4 \
 N_LOOPS=2 \
 SEQ_LEN=64 \
 TRAIN_BATCH_TOKENS=2048 \
-python3 train_gpt.py
+uv run python train_gpt.py
 ```
 
 ## Local token data
@@ -55,7 +61,7 @@ Example:
 DATA_PATH=./data/tokens \
 AVG_BYTES_PER_TOKEN=3.5 \
 MAX_STEPS=200 \
-python3 train_gpt.py
+uv run python train_gpt.py
 ```
 
 `AVG_BYTES_PER_TOKEN` is used to convert cross-entropy into estimated bpb. Once the tokenizer and dataset export are fixed, this should be measured from the real validation set.
@@ -65,7 +71,7 @@ python3 train_gpt.py
 Train from local text files:
 
 ```bash
-python3 train_tokenizer.py \
+uv run python train_tokenizer.py \
   --input-dir ./data/raw_text \
   --glob '*.txt' \
   --vocab-size 32768 \
@@ -76,7 +82,7 @@ python3 train_tokenizer.py \
 Optional Hugging Face streaming mode:
 
 ```bash
-python3 train_tokenizer.py \
+uv run python train_tokenizer.py \
   --hf-dataset HuggingFaceFW/fineweb \
   --hf-config sample-10BT \
   --hf-split train \
