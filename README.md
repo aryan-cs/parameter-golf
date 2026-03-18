@@ -184,6 +184,31 @@ uv run python autopilot.py \
 
 Add `--resume` to skip runs that already have a saved summary.
 
+## Record Packaging
+
+Once a run is interesting enough to preserve, package it into an official-style `records/...` folder:
+
+```bash
+uv run python package_record.py \
+  --stats runs/fineweb_16k_frontier_mps/fineweb16k_d496_l4.json \
+  --log runs/fineweb_16k_frontier_mps/fineweb16k_d496_l4.log \
+  --name "FineWeb 16k d496 l4" \
+  --slug fineweb16k_d496_l4 \
+  --author "Your Name" \
+  --github-id your-github-id \
+  --blurb "Local proxy run packaged for record-folder iteration." \
+  --track-dir track_non_record_16mb
+```
+
+This generates:
+
+- `records/<track>/<date>_<slug>/README.md`
+- `records/<track>/<date>_<slug>/submission.json`
+- `records/<track>/<date>_<slug>/train.log`
+- `records/<track>/<date>_<slug>/train_gpt.py`
+
+Use this only for runs that are actually worth preserving. A generated folder is not automatically competition-valid; it still needs the official evaluation path and the right track semantics.
+
 ## Recommended next steps
 
 1. Scale the `prepare_tokens.py` workflow from a small sample to larger FineWeb-derived runs.

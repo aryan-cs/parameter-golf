@@ -29,6 +29,9 @@ except ModuleNotFoundError:
 
 
 LOG2_E = math.log2(math.e)
+OFFICIAL_DATAFILE_MAGIC = 20240520
+OFFICIAL_DATAFILE_HEADER_INTS = 256
+OFFICIAL_DATAFILE_HEADER_BYTES = OFFICIAL_DATAFILE_HEADER_INTS * 4
 
 
 def env_int(name: str, default: int) -> int:
@@ -427,7 +430,7 @@ def resolve_device(requested: str):
     return torch.device("cpu")
 
 
-def discover_token_arrays(data_path: str, token_dtype: str, min_length: int):
+def discover_token_arrays(data_path: str, token_dtype: str, min_length: int, split: str = "any"):
     if np is None:
         raise RuntimeError("numpy is required to load token data from disk")
     root = Path(data_path)
@@ -436,20 +439,49 @@ def discover_token_arrays(data_path: str, token_dtype: str, min_length: int):
     if root.is_file():
         candidates = [root]
     else:
-        candidates = sorted(root.rglob("*.npy")) + sorted(root.rglob("*.bin"))
+        candidates = []
+        if split in {"train", "val"}:
+            split_pattern = f"fineweb_{split}_*.bin"
+            candidates.extend(sorted(root.glob(split_pattern)))
+            if not candidates:
+                candidates.extend(sorted(root.rglob(split_pattern)))
+        if not candidates:
+            candidates = sorted(root.rglob("*.npy")) + sorted(root.rglob("*.bin"))
     arrays = []
     dtype = np.dtype(token_dtype)
     for candidate in candidates:
         if candidate.suffix == ".npy":
             arr = np.load(candidate, mmap_mode="r")
         else:
-            arr = np.memmap(candidate, dtype=dtype, mode="r")
+            arr = open_token_bin(candidate, dtype)
         arr = arr.reshape(-1)
         if arr.shape[0] > min_length:
             arrays.append(arr)
     if not arrays:
         raise FileNotFoundError(f"No token arrays longer than {min_length} found under {data_path}")
     return arrays
+
+
+def open_token_bin(path: Path, dtype):
+    if np is None:
+        raise RuntimeError("numpy is required to load token data from disk")
+    file_size = path.stat().st_size
+    if file_size >= OFFICIAL_DATAFILE_HEADER_BYTES:
+        with path.open("rb") as handle:
+            header = np.frombuffer(handle.read(OFFICIAL_DATAFILE_HEADER_BYTES), dtype="<i4", count=OFFICIAL_DATAFILE_HEADER_INTS)
+        if header.size >= 3 and int(header[0]) == OFFICIAL_DATAFILE_MAGIC:
+            token_count = int(header[2])
+            if token_count < 0:
+                raise ValueError(f"Negative token count in official datafile header: {path}")
+            payload_bytes = file_size - OFFICIAL_DATAFILE_HEADER_BYTES
+            expected_bytes = token_count * np.dtype(dtype).itemsize
+            if expected_bytes > payload_bytes:
+                raise ValueError(
+                    f"Header token count exceeds payload size for {path}: "
+                    f"expected_bytes={expected_bytes} payload_bytes={payload_bytes}"
+                )
+            return np.memmap(path, dtype=dtype, mode="r", offset=OFFICIAL_DATAFILE_HEADER_BYTES, shape=(token_count,))
+    return np.memmap(path, dtype=dtype, mode="r")
 
 
 def read_split_metadata(data_path: str):
@@ -507,10 +539,10 @@ def resolve_token_dtype(cfg: Config, val_path: str) -> tuple[str, str]:
     return "uint16", "default"
 
 
-def build_batcher(cfg: Config, data_path: str, seed: int):
+def build_batcher(cfg: Config, data_path: str, seed: int, split: str):
     if not data_path:
         return SyntheticTokenBatcher(cfg.vocab_size, cfg.seq_len, seed), "synthetic"
-    arrays = discover_token_arrays(data_path, cfg.token_dtype, cfg.seq_len + 1)
+    arrays = discover_token_arrays(data_path, cfg.token_dtype, cfg.seq_len + 1, split=split)
     return PackedTokenBatcher(arrays, cfg.seq_len, seed), f"{len(arrays)} shard(s)"
 
 
@@ -621,8 +653,8 @@ def main() -> int:
     val_path = cfg.val_data_path or cfg.data_path
     cfg.vocab_size, vocab_size_source = resolve_vocab_size(cfg, val_path)
     cfg.token_dtype, token_dtype_source = resolve_token_dtype(cfg, val_path)
-    train_batcher, train_source = build_batcher(cfg, cfg.data_path, cfg.seed)
-    val_batcher, val_source = build_batcher(cfg, val_path, cfg.seed + 1)
+    train_batcher, train_source = build_batcher(cfg, cfg.data_path, cfg.seed, split="train")
+    val_batcher, val_source = build_batcher(cfg, val_path, cfg.seed + 1, split="val")
     avg_bytes_per_token, avg_bytes_source = resolve_avg_bytes_per_token(cfg, val_path)
     print(f"train_source={train_source} val_source={val_source} device={device}")
     print(f"vocab_size={cfg.vocab_size} source={vocab_size_source}")

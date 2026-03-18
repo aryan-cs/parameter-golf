@@ -364,6 +364,54 @@ Why this matters:
 - We can search the exact budget frontier without manually rebuilding commands each time.
 - This makes `STRATEGY.md` updates easier because the raw outputs now live on disk.
 
+### 8. Add Official-Shard Compatibility and Record Packaging
+
+Commit:
+
+- pending in current workspace
+
+Purpose:
+
+- Close two more gaps between our local proxy workflow and the official submission path.
+
+Key code from `train_gpt.py`:
+
+```python
+if split in {"train", "val"}:
+    split_pattern = f"fineweb_{split}_*.bin"
+    candidates.extend(sorted(root.glob(split_pattern)))
+```
+
+Key code for official headered `.bin` support:
+
+```python
+if header.size >= 3 and int(header[0]) == OFFICIAL_DATAFILE_MAGIC:
+    token_count = int(header[2])
+    return np.memmap(path, dtype=dtype, mode="r", offset=OFFICIAL_DATAFILE_HEADER_BYTES, shape=(token_count,))
+```
+
+Key code from `package_record.py`:
+
+```python
+payload = {
+    "author": args.author,
+    "github_id": args.github_id,
+    "name": args.name,
+    "blurb": args.blurb,
+    "date": utc_now_iso(),
+    "val_loss": stats["final_val_loss"],
+    "val_bpb": stats["final_val_bpb"],
+    "bytes_total": stats["total_artifact_bytes"],
+    "bytes_code": stats["code_size_bytes"],
+}
+```
+
+Why this matters:
+
+- Our trainer can now ingest the official shard format instead of only our own packed-sample format.
+- We can now generate official-style `records/...` folders directly from a finished run.
+- This still does not make our current runs competition-valid, but it removes two concrete workflow blockers.
+
 ## Experiment Log
 
 ## Experiment 1. Synthetic Trainer Smoke Test
@@ -1664,3 +1712,149 @@ Why this exact command:
   - `69f2c93` `Log 24k tokenizer rejection experiment`
   - `888ddf0` `Document official competition rules and align plan`
 - Keeping the remote current makes the audit trail durable and keeps the working branch in sync as we continue.
+
+## Experiment 16. Official Shard Ingestion Smoke Test
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Verify that our local trainer can ingest the official OpenAI challenge shard layout and the official headered `.bin` file format.
+
+Official data download command:
+
+```bash
+.venv/bin/python /tmp/parameter-golf-official.BbMmsz/data/cached_challenge_fineweb.py --variant sp1024 --train-shards 1
+```
+
+Supporting command to estimate the SP-1024 bytes/token constant from the official baseline metadata:
+
+```bash
+.venv/bin/python -c "import math; print(2.07269931*math.log2(math.e)/1.22436570)"
+```
+
+Ingestion smoke command:
+
+```bash
+DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VAL_DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VOCAB_SIZE=1024 TOKEN_DTYPE=uint16 AVG_BYTES_PER_TOKEN=2.442303811509075 SEQ_LEN=128 TRAIN_BATCH_TOKENS=1024 VAL_BATCH_TOKENS=1024 MAX_STEPS=1 DEVICE=cpu .venv/bin/python train_gpt.py
+```
+
+Terminal output:
+
+```text
+2.442303811509075
+fineweb_train_000000.bin
+fineweb_val_000000.bin
+config: {'run_id': 'dev_smoke', 'data_path': '/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024', 'val_data_path': '/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024', 'token_dtype': 'uint16', 'vocab_size': 1024, 'd_model': 256, 'n_heads': 8, 'd_ff': 682, 'n_loops': 4, 'seq_len': 128, 'train_batch_tokens': 1024, 'val_batch_tokens': 1024, 'val_steps': 4, 'val_loss_every': 10, 'max_steps': 1, 'max_wallclock_seconds': 0, 'avg_bytes_per_token': 2.442303811509075, 'muon_lr': 0.02, 'adamw_lr': 0.0003, 'weight_decay': 0.1, 'warmup_steps': 20, 'cooldown_fraction': 0.3, 'qat_start_fraction': 0.6, 'grad_clip': 1.0, 'seed': 1337, 'device': 'cpu', 'compile_model': False, 'use_smear': True, 'artifact_path': '', 'stats_path': ''}
+train_source=1 shard(s) val_source=1 shard(s) device=cpu
+vocab_size=1024 source=env
+token_dtype=uint16 source=env
+avg_bytes_per_token=2.4423 source=env
+parameters=1,312,320
+step=0 train_loss=6.9550 train_bpb=4.1084 val_loss=6.8524 val_bpb=4.0478 muon_lr=2.000e-02 adamw_lr=3.000e-04 elapsed=0.0s
+=== final_stats ===
+steps=1
+seconds=0.14
+final_val_loss=6.8386
+final_val_bpb=4.0397
+compressed_model_size_bytes=1136396
+code_size_bytes=31140
+total_artifact_bytes=1167536
+artifact_budget_ok=True
+```
+
+Interpretation:
+
+- Our trainer now correctly distinguishes official `fineweb_train_*.bin` and `fineweb_val_*.bin` files inside a single official dataset directory.
+- It also correctly skips the official binary header before reading token payloads.
+- This is an infrastructure validation only, not a leaderboard-relevant score.
+
+## Experiment 17. Official-Style Record Packaging Smoke Test
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Verify that we can turn a finished run into the official `records/...` folder shape required for eventual PRs.
+
+Command:
+
+```bash
+tmpout=$(mktemp -d /tmp/golf-records-smoke.XXXXXX) && .venv/bin/python package_record.py --stats runs/fineweb_16k_frontier_mps/fineweb16k_d496_l4.json --log runs/fineweb_16k_frontier_mps/fineweb16k_d496_l4.log --name "FineWeb 16k d496 l4" --slug fineweb16k_d496_l4 --author "Aryan" --github-id aryan-cs --blurb "Local proxy run packaged for records-folder iteration." --track-dir track_non_record_16mb --output-root "$tmpout"
+```
+
+Terminal output:
+
+```text
+record_dir=/tmp/golf-records-smoke.VKgaq3/track_non_record_16mb/2026-03-18_fineweb16k_d496_l4
+submission_path=/tmp/golf-records-smoke.VKgaq3/track_non_record_16mb/2026-03-18_fineweb16k_d496_l4/submission.json
+/tmp/golf-records-smoke.VKgaq3/track_non_record_16mb/2026-03-18_fineweb16k_d496_l4/README.md
+/tmp/golf-records-smoke.VKgaq3/track_non_record_16mb/2026-03-18_fineweb16k_d496_l4/submission.json
+/tmp/golf-records-smoke.VKgaq3/track_non_record_16mb/2026-03-18_fineweb16k_d496_l4/train.log
+/tmp/golf-records-smoke.VKgaq3/track_non_record_16mb/2026-03-18_fineweb16k_d496_l4/train_gpt.py
+```
+
+Generated `submission.json` payload:
+
+```json
+{
+  "author": "Aryan",
+  "github_id": "aryan-cs",
+  "name": "FineWeb 16k d496 l4",
+  "blurb": "Local proxy run packaged for records-folder iteration.",
+  "date": "2026-03-18T20:14:36Z",
+  "val_loss": 8.803004264831543,
+  "val_bpb": 3.1106495880562357,
+  "bytes_total": 15999366,
+  "bytes_code": 29425,
+  "best_val_loss": 8.803004264831543,
+  "best_val_bpb": 3.1106495880562357,
+  "bytes_model_int8_zlib": 15969941,
+  "steps": 20,
+  "wallclock_seconds": 10.948360749986023
+}
+```
+
+Interpretation:
+
+- We can now generate the official record-folder file set automatically:
+  - `README.md`
+  - `submission.json`
+  - `train.log`
+  - `train_gpt.py`
+- The generated README is intentionally conservative and should be edited before any real submission.
+- This removes another manual bottleneck between “good run” and “PR-ready record folder.”
+
+## Current Working Hypothesis
+
+The best immediate path is now:
+
+1. keep the current local proxy search loop
+2. treat the 16k `d496_l4` run as the current best proxy reference
+3. continue aligning exact evaluation details with the official path
+4. only then spend more time on deeper model sweeps
+
+Reasoning:
+
+- We closed two key workflow gaps:
+  - official shard ingestion
+  - record packaging
+- The next remaining mismatch is exact official evaluation semantics, especially for non-baseline tokenizer work.
+- That makes infrastructure alignment more valuable than another blind width/tokenizer search right now.
+
+## Next Command To Run
+
+This is the next command we want to execute:
+
+```bash
+tmpout=$(mktemp -d /tmp/golf-records-smoke.XXXXXX) && .venv/bin/python package_record.py --stats runs/fineweb_16k_frontier_mps/fineweb16k_d496_l4.json --log runs/fineweb_16k_frontier_mps/fineweb16k_d496_l4.log --name "FineWeb 16k d496 l4" --slug fineweb16k_d496_l4 --author "Aryan" --github-id aryan-cs --blurb "Local proxy run packaged for records-folder iteration." --track-dir track_non_record_16mb --output-root "$tmpout"
+```
+
+Why this exact command:
+
+- It is the shortest path to producing a concrete record-folder artifact from our best current local run.
+- Even though the run is still proxy-only, packaging it forces us to keep the submission format in view as we iterate.
