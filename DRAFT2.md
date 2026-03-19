@@ -32,8 +32,8 @@ Current best numbers worth knowing:
 - Practical clean-record target after the `0.005 nats` significance bar:
   - `1.217152224795555` bpb
 - Best overall local exact result so far:
-  - `bytelevel24k_d512_gqa_softcap_s1600`
-  - `final_val_bpb = 1.748414205194488`
+  - `bytelevel24k_d512_gqa_softcap_s3200`
+  - `final_val_bpb = 1.6238459688827054`
 - Best official-tokenizer sampled local exact result so far:
   - `torch_sp1024_d512_l4_b64k_s200`
   - `best_val_bpb = 1.995522745133331`
@@ -41,11 +41,11 @@ Current best numbers worth knowing:
   - `torch_sp1024_d512_l4_b32k_s400_seq1024_cd20`
   - `best_val_bpb = 2.0050325515775427`
 - Best exact `24k` tokenizer result so far:
-  - `bytelevel24k_d512_gqa_softcap_s1600`
-  - `final_val_bpb = 1.748414205194488`
-- Best live in-progress checkpoint so far:
   - `bytelevel24k_d512_gqa_softcap_s3200`
-  - `step=1600 val_bpb = 1.6664`
+  - `final_val_bpb = 1.6238459688827054`
+- Prepared next tokenizer branch:
+  - `fineweb_32k_sample`
+  - `train avg_bytes_per_token = 4.4202857706695236`
 
 Main conclusion right now:
 
@@ -111,6 +111,8 @@ What actually happened after re-testing:
   - `1.7853542005916354`
 - `24k` exact, GQA + query gain + logit softcap, `1600` steps:
   - `1.748414205194488`
+- `24k` exact, GQA + query gain + logit softcap, `3200` steps:
+  - `1.6238459688827054`
 - `16k` exact, tied embeddings, `40` steps:
   - `2.6767`
 
@@ -231,8 +233,8 @@ Interpretation:
 
 Best exact result so far:
 
-- `bytelevel24k_d512_gqa_softcap_s1600`
-  - `final_val_bpb = 1.748414205194488`
+- `bytelevel24k_d512_gqa_softcap_s3200`
+  - `final_val_bpb = 1.6238459688827054`
 
 Supporting results:
 
@@ -248,6 +250,8 @@ Supporting results:
   - `1.9059446644848441`
 - `bytelevel24k_d512_tied_lr2x_s1600`
   - `1.7853542005916354`
+- `bytelevel24k_d512_gqa_softcap_s1600`
+  - `1.748414205194488`
 - `bytelevel24k_d512_tied_l8_s100`
   - `2.3681701384086318`
 - `bytelevel24k_eff64k_accum_s100`
@@ -264,6 +268,7 @@ Interpretation:
 - the branch still improves steadily, but it remains far over the artifact cap
 - doubling the run horizon from `800` to `1600` improved the best exact local score by `0.12059046389320871` bpb
 - adding GQA plus query gain plus logit softcap on top of that schedule improved the score by another `0.03693999539714748` bpb
+- extending that improved branch from `1600` to `3200` steps improved the score by another `0.12456823631178256` bpb
 
 ### 4.3 Exact `16k` tokenizer branch
 
@@ -317,18 +322,19 @@ It looks like:
 4. Use the promoted `2x` learning rate.
 5. Use the longer `1600`-step horizon as the new default schedule.
 6. Keep `NUM_KV_HEADS=4`, `QK_GAIN_INIT=1.5`, and `LOGIT_SOFTCAP=30` in the promoted branch.
-7. Extend that improved branch longer before reopening width or loop count.
-8. Use accumulation only when the direct-memory limit blocks a genuinely better regime.
-9. Do not let artifact-size blindness hide the fact that this branch will eventually need a smaller valid variant.
+7. Treat `3200` steps as the current proven horizon on the `24k` branch.
+8. Promote the prepared `32k` tokenizer branch as the next major denominator test.
+9. Use accumulation only when the direct-memory limit blocks a genuinely better regime.
+10. Do not let artifact-size blindness hide the fact that this branch will eventually need a smaller valid variant.
 
 Why this seems best:
 
 - `24k` clearly beat `16k`
 - exact byte accounting is now real
-- the branch now reaches `1.7484`
+- the branch now reaches `1.6238`
 - width and deeper loops have not moved it much
 - optimization horizon is still the most responsive lever
-- the next clean question is how far the improved GQA/softcap branch can be pushed before it truly flattens
+- the next clean question is whether the prepared `32k` tokenizer can convert its extra bytes/token into the remaining `0.1238` bpb we need
 
 ## 6. What Still Looks Wrong or Incomplete
 
@@ -336,11 +342,11 @@ Why this seems best:
 
 That is still the blunt truth.
 
-The best overall local exact score is now `1.7484`.
+The best overall local exact score is now `1.6238`.
 The best official-tokenizer sampled exact score is `1.9955`.
 The best long-context official-tokenizer score is `2.0050`.
 
-So we are materially better than where we were at `DRAFT1`, but still `0.2484` bpb away from the local `1.5` target.
+So we are materially better than where we were at `DRAFT1`, but still `0.1238` bpb away from the local `1.5` target.
 
 ### 6.2 The larger-tokenizer branch is still badly over the artifact cap
 
@@ -348,21 +354,22 @@ Even with tied embeddings:
 
 - `24k`, `d_model=512`, `1600` steps produced `22,405,986` artifact bytes
 - `24k`, `d_model=512`, `1600` steps with GQA/softcap produced `22,076,698` artifact bytes
-- the cap is `16,000,000`, so this branch is over by `6,076,698` bytes
+- `24k`, `d_model=512`, `3200` steps with GQA/softcap produced `21,566,256` artifact bytes
+- the cap is `16,000,000`, so this branch is over by `5,566,256` bytes
 - `16k`, `d_model=512` is smaller, but it also scores much worse locally
 
 So if the `24k` branch eventually becomes the best score path, it will still need a later artifact-compression / smaller-width / different-model pass.
 
-### 6.3 We have not yet tested the strongest next long-horizon continuation of the improved branch
+### 6.3 We have not yet tested the strongest next tokenizer continuation
 
 The most obvious next run is now:
 
 ```bash
 PYTHONUNBUFFERED=1 \
-RUN_ID=bytelevel24k_d512_gqa_softcap_s3200 \
-TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample \
-DATA_PATH=./data/tokens/fineweb_24k_sample/train \
-VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val \
+RUN_ID=bytelevel32k_d512_gqa_softcap_s3200 \
+TOKENIZER_PREFIX=./data/tokenizers/fineweb_32k_sample \
+DATA_PATH=./data/tokens/fineweb_32k_sample/train \
+VAL_DATA_PATH=./data/tokens/fineweb_32k_sample/val \
 D_MODEL=512 \
 N_HEADS=8 \
 NUM_KV_HEADS=4 \
@@ -385,7 +392,7 @@ DEVICE=mps \
 uv run python train_gpt.py
 ```
 
-That is the cleanest next continuation because the GQA/softcap `1600`-step run is now our best local result, and the biggest remaining open question is whether this exact improved branch still has more optimization headroom.
+That is the cleanest next continuation because the `24k` branch is now only `0.1238` bpb from `1.5`, and the prepared `32k` tokenizer gives us the next real denominator increase without changing the proven model-side recipe.
 
 ## 7. Reviewer Questions
 
@@ -394,7 +401,7 @@ If another strong reviewer picks this up, the most useful questions now are:
 1. Is the shared-loop family still the right one once we are in exact `24k` territory, or are we wasting time not changing the optimizer/model more aggressively?
 2. Is `24k` actually the correct tokenizer target, or should we be exploring something closer to `32k` with a smaller model width?
 3. Is there an obvious optimizer/schedule change that should replace the current Muon + AdamW split for the large-vocab branch?
-4. Is this GQA/softcap branch now good enough that the next bottleneck is purely training horizon, or are there still missing official inductive biases worth copying?
+4. Does the prepared `32k` tokenizer branch finally close the remaining gap, or are we still leaving too much on the table in model-side nats?
 5. If the real goal is a leaderboard submission rather than a local `1.5`, should we stop chasing large-vocab local scores and move earlier to an artifact-aware branch?
 
 ## 8. Bottom Line
@@ -407,8 +414,9 @@ Compared with `DRAFT1`, the project is in a much better state:
 - tied embeddings exist
 - gradient accumulation exists
 - baseline-aligned GQA, per-head query gain, and logit softcap knobs exist
-- the `24k` branch now has a real exact local score in the `1.7`s
+- the `24k` branch now has a real exact local score in the `1.6`s
 - the promoted branch now combines longer horizon with a confirmed baseline-aligned attention gain
+- the `32k` tokenizer branch is prepared and ready for the next run
 
 But the bottom-line score has still not crossed `1.5`.
 

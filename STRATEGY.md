@@ -56,10 +56,10 @@ Current interesting non-record comparison:
 
 Our current best local exact result:
 
-- exact `final_val_bpb`: `1.748414205194488`
-- short form: `1.7484`
-- run id: `bytelevel24k_d512_gqa_softcap_s1600`
-- artifact: `22,076,698` bytes
+- exact `final_val_bpb`: `1.6238459688827054`
+- short form: `1.6238`
+- run id: `bytelevel24k_d512_gqa_softcap_s3200`
+- artifact: `21,566,256` bytes
 - status: exact ByteLevel BPE on the local `24k` sample-data path; strong local milestone, but not competition-valid and not artifact-valid yet
 
 Current best official-tokenizer local exact-bpb result:
@@ -81,19 +81,22 @@ Current best long-context (`SEQ_LEN=1024`) official-tokenizer result:
 
 Current best exact `24k` ByteLevel result:
 
-- exact sampled `best_val_bpb`: `1.748414205194488`
-- short form: `1.7484`
-- run id: `bytelevel24k_d512_gqa_softcap_s1600`
-- artifact: `22,076,698` bytes
+- exact sampled `best_val_bpb`: `1.6238459688827054`
+- short form: `1.6238`
+- run id: `bytelevel24k_d512_gqa_softcap_s3200`
+- artifact: `21,566,256` bytes
 - status: best exact large-tokenizer result so far; still far above the artifact cap, but now the strongest overall local exact score in the repo
 
 Current live frontier checkpoint:
 
-- run id: `bytelevel24k_d512_gqa_softcap_s3200`
-- latest checkpoint: `step=1600`
-- live `val_bpb`: `1.6664`
-- gap to local `1.5`: `0.1664`
-- status: in progress; not a completed run yet, but already materially better than the best completed result
+- none; the previous live `3200` run completed
+
+Current prepared next-tokenizer branch:
+
+- tokenizer: `fineweb_32k_sample`
+- train `avg_bytes_per_token`: `4.4202857706695236`
+- val `avg_bytes_per_token`: `4.351551413669658`
+- status: prepared on disk and ready for model training
 
 Gap versus official main-track leader for our best exact sampled official-tokenizer run:
 
@@ -102,12 +105,12 @@ Gap versus official main-track leader for our best exact sampled official-tokeni
 
 Gap versus official main-track leader for our best tokenizer-changed local exact run:
 
-- `1.748414205194488 - 1.22436570 = 0.5240485051944881` bpb worse
-- `0.5240485051944881 / log2(e) = 0.3632426926515397` nats worse
+- `1.6238459688827054 - 1.22436570 = 0.3994802688827055` bpb worse
+- `0.3994802688827055 / log2(e) = 0.27689246300965436` nats worse
 
 Gap versus the immediate `1.5` local target:
 
-- `1.748414205194488 - 1.5 = 0.24841420519448798` bpb worse
+- `1.6238459688827054 - 1.5 = 0.12384596888270538` bpb worse
 
 PR opening rule:
 
@@ -3359,6 +3362,78 @@ Interpretation:
 - The variant also reduced parameters from `15,732,352` to `15,470,216` and trimmed artifact size by `329,288` bytes.
 - GQA plus query gain plus logit softcap is now a confirmed useful direction, not just a theoretical baseline-alignment idea.
 
+## Experiment 49. Extend The Improved GQA/Softcap Branch To 3200 Steps
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Find out whether the improved `24k` GQA/softcap branch still had substantial optimization headroom beyond `1600` steps.
+
+Command:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_d512_gqa_softcap_s3200 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=512 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=800 MAX_STEPS=3200 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_d512_gqa_softcap_s3200.json uv run python train_gpt.py | tee runs/bytelevel24k/bytelevel24k_d512_gqa_softcap_s3200.log
+```
+
+Terminal output:
+
+```text
+step=800 train_loss=5.2046 train_bpb=1.7254 val_loss=5.3292 val_bpb=1.8085 muon_lr=3.225e-02 adamw_lr=4.838e-04 elapsed=951.1s
+step=1600 train_loss=4.6848 train_bpb=1.5847 val_loss=4.9467 val_bpb=1.6664 muon_lr=1.527e-02 adamw_lr=2.290e-04 elapsed=1901.8s
+step=2400 train_loss=4.5108 train_bpb=1.4575 val_loss=4.8383 val_bpb=1.6536 muon_lr=4.351e-03 adamw_lr=6.527e-05 elapsed=2853.4s
+=== final_stats ===
+steps=3200
+seconds=3803.94
+final_val_bpb=1.6238
+total_artifact_bytes=21566256
+artifact_budget_ok=False
+```
+
+Interpretation:
+
+- This is the new best completed local exact result in the repo.
+- Relative to the `1600`-step GQA/softcap branch (`1.7484`), the `3200`-step run improved by `0.1246` bpb.
+- The extra horizon still helped a lot, but the last segment only improved `1.6664` to `1.6238`, so horizon alone is starting to flatten.
+- We are now only `0.1238` bpb away from the local `1.5` target.
+
+## Experiment 50. Prepare A `32k` Tokenizer Branch
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Prepare the next most plausible denominator-improvement lever now that the `24k` branch is in the low `1.6`s but not yet at `1.5`.
+
+Commands:
+
+```bash
+uv run python train_tokenizer.py --input-file data/raw/fineweb_16k_sample/train.jsonl --vocab-size 32768 --output-dir data/tokenizers --prefix fineweb_32k_sample
+uv run python prepare_tokens.py --train-input-file data/raw/fineweb_16k_sample/train.jsonl --val-input-file data/raw/fineweb_16k_sample/val.jsonl --tokenizer-prefix ./data/tokenizers/fineweb_32k_sample --output-dir ./data/tokens/fineweb_32k_sample
+```
+
+Terminal output summary:
+
+```text
+source=local-files
+vocab_path=data/tokenizers/fineweb_32k_sample-vocab.json
+merges_path=data/tokenizers/fineweb_32k_sample-merges.txt
+raw_size_bytes=811175
+compressed_size_bytes=340918
+train avg_bytes_per_token=4.4202857706695236
+val avg_bytes_per_token=4.351551413669658
+```
+
+Interpretation:
+
+- The `32k` tokenizer is ready for model training.
+- Relative to the `24k` branch, this increases bytes per token from about `4.25` to about `4.42` on train data.
+- That is exactly the kind of denominator gain that could matter once the model-side branch is already near `1.6`.
+
 ## Current Working Hypothesis
 
 The best immediate path is now:
@@ -3373,7 +3448,8 @@ The best immediate path is now:
 8. treat the `24k` exact tokenizer path as the current best local scoring branch, but still optimization-limited and artifact-limited rather than architecture-limited
 9. longer horizon plus later cooldown is currently the strongest confirmed lever inside the `24k` branch
 10. GQA plus query gain plus logit softcap is now the strongest confirmed architecture tweak on top of that schedule
-11. the next high-value test is to extend this improved branch further before reopening broader architecture search
+11. longer horizon still helps, but with diminishing returns
+12. the next high-value test is to combine the proven GQA/softcap schedule with the prepared `32k` tokenizer branch
 
 Reasoning:
 
@@ -3385,9 +3461,10 @@ Reasoning:
 - The `24k` exact tokenizer path is now the strongest local branch we have, but it is still bottlenecked by optimization and artifact size more than by missing infrastructure.
 - Inside that branch, better LR plus much longer horizon moved the score more than bigger effective batch, extra loops, or extra width.
 - On top of that schedule, the official-baseline attention knobs added another clean improvement.
+- The `3200`-step continuation shows optimization horizon is still useful, but no longer enough to expect a free drop to `1.5`.
 - The next wins are most likely to come from:
-  - extending the improved GQA/softcap branch to a longer horizon
-  - maybe another schedule adjustment around that same branch if the longer continuation starts flattening
+  - the prepared `32k` tokenizer branch on top of the proven GQA/softcap setup
+  - maybe another longer continuation after we know whether the tokenizer denominator gain is real in practice
   - only then another architecture or width change if the curve still stalls
 
 ## Next Command To Run
@@ -3395,11 +3472,11 @@ Reasoning:
 This is the next command to run:
 
 ```bash
-PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_d512_gqa_softcap_s3200 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=512 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=800 MAX_STEPS=3200 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_d512_gqa_softcap_s3200.json uv run python train_gpt.py | tee runs/bytelevel24k/bytelevel24k_d512_gqa_softcap_s3200.log
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel32k_d512_gqa_softcap_s3200 TOKENIZER_PREFIX=./data/tokenizers/fineweb_32k_sample DATA_PATH=./data/tokens/fineweb_32k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_32k_sample/val D_MODEL=512 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=800 MAX_STEPS=3200 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 DEVICE=mps STATS_PATH=runs/bytelevel32k/bytelevel32k_d512_gqa_softcap_s3200.json uv run python train_gpt.py | tee runs/bytelevel32k/bytelevel32k_d512_gqa_softcap_s3200.log
 ```
 
 Why this exact command:
 
-- The GQA/softcap `1600`-step run is now the best local exact result in the repo, so the clean next move is to extend that exact improved branch rather than reopening a worse configuration.
-- `VAL_LOSS_EVERY=800` reduces eval overhead now that we already trust this branch enough to let it run longer between checkpoints.
-- If this longer continuation still improves materially, it will tell us that the local bottleneck is still optimization horizon rather than missing architecture.
+- The `24k` branch is now close enough to `1.5` that a real tokenizer denominator gain is the highest-leverage remaining lever.
+- The model-side recipe is already proven: GQA, query gain, logit softcap, `SEQ_LEN=1024`, `3200` steps.
+- Keeping the model recipe fixed while changing only the tokenizer branch is the cleanest next experiment.
