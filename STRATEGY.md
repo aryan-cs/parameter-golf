@@ -56,10 +56,10 @@ Current interesting non-record comparison:
 
 Our current best local exact result:
 
-- exact `final_val_bpb`: `1.9059446644848441`
-- short form: `1.9059`
-- run id: `bytelevel24k_d512_tied_lr2x_s800`
-- artifact: `22,746,326` bytes
+- exact `final_val_bpb`: `1.7853542005916354`
+- short form: `1.7854`
+- run id: `bytelevel24k_d512_tied_lr2x_s1600`
+- artifact: `22,405,986` bytes
 - status: exact ByteLevel BPE on the local `24k` sample-data path; strong local milestone, but not competition-valid and not artifact-valid yet
 
 Current best official-tokenizer local exact-bpb result:
@@ -81,10 +81,10 @@ Current best long-context (`SEQ_LEN=1024`) official-tokenizer result:
 
 Current best exact `24k` ByteLevel result:
 
-- exact sampled `best_val_bpb`: `1.9059446644848441`
-- short form: `1.9059`
-- run id: `bytelevel24k_d512_tied_lr2x_s800`
-- artifact: `22,746,326` bytes
+- exact sampled `best_val_bpb`: `1.7853542005916354`
+- short form: `1.7854`
+- run id: `bytelevel24k_d512_tied_lr2x_s1600`
+- artifact: `22,405,986` bytes
 - status: best exact large-tokenizer result so far; still far above the artifact cap, but now the strongest overall local exact score in the repo
 
 Gap versus official main-track leader for our best exact sampled official-tokenizer run:
@@ -94,12 +94,12 @@ Gap versus official main-track leader for our best exact sampled official-tokeni
 
 Gap versus official main-track leader for our best tokenizer-changed local exact run:
 
-- `1.9059446644848441 - 1.22436570 = 0.6815789644848442` bpb worse
-- `0.6815789644848442 / log2(e) = 0.4724345375616369` nats worse
+- `1.7853542005916354 - 1.22436570 = 0.5609885005916355` bpb worse
+- `0.5609885005916355 / log2(e) = 0.3888475975116434` nats worse
 
 Gap versus the immediate `1.5` local target:
 
-- `1.9059446644848441 - 1.5 = 0.4059446644848441` bpb worse
+- `1.7853542005916354 - 1.5 = 0.2853542005916354` bpb worse
 
 PR opening rule:
 
@@ -3276,6 +3276,43 @@ Interpretation:
 - The currently running `bytelevel24k_d512_tied_lr2x_s1600` experiment was launched before this patch, so its result should be compared only against the pre-GQA/softcap code snapshot.
 - If the long `24k` branch stalls, the next architecture ablation should test `NUM_KV_HEADS=4`, `QK_GAIN_INIT=1.5`, and `LOGIT_SOFTCAP=30`.
 
+## Experiment 47. Extend The Promoted `24k` Branch To 1600 Steps
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Test whether the now-promoted `24k` `2x` LR branch still had a meaningful amount of headroom once the total run length and cooldown horizon were doubled.
+
+Command:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_d512_tied_lr2x_s1600 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=400 MAX_STEPS=1600 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_d512_tied_lr2x_s1600.json uv run python train_gpt.py | tee runs/bytelevel24k/bytelevel24k_d512_tied_lr2x_s1600.log
+```
+
+Terminal output:
+
+```text
+step=400 train_loss=5.5973 train_bpb=1.9005 val_loss=5.7808 val_bpb=1.9617 muon_lr=3.251e-02 adamw_lr=4.876e-04 elapsed=459.5s
+step=800 train_loss=5.3514 train_bpb=1.7741 val_loss=5.4348 val_bpb=1.8308 muon_lr=1.542e-02 adamw_lr=2.314e-04 elapsed=915.9s
+step=1200 train_loss=5.0116 train_bpb=1.7362 val_loss=5.3021 val_bpb=1.8121 muon_lr=4.357e-03 adamw_lr=6.535e-05 elapsed=1377.5s
+=== final_stats ===
+steps=1600
+seconds=1838.28
+final_val_bpb=1.7854
+total_artifact_bytes=22405986
+artifact_budget_ok=False
+```
+
+Interpretation:
+
+- This is the new best local exact result in the repo.
+- Relative to the old `800`-step `24k` best (`1.9059`), the longer-horizon run improved by `0.1206` bpb.
+- The extra horizon and later cooldown mattered much more than recent width, loop-depth, or accumulation changes.
+- We are still `0.2854` bpb away from the local `1.5` target, so longer training alone probably is not sufficient.
+
 ## Current Working Hypothesis
 
 The best immediate path is now:
@@ -3287,8 +3324,9 @@ The best immediate path is now:
 5. disable QAT during local search and reserve it for final artifact-budget measurement
 6. use gradient accumulation when the promising branch is memory-bound rather than accepting an artificially tiny effective batch
 7. keep batch large enough for throughput, but compare regimes by total training tokens rather than by raw step count
-8. treat the `24k` exact tokenizer path as the current best local scoring branch, but still optimization-limited rather than architecture-limited
-9. learning-rate retuning plus longer horizon is currently the strongest lever inside the `24k` branch
+8. treat the `24k` exact tokenizer path as the current best local scoring branch, but still optimization-limited and artifact-limited rather than architecture-limited
+9. longer horizon plus later cooldown is currently the strongest confirmed lever inside the `24k` branch
+10. the next high-value test is to layer official-baseline attention choices on top of that same strong schedule instead of reopening weaker branches
 
 Reasoning:
 
@@ -3298,10 +3336,10 @@ Reasoning:
 - The outside review was directionally right that context length needed to be tested much more seriously.
 - The follow-up experiments showed that naive step-count comparisons were misleading because the `1024` path needed a smaller batch locally.
 - The `24k` exact tokenizer path is now the strongest local branch we have, but it is still bottlenecked by optimization and artifact size more than by missing infrastructure.
-- Inside that branch, better LR plus more horizon moved the score more than bigger effective batch, extra loops, or extra width.
+- Inside that branch, better LR plus much longer horizon moved the score more than bigger effective batch, extra loops, or extra width.
 - The next wins are most likely to come from:
-  - one more longer training extension on the promoted `24k` `2x` LR branch
-  - maybe another schedule adjustment around that same branch
+  - baseline-aligned attention changes on top of the same promoted `24k` schedule
+  - maybe another schedule adjustment around that same branch if the GQA/softcap run is neutral
   - only then another architecture or width change if the curve still stalls
 
 ## Next Command To Run
@@ -3309,11 +3347,11 @@ Reasoning:
 This is the next command to run:
 
 ```bash
-PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_d512_tied_lr2x_s1600 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=400 MAX_STEPS=1600 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_d512_tied_lr2x_s1600.json uv run python train_gpt.py
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_d512_gqa_softcap_s1600 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=512 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=400 MAX_STEPS=1600 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_d512_gqa_softcap_s1600.json uv run python train_gpt.py | tee runs/bytelevel24k/bytelevel24k_d512_gqa_softcap_s1600.log
 ```
 
 Why this exact command:
 
-- The `800`-step extension was the best overall exact local score we have seen so far, so the branch deserves one more longer-horizon check before we reopen architecture search.
-- It keeps the now-promoted `2x` learning rate fixed instead of conflating horizon and optimizer changes.
-- `VAL_LOSS_EVERY=400` trims evaluation overhead while still giving us a mid-run checkpoint and a final answer.
+- The `1600`-step `24k` run is now the best local exact result in the repo, so the clean next comparison is to keep that schedule fixed and change only the newly added baseline-aligned attention knobs.
+- `NUM_KV_HEADS=4`, `QK_GAIN_INIT=1.5`, and `LOGIT_SOFTCAP=30` are directly motivated by the official baseline rather than by random local tinkering.
+- `VAL_LOSS_EVERY=400` preserves the useful checkpoints without paying too much eval overhead.

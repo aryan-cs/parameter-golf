@@ -32,8 +32,8 @@ Current best numbers worth knowing:
 - Practical clean-record target after the `0.005 nats` significance bar:
   - `1.217152224795555` bpb
 - Best overall local exact result so far:
-  - `bytelevel24k_d512_tied_lr2x_s800`
-  - `final_val_bpb = 1.9059446644848441`
+  - `bytelevel24k_d512_tied_lr2x_s1600`
+  - `final_val_bpb = 1.7853542005916354`
 - Best official-tokenizer sampled local exact result so far:
   - `torch_sp1024_d512_l4_b64k_s200`
   - `best_val_bpb = 1.995522745133331`
@@ -41,13 +41,13 @@ Current best numbers worth knowing:
   - `torch_sp1024_d512_l4_b32k_s400_seq1024_cd20`
   - `best_val_bpb = 2.0050325515775427`
 - Best exact `24k` tokenizer result so far:
-  - `bytelevel24k_d512_tied_lr2x_s800`
-  - `final_val_bpb = 1.9059446644848441`
+  - `bytelevel24k_d512_tied_lr2x_s1600`
+  - `final_val_bpb = 1.7853542005916354`
 
 Main conclusion right now:
 
 - The search no longer has an infrastructure bottleneck.
-- The current bottleneck is pushing the promising exact `24k` branch below the high `1`s while eventually pulling its artifact size back down.
+- The current bottleneck is pushing the promising exact `24k` branch the rest of the way to `1.5` while eventually pulling its artifact size back down.
 
 ## 2. What Changed Since `DRAFT1`
 
@@ -104,6 +104,8 @@ What actually happened after re-testing:
   - `2.0389181133431182`
 - `24k` exact, tied embeddings, `800` steps, `2x` LR:
   - `1.9059446644848441`
+- `24k` exact, tied embeddings, `1600` steps, `2x` LR:
+  - `1.7853542005916354`
 - `16k` exact, tied embeddings, `40` steps:
   - `2.6767`
 
@@ -224,8 +226,8 @@ Interpretation:
 
 Best exact result so far:
 
-- `bytelevel24k_d512_tied_lr2x_s800`
-  - `final_val_bpb = 1.9059446644848441`
+- `bytelevel24k_d512_tied_lr2x_s1600`
+  - `final_val_bpb = 1.7853542005916354`
 
 Supporting results:
 
@@ -237,6 +239,8 @@ Supporting results:
   - `2.4673788844876348`
 - `bytelevel24k_d512_tied_lr2x_s400`
   - `2.0389181133431182`
+- `bytelevel24k_d512_tied_lr2x_s800`
+  - `1.9059446644848441`
 - `bytelevel24k_d512_tied_l8_s100`
   - `2.3681701384086318`
 - `bytelevel24k_eff64k_accum_s100`
@@ -251,6 +255,7 @@ Interpretation:
 - the strongest new lever inside this branch has been learning-rate retuning plus more training horizon
 - this branch is now the best overall local exact line we have
 - the branch still improves steadily, but it remains far over the artifact cap
+- doubling the run horizon from `800` to `1600` improved the best exact local score by `0.12059046389320871` bpb
 
 ### 4.3 Exact `16k` tokenizer branch
 
@@ -302,17 +307,19 @@ It looks like:
 2. Use tied embeddings.
 3. Use `SEQ_LEN=1024`.
 4. Use the promoted `2x` learning rate.
-5. Extend that branch longer before touching width again.
-6. Use accumulation only when the direct-memory limit blocks a genuinely better regime.
-7. Do not let artifact-size blindness hide the fact that this branch will eventually need a smaller valid variant.
+5. Use the longer `1600`-step horizon as the new default schedule.
+6. Test official-baseline attention choices on top of that strong schedule before touching width again.
+7. Use accumulation only when the direct-memory limit blocks a genuinely better regime.
+8. Do not let artifact-size blindness hide the fact that this branch will eventually need a smaller valid variant.
 
 Why this seems best:
 
 - `24k` clearly beat `16k`
 - exact byte accounting is now real
-- the branch now reaches `1.9059`
+- the branch now reaches `1.7854`
 - width and deeper loops have not moved it much
 - optimization horizon is still the most responsive lever
+- the next clean question is whether GQA plus logit softcap helps on the same long-horizon schedule
 
 ## 6. What Still Looks Wrong or Incomplete
 
@@ -320,34 +327,35 @@ Why this seems best:
 
 That is still the blunt truth.
 
-The best overall local exact score is now `1.9059`.
+The best overall local exact score is now `1.7854`.
 The best official-tokenizer sampled exact score is `1.9955`.
 The best long-context official-tokenizer score is `2.0050`.
 
-So we are materially better than where we were at `DRAFT1`, but still `0.4059` bpb away from the local `1.5` target.
+So we are materially better than where we were at `DRAFT1`, but still `0.2854` bpb away from the local `1.5` target.
 
 ### 6.2 The larger-tokenizer branch is still badly over the artifact cap
 
 Even with tied embeddings:
 
-- `24k`, `d_model=512`, `800` steps produced `22,746,326` artifact bytes
-- the cap is `16,000,000`, so this branch is over by `6,746,326` bytes
+- `24k`, `d_model=512`, `1600` steps produced `22,405,986` artifact bytes
+- the cap is `16,000,000`, so this branch is over by `6,405,986` bytes
 - `16k`, `d_model=512` is smaller, but it also scores much worse locally
 
 So if the `24k` branch eventually becomes the best score path, it will still need a later artifact-compression / smaller-width / different-model pass.
 
-### 6.3 We have not yet tested the strongest next long-horizon continuation
+### 6.3 We have not yet tested the strongest next baseline-aligned continuation
 
 The most obvious next run is now:
 
 ```bash
 PYTHONUNBUFFERED=1 \
-RUN_ID=bytelevel24k_d512_tied_lr2x_s1600 \
+RUN_ID=bytelevel24k_d512_gqa_softcap_s1600 \
 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample \
 DATA_PATH=./data/tokens/fineweb_24k_sample/train \
 VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val \
 D_MODEL=512 \
 N_HEADS=8 \
+NUM_KV_HEADS=4 \
 D_FF=1365 \
 N_LOOPS=4 \
 SEQ_LEN=1024 \
@@ -361,11 +369,13 @@ QAT_START_FRACTION=1.0 \
 TIED_EMBEDDINGS=1 \
 MUON_LR=0.04 \
 ADAMW_LR=0.0006 \
+QK_GAIN_INIT=1.5 \
+LOGIT_SOFTCAP=30 \
 DEVICE=mps \
 uv run python train_gpt.py
 ```
 
-That is the cleanest next continuation because the `800`-step run was the strongest result we have, and we still do not know whether that branch has actually saturated.
+That is the cleanest next continuation because the plain `1600`-step run is now our best local result, and we now have a ready-to-test set of official-baseline attention knobs that can be layered on top without changing the rest of the regime.
 
 ## 7. Reviewer Questions
 
@@ -374,7 +384,7 @@ If another strong reviewer picks this up, the most useful questions now are:
 1. Is the shared-loop family still the right one once we are in exact `24k` territory, or are we wasting time not changing the optimizer/model more aggressively?
 2. Is `24k` actually the correct tokenizer target, or should we be exploring something closer to `32k` with a smaller model width?
 3. Is there an obvious optimizer/schedule change that should replace the current Muon + AdamW split for the large-vocab branch?
-4. Should we add grouped-query attention next, or is accumulated batch the more important lever?
+4. Does the new baseline-aligned attention path suggest we should copy more of the official inductive biases before another pure optimization extension?
 5. If the real goal is a leaderboard submission rather than a local `1.5`, should we stop chasing large-vocab local scores and move earlier to an artifact-aware branch?
 
 ## 8. Bottom Line
@@ -386,7 +396,8 @@ Compared with `DRAFT1`, the project is in a much better state:
 - the exact ByteLevel tokenizer path exists
 - tied embeddings exist
 - gradient accumulation exists
-- the `24k` branch now has a real exact local score in the `1.9`s
+- baseline-aligned GQA, per-head query gain, and logit softcap knobs exist
+- the `24k` branch now has a real exact local score in the `1.7`s
 
 But the bottom-line score has still not crossed `1.5`.
 
