@@ -99,10 +99,10 @@ Most recent stopped frontier checkpoint:
 Current live frontier checkpoint:
 
 - run id: `bytelevel24k_d640_gqa_softcap_cd05_s4800`
-- latest checkpoint: `step=400`
-- live `val_bpb`: `1.8951`
-- gap to local `1.5`: `0.3951`
-- status: active longer-horizon retry of the best completed local recipe; essentially tied with the completed `3200`-step branch at the same horizon (`1.8955 -> 1.8951`), so the longer schedule has earned the `step=800` comparison
+- latest checkpoint: `step=800`
+- live `val_bpb`: `1.7362`
+- gap to local `1.5`: `0.2362`
+- status: active longer-horizon retry of the best completed local recipe; now slightly ahead of the completed `3200`-step branch at the same horizon (`1.7390 -> 1.7362`), so the extra horizon is at least paying off early
 
 Current prepared next-tokenizer branch:
 
@@ -4120,6 +4120,24 @@ Interpretation:
 - This is effectively a tie, but it is at least moving in the right direction.
 - The longer-horizon branch has not fallen behind early, which is the minimum bar it needed to clear.
 - The next meaningful comparison point is `step=800`, where the score to beat is `1.7390`.
+
+Second checkpoint from the new `4800`-step branch:
+
+```text
+step=800 train_loss=5.0293 train_bpb=1.6673 val_loss=5.1540 val_bpb=1.7362 muon_lr=3.744e-02 adamw_lr=5.616e-04 elapsed=1212.4s
+```
+
+Matched-horizon comparison:
+
+- completed `3200`-step `d640 + cd05` branch at `step=800`: `1.7390`
+- new `4800`-step `d640 + cd05` branch at `step=800`: `1.7362`
+- difference: `0.0028` bpb better
+
+Interpretation:
+
+- This is only a modest gain, but it is a real gain in the right direction.
+- The longer-horizon branch is not dramatically better yet, but it has now beaten the completed `3200`-step curve at both `step=400` and `step=800`.
+- That is enough to keep it alive for the later checkpoints, where the extra horizon should matter more than it does early.
 
 What this changes:
 
