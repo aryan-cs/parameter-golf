@@ -25,7 +25,7 @@ Current facts that matter most:
   - `step=800 val_bpb = 1.7553`
 - The active frontier is now:
   - `bytelevel24k_d640_gqa_softcap_cd05_s4800`
-  - `step=0 val_bpb = 3.4676`
+  - `step=400 val_bpb = 1.8951`
 - The `32k` branch is no longer better than `24k`.
   - at `step=800`, `32k` was ahead
   - at `step=1600`, `32k` was behind `24k`
@@ -507,6 +507,21 @@ parameters=20,238,248
 step=0 train_loss=10.1780 train_bpb=3.3062 val_loss=10.1269 val_bpb=3.4676 muon_lr=2.000e-03 adamw_lr=3.000e-05 elapsed=0.0s
 ```
 
+The first real checkpoint from the longer-horizon retry is:
+
+```text
+step=400 train_loss=5.3749 train_bpb=1.8249 val_loss=5.5847 val_bpb=1.8951 muon_lr=3.938e-02 adamw_lr=5.907e-04 elapsed=599.2s
+```
+
+Compared with the completed `3200`-step `d640 + cd05` branch:
+
+```text
+3200-step branch at step=400: 1.8955
+4800-step branch at step=400: 1.8951
+```
+
+That is only a `0.0004` bpb edge, so it is basically a tie, but at least the longer run is not losing early.
+
 The first real checkpoint from that restart is now:
 
 ```text
@@ -714,8 +729,8 @@ step=0 train_loss=10.1780 train_bpb=3.3062 val_loss=10.1269 val_bpb=3.4676 muon_
 
 The search tree is now:
 
-1. Let the live `bytelevel24k_d640_gqa_softcap_cd05_s4800` run reach `step=400` and compare its early curve to the completed `3200`-step `d640 + cd05` branch.
-2. If the longer-horizon recipe is still competitive there, keep it alive for the later checkpoints where extra optimization room can actually matter.
+1. Let the live `bytelevel24k_d640_gqa_softcap_cd05_s4800` run reach `step=800` and compare it against the completed `3200`-step branch's `1.7390`.
+2. If it is still competitive there, keep it alive for the later checkpoints where extra optimization room can actually matter.
 3. If it still flattens, reconsider whether the next lever is batch, denominator, or a baseline-inspired block change rather than more width.
 4. Keep the `relu2 + block_scales + resid_mix` branch as a prepared fallback, not the first next move.
 5. Treat `48k` and `64k` as contingency denominator branches only after schedule-tuned width stops paying.
@@ -762,7 +777,7 @@ The active frontier is:
 
 ```text
 bytelevel24k_d640_gqa_softcap_cd05_s4800
-step=0 val_bpb=3.4676
+step=400 val_bpb=1.8951
 ```
 
 The prepared model-side ablation is:
