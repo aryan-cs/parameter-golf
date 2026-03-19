@@ -22,7 +22,7 @@ Current facts that matter most:
   - `step=2400 val_bpb = 1.6675`
 - The active frontier is now:
   - `bytelevel48k_d384_gqa_softcap_accum_s3200`
-  - `step=0 val_bpb = 3.4832`
+  - `step=400 val_bpb = 1.9461`
 - The `32k` branch is no longer better than `24k`.
   - at `step=800`, `32k` was ahead
   - at `step=1600`, `32k` was behind `24k`
@@ -274,12 +274,14 @@ Output so far:
 train_batch_size_tokens=16384 train_microbatch_size_tokens=8192 grad_accum_steps=2
 parameters=20,499,560
 step=0 train_loss=10.8733 train_bpb=3.4118 val_loss=10.8438 val_bpb=3.4832 muon_lr=2.000e-03 adamw_lr=3.000e-05 elapsed=0.0s
+step=400 train_loss=5.8386 train_bpb=1.8479 val_loss=5.9844 val_bpb=1.9461 muon_lr=3.805e-02 adamw_lr=5.707e-04 elapsed=550.5s
 ```
 
 Interpretation:
 
 - This is the first `48k` branch shape that both keeps the `48k` tokenizer denominator and behaves like a sane local training job.
 - It is now the correct active frontier.
+- Relative to the older `24k` `step=400` checkpoint (`1.9226`), it is only `0.0235` bpb worse, which is small enough that this branch is still worth continuing.
 
 ### 4.4 Smoke test for the new block knobs
 
@@ -356,7 +358,7 @@ The active frontier is:
 
 ```text
 bytelevel48k_d384_gqa_softcap_accum_s3200
-step=0 val_bpb=3.4832
+step=400 val_bpb=1.9461
 ```
 
 The next prepared model-side branch is:

@@ -98,8 +98,9 @@ Most recent stopped frontier checkpoint:
 Current live frontier checkpoint:
 
 - run id: `bytelevel48k_d384_gqa_softcap_accum_s3200`
-- latest checkpoint: `step=0`
-- live `val_bpb`: `3.4832`
+- latest checkpoint: `step=400`
+- live `val_bpb`: `1.9461`
+- gap to local `1.5`: `0.4461`
 - status: now active on MPS as the resized and accumulated `48k` branch after the full-width `48k` variants proved too memory-heavy
 
 Current prepared next-tokenizer branch:
@@ -3722,12 +3723,14 @@ Terminal output:
 train_batch_size_tokens=16384 train_microbatch_size_tokens=8192 grad_accum_steps=2
 parameters=20,499,560
 step=0 train_loss=10.8733 train_bpb=3.4118 val_loss=10.8438 val_bpb=3.4832 muon_lr=2.000e-03 adamw_lr=3.000e-05 elapsed=0.0s
+step=400 train_loss=5.8386 train_bpb=1.8479 val_loss=5.9844 val_bpb=1.9461 muon_lr=3.805e-02 adamw_lr=5.707e-04 elapsed=550.5s
 ```
 
 Interpretation:
 
 - The live frontier is no longer the failing full-batch `48k` branch.
 - It is now the accumulated `48k d384` branch, which is the strongest denominator test we have found that actually runs locally.
+- The first real checkpoint is not an immediate breakthrough, but it is still close enough to the older `24k` step-`400` reference (`1.9226`) that this branch is worth continuing.
 
 ## Experiment 53. Add Baseline-Inspired Block Knobs
 
