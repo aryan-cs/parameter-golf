@@ -23,9 +23,12 @@ Current facts that matter most:
 - The most recent stopped width continuation is now:
   - `bytelevel24k_d640_gqa_softcap_cd05_s4800`
   - `step=3200 val_bpb = 1.6063`
-- The active frontier is now:
+- The most recent stopped schedule-retune branch is now:
   - `bytelevel24k_d640_gqa_softcap_cd10_s4800`
-  - `step=1200 val_bpb = 1.6769`
+  - `step=1600 val_bpb = 1.6162`
+- The active frontier is now:
+  - `bytelevel24k_d640_gqa_softcap_cd05_b32k_s4800`
+  - `step=0 val_bpb = 3.4671`
 - The prepared serial fallback queue is now:
   - `bytelevel24k_d640_gqa_softcap_cd05_b32k_s4800`
   - `bytelevel24k_d576_gqa_softcap_cd05_s4800`
@@ -940,16 +943,53 @@ I dry-ran the queue and compiled the file successfully:
 
 This is not a score improvement by itself, but it makes the next long runs cheaper to keep in motion.
 
+## 4B. The `cd10` Schedule Retune Lost The Decision And I Cut It
+
+The next checkpoint finally made the decision:
+
+```text
+step=1600 train_loss=4.4688 train_bpb=1.5116 val_loss=4.7834 val_bpb=1.6162 muon_lr=2.928e-02 adamw_lr=4.392e-04 elapsed=2778.8s
+checkpoint=saved path=/Users/aryan/Desktop/golf/runs/bytelevel24k/bytelevel24k_d640_gqa_softcap_cd10_s4800.pt step=1601
+```
+
+Compared with the two closest references:
+
+```text
+best completed cd05 s3200 at step=1600: 1.6143
+cd05 s4800 at step=1600:               1.6169
+cd10 s4800 at step=1600:               1.6162
+```
+
+So `cd10` was:
+
+- `0.0007` bpb better than the already-weaker `cd05 s4800` retry
+- `0.0019` bpb worse than the best completed `cd05 s3200` branch
+
+That is not enough separation to justify spending more wall-clock on schedule-only tuning.
+
+So I cut it and promoted the first queued fallback:
+
+```text
+bytelevel24k_d640_gqa_softcap_cd05_b32k_s4800
+```
+
+The new live branch started cleanly:
+
+```text
+[1/2] run_id=bytelevel24k_d640_gqa_softcap_cd05_b32k_s4800
+train_batch_size_tokens=32768 train_microbatch_size_tokens=16384 grad_accum_steps=2
+step=0 train_loss=10.1729 train_bpb=3.3852 val_loss=10.1254 val_bpb=3.4671 muon_lr=2.000e-03 adamw_lr=3.000e-05 elapsed=0.0s
+```
+
 ## 5. What I Think Now
 
 The search tree is now:
 
-1. Let the live `bytelevel24k_d640_gqa_softcap_cd10_s4800` run reach `step=1600`.
-2. If it stays competitive there, keep schedule search as the main line.
-3. If it underperforms, launch the prepared queue starting with `bytelevel24k_d640_gqa_softcap_cd05_b32k_s4800`.
-4. Use `bytelevel24k_d576_gqa_softcap_cd05_s4800` as the width-bracketing follow-up if the accumulated `d640` branch still stalls.
-5. Keep the `relu2 + block_scales + resid_mix` branch as a prepared fallback, not the first next move.
-5. Treat `48k` and `64k` as contingency denominator branches only after schedule-tuned width stops paying.
+1. Let the live `bytelevel24k_d640_gqa_softcap_cd05_b32k_s4800` accumulation branch reach `step=400`.
+2. If effective batch helps clearly, keep accumulation as the main line.
+3. If it still stalls, let the queue continue into `bytelevel24k_d576_gqa_softcap_cd05_s4800`.
+4. Keep the `relu2 + block_scales + resid_mix` branch as a prepared fallback, not the first next move.
+5. Treat `48k` and `64k` as contingency denominator branches only after accumulated `24k` width stops paying.
 
 Why width is now the lead hypothesis:
 
@@ -992,8 +1032,8 @@ step=3200 val_bpb=1.6063
 The active frontier is:
 
 ```text
-bytelevel24k_d640_gqa_softcap_cd10_s4800
-step=1200 val_bpb=1.6769
+bytelevel24k_d640_gqa_softcap_cd05_b32k_s4800
+step=0 val_bpb=3.4671
 ```
 
 The prepared model-side ablation is:
@@ -1006,5 +1046,5 @@ USE_RESID_MIX=1
 
 We are still not at `1.5`, but the project now has both of the remaining obvious levers active or prepared:
 
-- larger-tokenizer denominator scaling beyond `24k`
+- larger effective token budget on the best `24k d640` recipe
 - a new model-side branch beyond the current GQA/softcap recipe

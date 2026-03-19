@@ -98,11 +98,19 @@ Most recent stopped frontier checkpoint:
 
 Current live frontier checkpoint:
 
+- run id: `bytelevel24k_d640_gqa_softcap_cd05_b32k_s4800`
+- latest checkpoint: `step=0`
+- live `val_bpb`: `3.4671`
+- gap to local `1.5`: `1.9671`
+- status: active effective-`32k` accumulated retry of the best `d640 + cd05` recipe; promoted after the `cd10` schedule-only branch failed to show a convincing edge at `step=1600`
+
+Most recent stopped schedule-retune checkpoint:
+
 - run id: `bytelevel24k_d640_gqa_softcap_cd10_s4800`
-- latest checkpoint: `step=1200`
-- live `val_bpb`: `1.6769`
-- gap to local `1.5`: `0.1769`
-- status: active schedule-retune of the best local recipe with checkpointing enabled; still effectively tied with the strongest prior `d640` checkpoints at the same horizon, so it stays alive for the later comparisons
+- latest checkpoint: `step=1600`
+- live `val_bpb`: `1.6162`
+- gap to local `1.5`: `0.1162`
+- status: cut at the matched-horizon verdict because it was only `0.0007` better than the already-weaker `cd05 s4800` line and still `0.0019` worse than the best completed `cd05 s3200` branch
 
 Current prepared fallback queue:
 
@@ -4598,3 +4606,51 @@ Interpretation:
 - This does not change the score directly, but it does remove a real operational bottleneck.
 - The next two local fallback branches are now encoded and ready to launch in order.
 - That makes it easier to keep the single-device search moving continuously once the live `cd10` branch either wins or gets cut.
+
+## Experiment 65. Cut `cd10` At `step=1600` And Promote The Accumulated `d640` Queue
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Use the `step=1600` checkpoint to decide whether schedule-only retuning still had enough expected value to justify more wall-clock on the single-device search.
+
+Terminal output:
+
+```text
+step=1600 train_loss=4.4688 train_bpb=1.5116 val_loss=4.7834 val_bpb=1.6162 muon_lr=2.928e-02 adamw_lr=4.392e-04 elapsed=2778.8s
+checkpoint=saved path=/Users/aryan/Desktop/golf/runs/bytelevel24k/bytelevel24k_d640_gqa_softcap_cd10_s4800.pt step=1601
+```
+
+Matched-horizon comparison:
+
+- best completed `cd05 s3200` branch at `step=1600`: `1.6143`
+- longer-horizon `cd05 s4800` branch at `step=1600`: `1.6169`
+- current `cd10 s4800` branch at `step=1600`: `1.6162`
+
+Decision:
+
+- Cut `cd10`.
+- Promote the next higher-EV branch from the prepared queue: effective-`32k` accumulated `d640 + cd05`.
+
+Launch command:
+
+```bash
+PYTHONUNBUFFERED=1 uv run python queue_runs.py --manifest queues/d640_followups.json --output-dir runs/queue_d640_followups | tee runs/queue_d640_followups/queue.log
+```
+
+New live run startup:
+
+```text
+[1/2] run_id=bytelevel24k_d640_gqa_softcap_cd05_b32k_s4800
+train_batch_size_tokens=32768 train_microbatch_size_tokens=16384 grad_accum_steps=2
+step=0 train_loss=10.1729 train_bpb=3.3852 val_loss=10.1254 val_bpb=3.4671 muon_lr=2.000e-03 adamw_lr=3.000e-05 elapsed=0.0s
+```
+
+Interpretation:
+
+- The `cd10` branch stayed alive longer than the weaker `cd05 s4800` retry, but it still did not separate from the best completed `cd05 s3200` line.
+- That makes further schedule-only tuning lower EV than testing a real token-budget change on the same winning recipe.
+- The search is now spending the device on the first accumulated `d640` follow-up instead of another near-tied schedule continuation.
