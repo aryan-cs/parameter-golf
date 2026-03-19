@@ -25,7 +25,7 @@ Current facts that matter most:
   - `step=3200 val_bpb = 1.6063`
 - The active frontier is now:
   - `bytelevel24k_d640_gqa_softcap_cd10_s4800`
-  - `step=800 val_bpb = 1.7388`
+  - `step=1200 val_bpb = 1.6769`
 - The `32k` branch is no longer better than `24k`.
   - at `step=800`, `32k` was ahead
   - at `step=1600`, `32k` was behind `24k`
@@ -884,11 +884,27 @@ So `cd10` is:
 
 That is still effectively a tie, so the checkpointed `cd10` branch stays alive.
 
+The next checkpoint keeps the same story:
+
+```text
+step=1200 train_loss=4.5467 train_bpb=1.5751 val_loss=4.9065 val_bpb=1.6769 muon_lr=3.372e-02 adamw_lr=5.057e-04 elapsed=1974.0s
+checkpoint=saved path=/Users/aryan/Desktop/golf/runs/bytelevel24k/bytelevel24k_d640_gqa_softcap_cd10_s4800.pt step=1201
+```
+
+Compared with `cd05 s4800`:
+
+```text
+cd05 s4800 at step=1200: 1.6756
+cd10 s4800 at step=1200: 1.6769
+```
+
+So `cd10` is only `0.0013` bpb worse there. That is still close enough to keep alive.
+
 ## 5. What I Think Now
 
 The search tree is now:
 
-1. Let the live `bytelevel24k_d640_gqa_softcap_cd10_s4800` run reach `step=1200` and `step=1600`.
+1. Let the live `bytelevel24k_d640_gqa_softcap_cd10_s4800` run reach `step=1600`.
 2. If it stays competitive there, keep schedule search as the main line.
 3. If it still underperforms, reconsider batch or denominator before spending more time on horizon alone.
 4. Keep the `relu2 + block_scales + resid_mix` branch as a prepared fallback, not the first next move.
@@ -936,7 +952,7 @@ The active frontier is:
 
 ```text
 bytelevel24k_d640_gqa_softcap_cd10_s4800
-step=800 val_bpb=1.7388
+step=1200 val_bpb=1.6769
 ```
 
 The prepared model-side ablation is:
