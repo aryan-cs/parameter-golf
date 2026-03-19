@@ -25,7 +25,7 @@ Current facts that matter most:
   - `step=800 val_bpb = 1.7553`
 - The active frontier is now:
   - `bytelevel24k_d640_gqa_softcap_cd05_s4800`
-  - `step=800 val_bpb = 1.7362`
+  - `step=1600 val_bpb = 1.6169`
 - The `32k` branch is no longer better than `24k`.
   - at `step=800`, `32k` was ahead
   - at `step=1600`, `32k` was behind `24k`
@@ -539,6 +539,38 @@ That is a `0.0028` bpb gain.
 
 It is not dramatic, but it is enough to keep the longer-horizon branch alive for the later checkpoints where extra optimization room should matter more.
 
+The next two checkpoints narrow that story:
+
+```text
+step=1200 train_loss=4.5526 train_bpb=1.5772 val_loss=4.9028 val_bpb=1.6756 muon_lr=3.433e-02 adamw_lr=5.149e-04 elapsed=1949.5s
+step=1600 train_loss=4.4452 train_bpb=1.5036 val_loss=4.7855 val_bpb=1.6169 muon_lr=3.027e-02 adamw_lr=4.541e-04 elapsed=2834.9s
+```
+
+Compared with the completed `3200`-step branch:
+
+```text
+3200-step branch at step=1200: 1.6760
+4800-step branch at step=1200: 1.6756
+
+3200-step branch at step=1600: 1.6143
+4800-step branch at step=1600: 1.6169
+```
+
+So the longer-horizon retry is:
+
+```text
+0.0004 bpb better at step=1200
+0.0026 bpb worse at step=1600
+```
+
+That is basically a tie, not a failure.
+
+- the branch is still close enough to matter
+- the whole point of the longer horizon is the later segment, not the midpoint
+- and it is still carrying much higher learning rates than the `3200`-step run at this point
+
+So it stays alive for the `step=2000` and `step=2400` comparisons.
+
 The first real checkpoint from that restart is now:
 
 ```text
@@ -746,8 +778,8 @@ step=0 train_loss=10.1780 train_bpb=3.3062 val_loss=10.1269 val_bpb=3.4676 muon_
 
 The search tree is now:
 
-1. Let the live `bytelevel24k_d640_gqa_softcap_cd05_s4800` run reach `step=1200` and then `step=1600`.
-2. If it keeps even a small edge there, the longer horizon becomes the main line instead of the `3200`-step run.
+1. Let the live `bytelevel24k_d640_gqa_softcap_cd05_s4800` run reach `step=2000` and `step=2400`.
+2. If it overtakes the completed `3200`-step branch there, the longer horizon becomes the main line instead of just a neutral extension.
 3. If it still flattens, reconsider whether the next lever is batch, denominator, or a baseline-inspired block change rather than more width.
 4. Keep the `relu2 + block_scales + resid_mix` branch as a prepared fallback, not the first next move.
 5. Treat `48k` and `64k` as contingency denominator branches only after schedule-tuned width stops paying.
@@ -794,7 +826,7 @@ The active frontier is:
 
 ```text
 bytelevel24k_d640_gqa_softcap_cd05_s4800
-step=800 val_bpb=1.7362
+step=1600 val_bpb=1.6169
 ```
 
 The prepared model-side ablation is:

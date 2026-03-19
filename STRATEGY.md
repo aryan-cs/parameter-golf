@@ -99,10 +99,10 @@ Most recent stopped frontier checkpoint:
 Current live frontier checkpoint:
 
 - run id: `bytelevel24k_d640_gqa_softcap_cd05_s4800`
-- latest checkpoint: `step=800`
-- live `val_bpb`: `1.7362`
-- gap to local `1.5`: `0.2362`
-- status: active longer-horizon retry of the best completed local recipe; now slightly ahead of the completed `3200`-step branch at the same horizon (`1.7390 -> 1.7362`), so the extra horizon is at least paying off early
+- latest checkpoint: `step=1600`
+- live `val_bpb`: `1.6169`
+- gap to local `1.5`: `0.1169`
+- status: active longer-horizon retry of the best completed local recipe; slightly behind the completed `3200`-step branch at the same horizon (`1.6143 -> 1.6169`), but still carrying a much higher learning rate, so the later segment remains the real test
 
 Current prepared next-tokenizer branch:
 
@@ -4138,6 +4138,29 @@ Interpretation:
 - This is only a modest gain, but it is a real gain in the right direction.
 - The longer-horizon branch is not dramatically better yet, but it has now beaten the completed `3200`-step curve at both `step=400` and `step=800`.
 - That is enough to keep it alive for the later checkpoints, where the extra horizon should matter more than it does early.
+
+Third and fourth checkpoints from the new `4800`-step branch:
+
+```text
+step=1200 train_loss=4.5526 train_bpb=1.5772 val_loss=4.9028 val_bpb=1.6756 muon_lr=3.433e-02 adamw_lr=5.149e-04 elapsed=1949.5s
+step=1600 train_loss=4.4452 train_bpb=1.5036 val_loss=4.7855 val_bpb=1.6169 muon_lr=3.027e-02 adamw_lr=4.541e-04 elapsed=2834.9s
+```
+
+Matched-horizon comparisons:
+
+- completed `3200`-step branch at `step=1200`: `1.6760`
+- new `4800`-step branch at `step=1200`: `1.6756`
+- difference at `step=1200`: `0.0004` bpb better
+- completed `3200`-step branch at `step=1600`: `1.6143`
+- new `4800`-step branch at `step=1600`: `1.6169`
+- difference at `step=1600`: `0.0026` bpb worse
+
+Interpretation:
+
+- The longer-horizon branch is essentially tied through `step=1600`.
+- That is weaker than the early `step=800` edge, but not a real failure signal.
+- The key unresolved question is still the late segment, because this run is carrying much higher learning rates than the `3200`-step branch at the same horizon.
+- So the correct move is to keep it alive toward `step=2000` and `step=2400`, where the extra optimization room can finally matter.
 
 What this changes:
 
