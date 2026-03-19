@@ -25,7 +25,7 @@ Current facts that matter most:
   - `step=800 val_bpb = 1.7553`
 - The active frontier is now:
   - `bytelevel24k_d640_gqa_softcap_cd05_s4800`
-  - `step=1600 val_bpb = 1.6169`
+  - `step=2000 val_bpb = 1.6054`
 - The `32k` branch is no longer better than `24k`.
   - at `step=800`, `32k` was ahead
   - at `step=1600`, `32k` was behind `24k`
@@ -571,6 +571,23 @@ That is basically a tie, not a failure.
 
 So it stays alive for the `step=2000` and `step=2400` comparisons.
 
+The next checkpoint still does not break the tie:
+
+```text
+step=2000 train_loss=4.1914 train_bpb=1.3970 val_loss=4.7615 val_bpb=1.6054 muon_lr=2.559e-02 adamw_lr=3.838e-04 elapsed=3801.9s
+```
+
+Compared with the completed `3200`-step branch:
+
+```text
+3200-step branch at step=2000: 1.6028
+4800-step branch at step=2000: 1.6054
+```
+
+That is only `0.0026` bpb worse.
+
+So the longer-horizon retry is still unresolved, not invalidated. The next real verdict is `step=2400`, where the completed `3200`-step run hit `1.5943`.
+
 The first real checkpoint from that restart is now:
 
 ```text
@@ -778,7 +795,7 @@ step=0 train_loss=10.1780 train_bpb=3.3062 val_loss=10.1269 val_bpb=3.4676 muon_
 
 The search tree is now:
 
-1. Let the live `bytelevel24k_d640_gqa_softcap_cd05_s4800` run reach `step=2000` and `step=2400`.
+1. Let the live `bytelevel24k_d640_gqa_softcap_cd05_s4800` run reach `step=2400`.
 2. If it overtakes the completed `3200`-step branch there, the longer horizon becomes the main line instead of just a neutral extension.
 3. If it still flattens, reconsider whether the next lever is batch, denominator, or a baseline-inspired block change rather than more width.
 4. Keep the `relu2 + block_scales + resid_mix` branch as a prepared fallback, not the first next move.
@@ -826,7 +843,7 @@ The active frontier is:
 
 ```text
 bytelevel24k_d640_gqa_softcap_cd05_s4800
-step=1600 val_bpb=1.6169
+step=2000 val_bpb=1.6054
 ```
 
 The prepared model-side ablation is:

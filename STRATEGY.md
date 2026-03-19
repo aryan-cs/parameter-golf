@@ -99,10 +99,10 @@ Most recent stopped frontier checkpoint:
 Current live frontier checkpoint:
 
 - run id: `bytelevel24k_d640_gqa_softcap_cd05_s4800`
-- latest checkpoint: `step=1600`
-- live `val_bpb`: `1.6169`
-- gap to local `1.5`: `0.1169`
-- status: active longer-horizon retry of the best completed local recipe; slightly behind the completed `3200`-step branch at the same horizon (`1.6143 -> 1.6169`), but still carrying a much higher learning rate, so the later segment remains the real test
+- latest checkpoint: `step=2000`
+- live `val_bpb`: `1.6054`
+- gap to local `1.5`: `0.1054`
+- status: active longer-horizon retry of the best completed local recipe; still only marginally behind the completed `3200`-step branch at the same horizon (`1.6028 -> 1.6054`), so the late segment remains the real test
 
 Current prepared next-tokenizer branch:
 
@@ -4161,6 +4161,24 @@ Interpretation:
 - That is weaker than the early `step=800` edge, but not a real failure signal.
 - The key unresolved question is still the late segment, because this run is carrying much higher learning rates than the `3200`-step branch at the same horizon.
 - So the correct move is to keep it alive toward `step=2000` and `step=2400`, where the extra optimization room can finally matter.
+
+Fifth checkpoint from the new `4800`-step branch:
+
+```text
+step=2000 train_loss=4.1914 train_bpb=1.3970 val_loss=4.7615 val_bpb=1.6054 muon_lr=2.559e-02 adamw_lr=3.838e-04 elapsed=3801.9s
+```
+
+Matched-horizon comparison:
+
+- completed `3200`-step branch at `step=2000`: `1.6028`
+- new `4800`-step branch at `step=2000`: `1.6054`
+- difference: `0.0026` bpb worse
+
+Interpretation:
+
+- This is still basically a tie.
+- The longer-horizon branch has not yet produced the late-segment gain we want, but it also has not fallen far enough behind to kill.
+- The decisive checkpoint is now `step=2400`, where the shorter branch hit its best sampled score of `1.5943`.
 
 What this changes:
 
