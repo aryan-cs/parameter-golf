@@ -90,20 +90,19 @@ Current best exact `24k` ByteLevel result:
 
 Most recent stopped frontier checkpoint:
 
-- run id: `bytelevel24k_d640_gqa_softcap_cd05_s3200`
-- latest checkpoint: `final`
-- exact `final_val_bpb`: `1.6017072436714903`
-- best sampled checkpoint: `1.5942796520064857`
-- gap to local `1.5`: `0.10170724367149031`
-- status: completed cleanly and improved the best completed local exact score, but still missed `1.5`, so the next width bracket was promoted immediately
+- run id: `bytelevel24k_d704_gqa_softcap_cd05_s3200`
+- latest checkpoint: `step=800`
+- live `val_bpb`: `1.7553`
+- gap to local `1.5`: `0.2553`
+- status: cut early because it trailed the completed `d640 + cd05` branch at both `step=400` and `step=800`, so extra width was not paying for itself cleanly enough
 
 Current live frontier checkpoint:
 
-- run id: `bytelevel24k_d704_gqa_softcap_cd05_s3200`
-- latest checkpoint: `step=400`
-- live `val_bpb`: `1.8962`
-- gap to local `1.5`: `0.3962`
-- status: active next-width-bracket run; essentially tied with `d640 + cd05` at the same horizon (`1.8955` versus `1.8962`), so it stays alive for the `step=800` comparison
+- run id: `bytelevel24k_d640_gqa_softcap_cd05_s4800`
+- latest checkpoint: `step=0`
+- live `val_bpb`: `3.4676`
+- gap to local `1.5`: `1.9676`
+- status: active longer-horizon retry of the best completed local recipe; launched because `d704` did not beat `d640 + cd05` early enough, and the next strongest remaining lever is more optimization room on the winning schedule
 
 Current prepared next-tokenizer branch:
 
@@ -4290,3 +4289,34 @@ Interpretation:
 - This is effectively a tie.
 - The extra width has not yet bought a clean early win, but it also has not failed badly enough to stop.
 - The next meaningful comparison point is `step=800`, where the score to beat is `1.7390`.
+
+Second checkpoint from the new `d704` branch:
+
+```text
+step=800 train_loss=5.0553 train_bpb=1.6759 val_loss=5.2106 val_bpb=1.7553 muon_lr=3.439e-02 adamw_lr=5.159e-04 elapsed=1332.4s
+```
+
+Matched-horizon comparison:
+
+- `d640 + cd05` at `step=800`: `1.7390`
+- `d704 + cd05` at `step=800`: `1.7553`
+- difference: `0.0163` bpb worse
+
+Interpretation:
+
+- The bigger width did not earn continuation.
+- It was only tied at `step=400` and clearly behind by `step=800`.
+- So the clean next move is not “more width again.” The clean next move is more horizon on the best completed `d640 + cd05` recipe.
+
+New active command after cutting `d704`:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_d640_gqa_softcap_cd05_s4800 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=640 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1706 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=400 MAX_STEPS=4800 COOLDOWN_FRACTION=0.05 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_d640_gqa_softcap_cd05_s4800.json uv run python train_gpt.py | tee runs/bytelevel24k/bytelevel24k_d640_gqa_softcap_cd05_s4800.log
+```
+
+Launch output:
+
+```text
+parameters=20,238,248
+step=0 train_loss=10.1780 train_bpb=3.3062 val_loss=10.1269 val_bpb=3.4676 muon_lr=2.000e-03 adamw_lr=3.000e-05 elapsed=0.0s
+```
