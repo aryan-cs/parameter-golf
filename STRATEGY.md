@@ -87,6 +87,14 @@ Current best exact `24k` ByteLevel result:
 - artifact: `22,076,698` bytes
 - status: best exact large-tokenizer result so far; still far above the artifact cap, but now the strongest overall local exact score in the repo
 
+Current live frontier checkpoint:
+
+- run id: `bytelevel24k_d512_gqa_softcap_s3200`
+- latest checkpoint: `step=1600`
+- live `val_bpb`: `1.6664`
+- gap to local `1.5`: `0.1664`
+- status: in progress; not a completed run yet, but already materially better than the best completed result
+
 Gap versus official main-track leader for our best exact sampled official-tokenizer run:
 
 - `1.995522745133331 - 1.22436570 = 0.7711570451333312` bpb worse

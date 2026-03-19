@@ -43,6 +43,9 @@ Current best numbers worth knowing:
 - Best exact `24k` tokenizer result so far:
   - `bytelevel24k_d512_gqa_softcap_s1600`
   - `final_val_bpb = 1.748414205194488`
+- Best live in-progress checkpoint so far:
+  - `bytelevel24k_d512_gqa_softcap_s3200`
+  - `step=1600 val_bpb = 1.6664`
 
 Main conclusion right now:
 
