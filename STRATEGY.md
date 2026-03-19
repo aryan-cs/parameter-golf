@@ -3220,6 +3220,62 @@ Interpretation:
 - The improvement from the extra horizon was much larger than the recent width or accumulation experiments.
 - The branch is still badly over the artifact cap, but it is now much closer to the local `1.5` target than any official-tokenizer branch.
 
+## Experiment 46. Add Baseline-Aligned GQA and Logit Softcap Knobs
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Add the next most plausible official-baseline-alignment levers to the local trainer before the current `24k` branch saturates:
+  - grouped-query attention via `NUM_KV_HEADS`
+  - per-head query gain via `QK_GAIN_INIT`
+  - output `LOGIT_SOFTCAP`
+
+Code snippet:
+
+```python
+self.q_proj = QATLinear(d_model, d_model, bias=False)
+self.k_proj = QATLinear(d_model, kv_dim, bias=False)
+self.v_proj = QATLinear(d_model, kv_dim, bias=False)
+self.q_gain = nn.Parameter(torch.full((n_heads,), qk_gain_init))
+...
+if self.kv_repeat > 1:
+    k = k.repeat_interleave(self.kv_repeat, dim=1)
+    v = v.repeat_interleave(self.kv_repeat, dim=1)
+...
+if self.logit_softcap > 0.0:
+    logits = self.logit_softcap * torch.tanh(logits / self.logit_softcap)
+```
+
+Verification commands:
+
+```bash
+python3 -m py_compile train_gpt.py
+RUN_ID=gqa_softcap_smoke DEVICE=cpu MAX_STEPS=1 VAL_LOSS_EVERY=1 VAL_STEPS=1 D_MODEL=64 N_HEADS=8 NUM_KV_HEADS=4 D_FF=128 N_LOOPS=2 SEQ_LEN=32 TRAIN_BATCH_TOKENS=256 VAL_BATCH_TOKENS=256 VOCAB_SIZE=512 TOKEN_DTYPE=uint16 AVG_BYTES_PER_TOKEN=3.5 TIED_EMBEDDINGS=1 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 uv run python train_gpt.py
+```
+
+Terminal output:
+
+```text
+config: {'run_id': 'gqa_softcap_smoke', ..., 'n_heads': 8, 'num_kv_heads': 4, ..., 'qk_gain_init': 1.5, 'logit_softcap': 30.0, ...}
+parameters=70,040
+step=0 train_loss=6.2254 train_bpb=2.5661 val_loss=6.2452 val_bpb=2.5743 muon_lr=2.000e-02 adamw_lr=3.000e-04 elapsed=0.0s
+=== final_stats ===
+steps=1
+seconds=0.08
+final_val_bpb=2.5757
+artifact_budget_ok=True
+```
+
+Interpretation:
+
+- The new baseline-aligned knobs compile and execute correctly.
+- Defaults remain backwards-compatible, so older experiments still reproduce unless the new flags are set.
+- The currently running `bytelevel24k_d512_tied_lr2x_s1600` experiment was launched before this patch, so its result should be compared only against the pre-GQA/softcap code snapshot.
+- If the long `24k` branch stalls, the next architecture ablation should test `NUM_KV_HEADS=4`, `QK_GAIN_INIT=1.5`, and `LOGIT_SOFTCAP=30`.
+
 ## Current Working Hypothesis
 
 The best immediate path is now:

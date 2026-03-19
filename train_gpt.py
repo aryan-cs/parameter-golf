@@ -77,6 +77,7 @@ class Config:
     vocab_size: int | None
     d_model: int
     n_heads: int
+    num_kv_heads: int
     d_ff: int
     n_loops: int
     seq_len: int
@@ -95,6 +96,8 @@ class Config:
     weight_decay: float
     warmup_steps: int
     cooldown_fraction: float
+    qk_gain_init: float
+    logit_softcap: float
     qat_start_fraction: float
     grad_clip: float
     seed: int
@@ -109,6 +112,7 @@ class Config:
     @classmethod
     def from_env(cls) -> "Config":
         d_model = env_int("D_MODEL", 256)
+        n_heads = env_int("N_HEADS", 8)
         return cls(
             run_id=os.environ.get("RUN_ID", "dev_smoke"),
             data_path=os.environ.get("DATA_PATH", ""),
@@ -116,7 +120,8 @@ class Config:
             token_dtype=os.environ.get("TOKEN_DTYPE") or None,
             vocab_size=env_int_optional("VOCAB_SIZE"),
             d_model=d_model,
-            n_heads=env_int("N_HEADS", 8),
+            n_heads=n_heads,
+            num_kv_heads=env_int("NUM_KV_HEADS", n_heads),
             d_ff=env_int("D_FF", max(4, int((8 * d_model) / 3))),
             n_loops=env_int("N_LOOPS", 4),
             seq_len=env_int("SEQ_LEN", 128),
@@ -135,6 +140,8 @@ class Config:
             weight_decay=env_float("WEIGHT_DECAY", 0.1),
             warmup_steps=env_int("WARMUP_STEPS", 20),
             cooldown_fraction=env_float("COOLDOWN_FRACTION", 0.3),
+            qk_gain_init=env_float("QK_GAIN_INIT", 1.0),
+            logit_softcap=env_float("LOGIT_SOFTCAP", 0.0),
             qat_start_fraction=env_float("QAT_START_FRACTION", 0.6),
             grad_clip=env_float("GRAD_CLIP", 1.0),
             seed=env_int("SEED", 1337),
@@ -234,19 +241,35 @@ if torch is not None:
 
 
     class SharedTransformerBlock(nn.Module):
-        def __init__(self, d_model: int, n_heads: int, d_ff: int, dropout: float = 0.0) -> None:
+        def __init__(
+            self,
+            d_model: int,
+            n_heads: int,
+            num_kv_heads: int,
+            d_ff: int,
+            qk_gain_init: float,
+            dropout: float = 0.0,
+        ) -> None:
             super().__init__()
             if d_model % n_heads != 0:
                 raise ValueError("D_MODEL must be divisible by N_HEADS")
+            if n_heads % num_kv_heads != 0:
+                raise ValueError("N_HEADS must be divisible by NUM_KV_HEADS")
             self.d_model = d_model
             self.n_heads = n_heads
+            self.num_kv_heads = num_kv_heads
             self.d_head = d_model // n_heads
+            self.kv_repeat = n_heads // num_kv_heads
             self.norm1 = RMSNorm(d_model)
             self.norm2 = RMSNorm(d_model)
-            self.qkv = QATLinear(d_model, 3 * d_model, bias=False)
+            kv_dim = num_kv_heads * self.d_head
+            self.q_proj = QATLinear(d_model, d_model, bias=False)
+            self.k_proj = QATLinear(d_model, kv_dim, bias=False)
+            self.v_proj = QATLinear(d_model, kv_dim, bias=False)
             self.out_proj = QATLinear(d_model, d_model, bias=False)
             self.q_norm = RMSNorm(self.d_head)
             self.k_norm = RMSNorm(self.d_head)
+            self.q_gain = nn.Parameter(torch.full((n_heads,), qk_gain_init))
             self.ff_gate = QATLinear(d_model, d_ff, bias=False)
             self.ff_up = QATLinear(d_model, d_ff, bias=False)
             self.ff_down = QATLinear(d_ff, d_model, bias=False)
@@ -254,14 +277,16 @@ if torch is not None:
 
         def attention(self, x, cos, sin):
             batch_size, seq_len, channels = x.shape
-            qkv = self.qkv(x).view(batch_size, seq_len, 3, self.n_heads, self.d_head)
-            q, k, v = qkv.unbind(dim=2)
-            q = q.permute(0, 2, 1, 3)
-            k = k.permute(0, 2, 1, 3)
-            v = v.permute(0, 2, 1, 3)
+            q = self.q_proj(x).view(batch_size, seq_len, self.n_heads, self.d_head).permute(0, 2, 1, 3)
+            k = self.k_proj(x).view(batch_size, seq_len, self.num_kv_heads, self.d_head).permute(0, 2, 1, 3)
+            v = self.v_proj(x).view(batch_size, seq_len, self.num_kv_heads, self.d_head).permute(0, 2, 1, 3)
             q = self.q_norm(q)
             k = self.k_norm(k)
             q, k = apply_rotary(q, k, cos, sin)
+            q = q * self.q_gain.to(dtype=q.dtype).view(1, self.n_heads, 1, 1)
+            if self.kv_repeat > 1:
+                k = k.repeat_interleave(self.kv_repeat, dim=1)
+                v = v.repeat_interleave(self.kv_repeat, dim=1)
             dropout_p = self.dropout.p if self.training else 0.0
             if hasattr(F, "scaled_dot_product_attention"):
                 out = F.scaled_dot_product_attention(q, k, v, is_causal=True, dropout_p=dropout_p)
@@ -290,27 +315,34 @@ if torch is not None:
             vocab_size: int,
             d_model: int,
             n_heads: int,
+            num_kv_heads: int,
             d_ff: int,
             n_loops: int,
             max_seq_len: int,
             use_smear: bool,
             tied_embeddings: bool,
             share_blocks: bool,
+            qk_gain_init: float,
+            logit_softcap: float,
         ) -> None:
             super().__init__()
             self.n_loops = n_loops
             self.tied_embeddings = tied_embeddings
             self.share_blocks = share_blocks
+            self.logit_softcap = logit_softcap
             self.embed = nn.Embedding(vocab_size, d_model)
             self.smear = SmearBlock(d_model) if use_smear else nn.Identity()
             self.rope = RotaryEmbedding(d_model // n_heads, max_seq_len)
             if self.share_blocks:
-                self.block = SharedTransformerBlock(d_model, n_heads, d_ff)
+                self.block = SharedTransformerBlock(d_model, n_heads, num_kv_heads, d_ff, qk_gain_init)
                 self.blocks = None
                 self.loop_embeddings = nn.Embedding(n_loops, d_model)
             else:
                 self.block = None
-                self.blocks = nn.ModuleList(SharedTransformerBlock(d_model, n_heads, d_ff) for _ in range(n_loops))
+                self.blocks = nn.ModuleList(
+                    SharedTransformerBlock(d_model, n_heads, num_kv_heads, d_ff, qk_gain_init)
+                    for _ in range(n_loops)
+                )
                 self.loop_embeddings = None
             self.final_norm = RMSNorm(d_model)
             self.head = QATLinear(d_model, vocab_size, bias=False)
@@ -345,7 +377,10 @@ if torch is not None:
                 for block in self.blocks:
                     x = block(x, cos, sin)
             x = self.final_norm(x)
-            return self.head(x)
+            logits = self.head(x)
+            if self.logit_softcap > 0.0:
+                logits = self.logit_softcap * torch.tanh(logits / self.logit_softcap)
+            return logits
 
 
     def enable_qat(model: nn.Module) -> None:
@@ -874,12 +909,15 @@ def main() -> int:
         vocab_size=cfg.vocab_size,
         d_model=cfg.d_model,
         n_heads=cfg.n_heads,
+        num_kv_heads=cfg.num_kv_heads,
         d_ff=cfg.d_ff,
         n_loops=cfg.n_loops,
         max_seq_len=cfg.seq_len,
         use_smear=cfg.use_smear,
         tied_embeddings=cfg.tied_embeddings,
         share_blocks=cfg.share_blocks,
+        qk_gain_init=cfg.qk_gain_init,
+        logit_softcap=cfg.logit_softcap,
     ).to(device)
     if cfg.compile_model and hasattr(torch, "compile"):
         model = torch.compile(model)

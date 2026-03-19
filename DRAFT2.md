@@ -174,6 +174,33 @@ Why it matters:
 - the `24k` branch could smoke-test at `32k` train tokens but OOM during sustained training
 - accumulation is now the clean way to test larger effective batches without changing the search direction again
 
+### 3.5 Baseline-aligned GQA and logit softcap knobs
+
+We also added three official-baseline-aligned controls to `train_gpt.py` behind env flags:
+
+- `NUM_KV_HEADS`
+- `QK_GAIN_INIT`
+- `LOGIT_SOFTCAP`
+
+Representative code:
+
+```python
+self.q_gain = nn.Parameter(torch.full((n_heads,), qk_gain_init))
+...
+if self.kv_repeat > 1:
+    k = k.repeat_interleave(self.kv_repeat, dim=1)
+    v = v.repeat_interleave(self.kv_repeat, dim=1)
+...
+if self.logit_softcap > 0.0:
+    logits = self.logit_softcap * torch.tanh(logits / self.logit_softcap)
+```
+
+Why it matters:
+
+- the official baseline uses grouped-query attention
+- it also uses per-head query gain and output logit softcapping
+- this gives us a clean next architecture ablation if the plain `24k` branch starts flattening
+
 ## 4. Key Experiment Results Since `DRAFT1`
 
 ### 4.1 Long-context official `sp1024` branch
