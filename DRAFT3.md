@@ -21,8 +21,8 @@ Current facts that matter most:
   - `bytelevel32k_d512_gqa_softcap_s3200`
   - `step=2400 val_bpb = 1.6675`
 - The active frontier is now:
-  - `bytelevel48k_d512_gqa_softcap_s3200`
-  - `step=0 val_bpb = 3.5214`
+  - `bytelevel48k_d384_gqa_softcap_accum_s3200`
+  - `step=0 val_bpb = 3.4832`
 - The `32k` branch is no longer better than `24k`.
   - at `step=800`, `32k` was ahead
   - at `step=1600`, `32k` was behind `24k`
@@ -37,7 +37,8 @@ Main conclusion:
 
 - The project is no longer blocked on infrastructure.
 - The current decision is no longer “wait for `32k` to rescue us.”
-- We have already promoted `48k`, and the next real decision is whether tokenizer scaling still has enough headroom before we switch to the new baseline-inspired block variant.
+- We promoted `48k`, rejected the full-width local form for memory reasons, and kept the rung alive by resizing to `d384` and adding accumulation.
+- The next real decision is whether this healthier `48k` path has enough headroom before we switch to the new baseline-inspired block variant.
 
 ## 2. Official Score Check
 
@@ -93,6 +94,41 @@ That changes the interpretation:
 - so it was stopped after `step=2400` and replaced immediately by `48k`
 
 This is important because it means “bigger vocab” is still promising, but the `32k` rung itself was not enough.
+
+### 3.2 The first `48k` form was wrong, but the rung is still alive
+
+The first attempt was:
+
+```text
+bytelevel48k_d512_gqa_softcap_s3200
+```
+
+It initialized and reached `step=0`, but system inspection showed it was a bad local search configuration:
+
+```text
+PID   COMMAND    %CPU MEM TIME     #TH  STATE
+1972  python3.13 0.0  27G 03:11.47 13/1 running
+```
+
+and:
+
+```text
+PhysMem: 23G used (9122M wired, 3518M compressor), 59M unused.
+VM: 185T vsize, 5268M framework vsize, 179957826(0) swapins, 194681707(0) swapouts.
+```
+
+So the project did not abandon `48k`; it changed the local form:
+
+- resize from `d512` to `d384`
+- keep the effective batch at `16384`
+- lower peak memory with `TRAIN_MICROBATCH_TOKENS=8192`
+
+That gives the current live branch:
+
+```text
+bytelevel48k_d384_gqa_softcap_accum_s3200
+step=0 val_bpb=3.4832
+```
 
 ### 3.2 We added a new baseline-inspired model branch
 
@@ -162,7 +198,7 @@ Interpretation:
 - It was still slower than the `24k` branch in bpb terms at matched step.
 - That was enough evidence to stop it early and promote `48k`.
 
-### 4.2 Launch the `48k` tokenizer branch
+### 4.2 Launch the first `48k` tokenizer branch
 
 Command:
 
@@ -181,11 +217,71 @@ step=0 train_loss=10.8960 train_bpb=3.4711 val_loss=10.8959 val_bpb=3.5214 muon_
 
 Interpretation:
 
-- `48k` is now the active frontier.
-- This is the largest denominator step taken so far without jumping all the way to `64k`.
-- If `48k` still cannot beat the `24k` branch by `step=800`, that will be a strong signal that denominator scaling alone is flattening and the new block branch should move up in priority.
+- This proved the denominator rung existed, but not that the local shape was usable.
+- The full-width version was rejected for memory reasons.
 
-### 4.3 Smoke test for the new block knobs
+### 4.3 Resize and accumulate the `48k` branch
+
+Reference parameter counts:
+
+```text
+24576 512 1365 15470216
+32768 512 1365 19664520
+49152 384 1024 20499560
+49152 320 853 16857368
+```
+
+The direct resized probe:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel48k_d384_gqa_softcap_s3200 TOKENIZER_PREFIX=./data/tokenizers/fineweb_48k_sample DATA_PATH=./data/tokens/fineweb_48k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_48k_sample/val D_MODEL=384 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1024 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=400 MAX_STEPS=3200 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 DEVICE=mps STATS_PATH=runs/bytelevel48k/bytelevel48k_d384_gqa_softcap_s3200.json uv run python train_gpt.py | tee runs/bytelevel48k/bytelevel48k_d384_gqa_softcap_s3200.log
+```
+
+Output before interrupt:
+
+```text
+parameters=20,499,560
+step=0 train_loss=10.8733 train_bpb=3.4639 val_loss=10.8440 val_bpb=3.5047 muon_lr=2.000e-03 adamw_lr=3.000e-05 elapsed=0.0s
+```
+
+The microbatch smoke:
+
+```bash
+RUN_ID=bytelevel48k_d384_gqa_softcap_accum_smoke TOKENIZER_PREFIX=./data/tokenizers/fineweb_48k_sample DATA_PATH=./data/tokens/fineweb_48k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_48k_sample/val D_MODEL=384 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1024 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 TRAIN_MICROBATCH_TOKENS=8192 VAL_BATCH_TOKENS=8192 VAL_STEPS=1 VAL_LOSS_EVERY=1 MAX_STEPS=1 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 DEVICE=mps STATS_PATH=runs/bytelevel48k/bytelevel48k_d384_gqa_softcap_accum_smoke.json uv run python train_gpt.py
+```
+
+Output:
+
+```text
+train_batch_size_tokens=16384 train_microbatch_size_tokens=8192 grad_accum_steps=2
+parameters=20,499,560
+step=0 train_loss=10.8733 train_bpb=3.4118 val_loss=10.4851 val_bpb=3.5006 muon_lr=4.000e-02 adamw_lr=6.000e-04 elapsed=0.0s
+=== final_stats ===
+steps=1
+seconds=24.29
+final_val_bpb=3.3818
+```
+
+The real accumulated launch:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel48k_d384_gqa_softcap_accum_s3200 TOKENIZER_PREFIX=./data/tokenizers/fineweb_48k_sample DATA_PATH=./data/tokens/fineweb_48k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_48k_sample/val D_MODEL=384 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1024 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 TRAIN_MICROBATCH_TOKENS=8192 VAL_BATCH_TOKENS=8192 VAL_STEPS=16 VAL_LOSS_EVERY=400 MAX_STEPS=3200 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 DEVICE=mps STATS_PATH=runs/bytelevel48k/bytelevel48k_d384_gqa_softcap_accum_s3200.json uv run python train_gpt.py | tee runs/bytelevel48k/bytelevel48k_d384_gqa_softcap_accum_s3200.log
+```
+
+Output so far:
+
+```text
+train_batch_size_tokens=16384 train_microbatch_size_tokens=8192 grad_accum_steps=2
+parameters=20,499,560
+step=0 train_loss=10.8733 train_bpb=3.4118 val_loss=10.8438 val_bpb=3.4832 muon_lr=2.000e-03 adamw_lr=3.000e-05 elapsed=0.0s
+```
+
+Interpretation:
+
+- This is the first `48k` branch shape that both keeps the `48k` tokenizer denominator and behaves like a sane local training job.
+- It is now the correct active frontier.
+
+### 4.4 Smoke test for the new block knobs
 
 Command:
 
@@ -216,9 +312,9 @@ Interpretation:
 
 The search tree is now:
 
-1. Let the live `48k` tokenizer branch reach at least `step=800`.
+1. Let the live accumulated `48k d384` branch reach at least `step=400`.
 2. If it still trails the `24k` branch badly, switch priority to the new `relu2 + block_scales + resid_mix` model branch.
-3. If `48k` looks close but still short, keep `64k` as the next denominator contingency.
+3. If the resized accumulated `48k` branch looks close but still short, keep `64k` as the next denominator contingency.
 
 Why `48k` and not immediately `64k`:
 
@@ -259,8 +355,8 @@ step=2400 val_bpb=1.6675
 The active frontier is:
 
 ```text
-bytelevel48k_d512_gqa_softcap_s3200
-step=0 val_bpb=3.5214
+bytelevel48k_d384_gqa_softcap_accum_s3200
+step=0 val_bpb=3.4832
 ```
 
 The next prepared model-side branch is:

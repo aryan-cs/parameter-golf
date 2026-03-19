@@ -97,10 +97,10 @@ Most recent stopped frontier checkpoint:
 
 Current live frontier checkpoint:
 
-- run id: `bytelevel48k_d512_gqa_softcap_s3200`
+- run id: `bytelevel48k_d384_gqa_softcap_accum_s3200`
 - latest checkpoint: `step=0`
-- live `val_bpb`: `3.5214`
-- status: now active on MPS as the promoted next denominator rung after the `32k` branch was cut early
+- live `val_bpb`: `3.4832`
+- status: now active on MPS as the resized and accumulated `48k` branch after the full-width `48k` variants proved too memory-heavy
 
 Current prepared next-tokenizer branch:
 
@@ -3567,7 +3567,7 @@ Interpretation:
 
 Status:
 
-- In progress
+- Rejected in its original full-width form
 
 Purpose:
 
@@ -3592,7 +3592,142 @@ Interpretation:
 
 - The `48k` branch starts from a significantly larger denominator than `24k` or `32k`.
 - The parameter count jumped a lot because the tied embedding table grew with the vocabulary.
-- The branch is now the live frontier and the next real question is whether the denominator gain survives optimization to `step=800` and beyond.
+- This exact `d512` form did start, but it was not healthy enough to keep.
+
+## Experiment 56. Reject Full-Width `48k` On MPS For Memory Reasons
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Verify whether the original `48k d512` branch was merely slow or actually a bad MPS memory configuration.
+
+Commands:
+
+```bash
+top -pid 1972 -l 1 -stats pid,command,cpu,mem,time,threads,state
+vm_stat | head -n 20
+```
+
+Terminal output:
+
+```text
+PID   COMMAND    %CPU MEM TIME     #TH  STATE
+1972  python3.13 0.0  27G 03:11.47 13/1 running
+
+PhysMem: 23G used (9122M wired, 3518M compressor), 59M unused.
+VM: 185T vsize, 5268M framework vsize, 179957826(0) swapins, 194681707(0) swapouts.
+```
+
+Interpretation:
+
+- The full-width `48k d512` branch was not just "slow".
+- It was thrashing memory badly enough to be a poor search branch on this machine.
+- That meant the next correct move was to keep the `48k` tokenizer rung but resize the model and lower peak memory.
+
+## Experiment 57. Probe A Resized `48k d384` Branch
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Keep the `48k` tokenizer denominator gain while moving back toward the parameter scale that had already worked for `32k d512`.
+
+Parameter-count reference:
+
+```text
+24576 512 1365 15470216
+32768 512 1365 19664520
+49152 384 1024 20499560
+49152 320 853 16857368
+```
+
+Command:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel48k_d384_gqa_softcap_s3200 TOKENIZER_PREFIX=./data/tokenizers/fineweb_48k_sample DATA_PATH=./data/tokens/fineweb_48k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_48k_sample/val D_MODEL=384 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1024 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=400 MAX_STEPS=3200 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 DEVICE=mps STATS_PATH=runs/bytelevel48k/bytelevel48k_d384_gqa_softcap_s3200.json uv run python train_gpt.py | tee runs/bytelevel48k/bytelevel48k_d384_gqa_softcap_s3200.log
+```
+
+Terminal output before stop:
+
+```text
+parameters=20,499,560
+step=0 train_loss=10.8733 train_bpb=3.4639 val_loss=10.8440 val_bpb=3.5047 muon_lr=2.000e-03 adamw_lr=3.000e-05 elapsed=0.0s
+^C
+```
+
+Interpretation:
+
+- `48k d384` was much closer to the successful `32k d512` parameter scale.
+- It could start and reach `step=0` cleanly.
+- But the direct full-batch form was still not the safest MPS configuration, so the right next move was gradient accumulation rather than abandoning the branch.
+
+## Experiment 58. Validate Microbatching For `48k d384`
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Confirm that `TRAIN_MICROBATCH_TOKENS=8192` fixes the peak-memory behavior while keeping the effective batch at `16384`.
+
+Command:
+
+```bash
+RUN_ID=bytelevel48k_d384_gqa_softcap_accum_smoke TOKENIZER_PREFIX=./data/tokenizers/fineweb_48k_sample DATA_PATH=./data/tokens/fineweb_48k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_48k_sample/val D_MODEL=384 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1024 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 TRAIN_MICROBATCH_TOKENS=8192 VAL_BATCH_TOKENS=8192 VAL_STEPS=1 VAL_LOSS_EVERY=1 MAX_STEPS=1 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 DEVICE=mps STATS_PATH=runs/bytelevel48k/bytelevel48k_d384_gqa_softcap_accum_smoke.json uv run python train_gpt.py
+```
+
+Terminal output:
+
+```text
+train_batch_size_tokens=16384 train_microbatch_size_tokens=8192 grad_accum_steps=2
+parameters=20,499,560
+step=0 train_loss=10.8733 train_bpb=3.4118 val_loss=10.4851 val_bpb=3.5006 muon_lr=4.000e-02 adamw_lr=6.000e-04 elapsed=0.0s
+=== final_stats ===
+steps=1
+seconds=24.29
+final_val_bpb=3.3818
+```
+
+Interpretation:
+
+- Accumulation worked.
+- This is the first `48k` configuration that preserves the effective batch and finishes cleanly on this Mac.
+- That made it the correct live frontier.
+
+## Experiment 59. Launch The Real `48k d384` Accumulated Run
+
+Status:
+
+- In progress
+
+Purpose:
+
+- Continue denominator scaling with the first `48k` configuration that is actually healthy on local MPS.
+
+Command:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel48k_d384_gqa_softcap_accum_s3200 TOKENIZER_PREFIX=./data/tokenizers/fineweb_48k_sample DATA_PATH=./data/tokens/fineweb_48k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_48k_sample/val D_MODEL=384 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1024 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 TRAIN_MICROBATCH_TOKENS=8192 VAL_BATCH_TOKENS=8192 VAL_STEPS=16 VAL_LOSS_EVERY=400 MAX_STEPS=3200 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 DEVICE=mps STATS_PATH=runs/bytelevel48k/bytelevel48k_d384_gqa_softcap_accum_s3200.json uv run python train_gpt.py | tee runs/bytelevel48k/bytelevel48k_d384_gqa_softcap_accum_s3200.log
+```
+
+Terminal output:
+
+```text
+train_batch_size_tokens=16384 train_microbatch_size_tokens=8192 grad_accum_steps=2
+parameters=20,499,560
+step=0 train_loss=10.8733 train_bpb=3.4118 val_loss=10.8438 val_bpb=3.4832 muon_lr=2.000e-03 adamw_lr=3.000e-05 elapsed=0.0s
+```
+
+Interpretation:
+
+- The live frontier is no longer the failing full-batch `48k` branch.
+- It is now the accumulated `48k d384` branch, which is the strongest denominator test we have found that actually runs locally.
 
 ## Experiment 53. Add Baseline-Inspired Block Knobs
 
@@ -3668,8 +3803,9 @@ The best immediate path is now:
 10. GQA plus query gain plus logit softcap is now the strongest confirmed architecture tweak on top of that schedule
 11. longer horizon still helps, but with diminishing returns
 12. the `32k` tokenizer branch was informative but no longer worth finishing once it reached `1.6675` at `step=2400`
-13. the live denominator-scaling frontier is now `48k`, with `64k` held back as the next contingency rather than the immediate jump
-14. in parallel, the new baseline-inspired block knobs are ready as the next model-side lever if `48k` still stalls above `1.5`
+13. the live denominator-scaling frontier is now the accumulated `48k d384` branch, not the failing full-width `48k` branch
+14. `64k` is still held back as a contingency rather than the immediate jump
+15. in parallel, the new baseline-inspired block knobs are ready as the next model-side lever if the accumulated `48k` branch still stalls above `1.5`
 
 Reasoning:
 
@@ -3683,7 +3819,7 @@ Reasoning:
 - On top of that schedule, the official-baseline attention knobs added another clean improvement.
 - The `3200`-step continuation shows optimization horizon is still useful, but no longer enough to expect a free drop to `1.5`.
 - The next wins are most likely to come from:
-  - the active `48k` branch if the larger denominator is still optimization-compatible enough to matter
+  - the active accumulated `48k d384` branch if the larger denominator is still optimization-compatible enough to matter
   - then the prepared `64k` branch only if `48k` looks close but still short
   - or the new `relu2` plus block-scale plus residual-mix branch if the tokenizer ladder keeps flattening
 
@@ -3692,7 +3828,7 @@ Reasoning:
 The current active command is:
 
 ```bash
-PYTHONUNBUFFERED=1 RUN_ID=bytelevel48k_d512_gqa_softcap_s3200 TOKENIZER_PREFIX=./data/tokenizers/fineweb_48k_sample DATA_PATH=./data/tokens/fineweb_48k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_48k_sample/val D_MODEL=512 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=800 MAX_STEPS=3200 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 DEVICE=mps STATS_PATH=runs/bytelevel48k/bytelevel48k_d512_gqa_softcap_s3200.json uv run python train_gpt.py | tee runs/bytelevel48k/bytelevel48k_d512_gqa_softcap_s3200.log
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel48k_d384_gqa_softcap_accum_s3200 TOKENIZER_PREFIX=./data/tokenizers/fineweb_48k_sample DATA_PATH=./data/tokens/fineweb_48k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_48k_sample/val D_MODEL=384 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1024 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 TRAIN_MICROBATCH_TOKENS=8192 VAL_BATCH_TOKENS=8192 VAL_STEPS=16 VAL_LOSS_EVERY=400 MAX_STEPS=3200 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 DEVICE=mps STATS_PATH=runs/bytelevel48k/bytelevel48k_d384_gqa_softcap_accum_s3200.json uv run python train_gpt.py | tee runs/bytelevel48k/bytelevel48k_d384_gqa_softcap_accum_s3200.log
 ```
 
 Why this exact command:
@@ -3700,6 +3836,7 @@ Why this exact command:
 - The `32k` branch was no longer improving fast enough to justify more time.
 - The model-side recipe is already proven: GQA, query gain, logit softcap, `SEQ_LEN=1024`, `3200` steps.
 - Keeping the model recipe fixed while changing only the tokenizer branch remains the cleanest next experiment.
+- The only adjustment here is making the `48k` branch actually fit via width reduction and microbatching.
 
 If the current `48k` run misses badly, the next command should be:
 
