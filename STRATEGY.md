@@ -46,6 +46,8 @@ Current score to beat for the main leaderboard:
 
 - exact `val_bpb` to beat: `1.22436570`
 - source: official `Naive Baseline` record on March 18, 2026
+- official record-claim significance margin: `0.005 nats = 0.007213475204444817 bpb`
+- practical record-claim target: `1.217152224795555` bpb or better
 
 Current interesting non-record comparison:
 
@@ -62,36 +64,50 @@ Our current best local result:
 
 Current best official-tokenizer local exact-bpb result:
 
-- exact sampled `best_val_bpb`: `2.580798659621066`
-- short form: `2.5808`
-- run id: `torch_sp1024_d512_l4_s100_v16`
-- artifact: `3,530,127` bytes
-- status: exact SentencePiece byte accounting on sampled validation batches (`VAL_STEPS=16`), not a full fixed-split scan yet
-
-Current best observed exact sampled checkpoint from an in-progress run:
-
-- exact sampled `val_bpb`: `2.4833`
-- checkpoint: `step=50`
+- exact sampled `best_val_bpb`: `1.995522745133331`
+- short form: `1.9955`
 - run id: `torch_sp1024_d512_l4_b64k_s200`
-- status: in progress, not yet finalized
+- artifact: `3,566,778` bytes
+- status: exact SentencePiece byte accounting on sampled validation batches (`VAL_STEPS=16`), still a local proxy until we run the fixed full validation split
+- interpretation guardrail: treat sampled exact validation as roughly `+/- 0.05` bpb until confirmed on the full official validation pass
 
-Gap versus official main-track leader:
+Current best long-context (`SEQ_LEN=1024`) official-tokenizer result:
 
-- `3.1106495880562357 - 1.22436570 = 1.8862838880562356` bpb worse
+- exact sampled `best_val_bpb`: `2.0147442651306453`
+- short form: `2.0147`
+- run id: `torch_sp1024_d512_l4_b32k_s400_seq1024`
+- artifact: `3,583,138` bytes
+- status: best long-context branch so far; only `0.0192215199973143` bpb worse than the overall sampled best, which is inside the local sampled-eval noise band
+
+Gap versus official main-track leader for our best exact sampled official-tokenizer run:
+
+- `1.995522745133331 - 1.22436570 = 0.7711570451333312` bpb worse
+- `0.7711570451333312 / log2(e) = 0.534525331603107` nats worse
+
+Gap versus official main-track leader for our best older tokenizer-changed local proxy:
+
+- `3.1106495880562357 - 1.22436570 = 1.8862838880562358` bpb worse
+- `1.8862838880562358 / log2(e) = 1.3074723587418313` nats worse
 
 Gap versus the immediate `1.5` local target:
 
-- `2.580798659621066 - 1.5 = 1.080798659621066` bpb worse
+- `1.995522745133331 - 1.5 = 0.49552274513333105` bpb worse
 
 PR opening rule:
 
-- Open a main-track PR only when we have an exact competition-valid score strictly below `1.22436570`
+- Open a main-track PR only when we have an exact competition-valid score below `1.22436570`
+- Treat `1.217152224795555` as the real threshold for a clean new-record claim under the official `0.005 nats` bar
 - And the run must also satisfy all official submission conditions:
   - under `16,000,000` bytes total artifact size
   - reproducible under `10 minutes` on `8xH100`
   - official-style validation on the fixed full `fineweb_val_*` split
   - record folder packaging under `records/track_10min_16mb/`
   - enough evidence for the official significance and reproducibility requirements
+
+Sampled-eval policy:
+
+- Do not make architecture decisions from local sampled exact validation deltas smaller than about `0.05` bpb
+- Label sampled exact results as proxies until we run a full fixed-split validation pass
 
 Non-record PR rule:
 
@@ -2272,7 +2288,7 @@ Interpretation:
 
 Status:
 
-- In progress
+- Passed
 
 Purpose:
 
@@ -2291,11 +2307,30 @@ step=0 train_loss=7.0376 train_bpb=4.1401 val_loss=7.0164 val_bpb=4.1588 muon_lr
 step=50 train_loss=4.2241 train_bpb=2.4879 val_loss=4.1846 val_bpb=2.4833 muon_lr=1.865e-02 adamw_lr=2.798e-04 elapsed=156.9s
 ```
 
-Interpretation so far:
+Final parsed stats after the run completed:
 
-- This is already the best exact sampled checkpoint we have seen locally.
-- The longer schedule is behaving better than the earlier `100`-step run.
-- We should keep following this branch before widening the model again.
+```json
+{
+  "run_id": "torch_sp1024_d512_l4_b64k_s200",
+  "steps": 200,
+  "seconds": 6587.595697958022,
+  "best_val_loss": 3.3640987277030945,
+  "best_val_bpb": 1.995522745133331,
+  "final_val_loss": 3.3640987277030945,
+  "final_val_bpb": 1.995522745133331,
+  "compressed_model_size_bytes": 3529390,
+  "total_artifact_bytes": 3566778,
+  "artifact_budget_ok": true
+}
+```
+
+Interpretation:
+
+- This is the best exact sampled official-tokenizer score we have logged locally so far.
+- The score improved dramatically from the earlier `2.5808` run even though the sequence length was still only `128`.
+- This result is strong enough to confirm that the fast exact SentencePiece path is worth using, but it also sharpens the main reviewer criticism:
+  - if `SEQ_LEN=128` can already reach `1.9955`
+  - then fixing sequence length is now the highest-leverage next move
 
 ## Experiment 26. External Review Packet Draft
 
@@ -2327,36 +2362,333 @@ Interpretation:
 - `STRATEGY.md` remains the raw lab notebook.
 - `DRAFT1.md` is the cleaner handoff document for another engineer or researcher to review and critique.
 
+## Experiment 27. Feedback Intake and Search Reset
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Convert the external review in `FEEDBACK1.md` into explicit scorekeeping rules and a reordered search plan.
+
+Key feedback adopted:
+
+- `SEQ_LEN=128` is likely the biggest self-inflicted bottleneck
+- sampled exact validation should be treated as roughly `+/- 0.05` bpb
+- QAT should be disabled during local architecture search
+- the official `0.005 nats` record bar needs to be tracked in `bpb`
+
+Concrete changes to project guidance:
+
+- recorded `0.005 nats = 0.007213475204444817 bpb`
+- recorded the practical record-claim target as `1.217152224795555` bpb
+- promoted the finished `1.995522745133331` run to the main scoreboard
+- reset the next experiment priority away from tokenizer tinkering and toward sequence-length fixes first
+
+Interpretation:
+
+- The project is not bottlenecked on ideas right now.
+- It is bottlenecked on running the current best official-tokenizer configuration in a non-broken long-context regime.
+
+## Experiment 28. `SEQ_LEN=512` Feasibility and Pilot
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Run the highest-priority reviewer suggestion directly: keep the current best `sp1024` model shape, disable QAT, lengthen the context window, and see whether `SEQ_LEN=512` is practical and helpful.
+
+Smoke command:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=torch_sp1024_d512_l4_b64k_s1_seq512_smoke TOKENIZER_PATH=/tmp/parameter-golf-official.BbMmsz/data/tokenizers/fineweb_1024_bpe.model DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VAL_DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VOCAB_SIZE=1024 TOKEN_DTYPE=uint16 AVG_BYTES_PER_TOKEN=2.442303811509075 D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 SEQ_LEN=512 TRAIN_BATCH_TOKENS=65536 VAL_BATCH_TOKENS=65536 VAL_STEPS=16 VAL_LOSS_EVERY=0 MAX_STEPS=1 COOLDOWN_FRACTION=0.25 QAT_START_FRACTION=1.0 DEVICE=mps STATS_PATH=runs/official_torch_sp1024/torch_sp1024_d512_l4_b64k_s1_seq512_smoke.json uv run python train_gpt.py
+```
+
+Smoke terminal output:
+
+```text
+=== final_stats ===
+steps=1
+seconds=36.44
+final_val_loss=6.7021
+final_val_bpb=3.9695
+compressed_model_size_bytes=3562545
+code_size_bytes=37388
+total_artifact_bytes=3599933
+artifact_budget_ok=True
+stats_path=runs/official_torch_sp1024/torch_sp1024_d512_l4_b64k_s1_seq512_smoke.json
+```
+
+Pilot command:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=torch_sp1024_d512_l4_b64k_s20_seq512 TOKENIZER_PATH=/tmp/parameter-golf-official.BbMmsz/data/tokenizers/fineweb_1024_bpe.model DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VAL_DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VOCAB_SIZE=1024 TOKEN_DTYPE=uint16 AVG_BYTES_PER_TOKEN=2.442303811509075 D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 SEQ_LEN=512 TRAIN_BATCH_TOKENS=65536 VAL_BATCH_TOKENS=65536 VAL_STEPS=16 VAL_LOSS_EVERY=10 MAX_STEPS=20 COOLDOWN_FRACTION=0.25 QAT_START_FRACTION=1.0 DEVICE=mps STATS_PATH=runs/official_torch_sp1024/torch_sp1024_d512_l4_b64k_s20_seq512.json uv run python train_gpt.py
+```
+
+Pilot terminal output:
+
+```text
+step=0 train_loss=7.0366 train_bpb=4.1504 val_loss=7.0158 val_bpb=4.1553 muon_lr=1.000e-03 adamw_lr=1.500e-05 elapsed=0.0s
+step=10 train_loss=6.3466 train_bpb=3.7293 val_loss=6.2837 val_bpb=3.7293 muon_lr=1.100e-02 adamw_lr=1.650e-04 elapsed=756.4s
+=== final_stats ===
+steps=20
+seconds=1508.84
+final_val_loss=5.7089
+final_val_bpb=3.3877
+compressed_model_size_bytes=3531857
+code_size_bytes=37388
+total_artifact_bytes=3569245
+artifact_budget_ok=True
+stats_path=runs/official_torch_sp1024/torch_sp1024_d512_l4_b64k_s20_seq512.json
+```
+
+Interpretation:
+
+- `SEQ_LEN=512` is feasible at the original `64k` token batch on this Mac.
+- The `20`-step result improved slightly over the older `SEQ_LEN=128` `20`-step probe:
+  - `3.3877` versus `3.4061`
+- But the gain is only `0.0184` bpb, which is inside the local sampled-eval noise band.
+- The more important lesson was throughput:
+  - `SEQ_LEN=512` at `64k` batch is extremely slow locally
+  - so `SEQ_LEN=1024` would need a smaller batch to be practical
+
+## Experiment 29. `SEQ_LEN=1024` Memory Ceiling Probe
+
+Status:
+
+- Passed with fallback
+
+Purpose:
+
+- Determine the largest practical local batch for the `SEQ_LEN=1024` branch before spending more time on long-context training.
+
+OOM command:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=torch_sp1024_d512_l4_b64k_s1_seq1024_smoke TOKENIZER_PATH=/tmp/parameter-golf-official.BbMmsz/data/tokenizers/fineweb_1024_bpe.model DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VAL_DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VOCAB_SIZE=1024 TOKEN_DTYPE=uint16 AVG_BYTES_PER_TOKEN=2.442303811509075 D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=65536 VAL_BATCH_TOKENS=65536 VAL_STEPS=16 VAL_LOSS_EVERY=0 MAX_STEPS=1 COOLDOWN_FRACTION=0.25 QAT_START_FRACTION=1.0 DEVICE=mps STATS_PATH=runs/official_torch_sp1024/torch_sp1024_d512_l4_b64k_s1_seq1024_smoke.json uv run python train_gpt.py
+```
+
+OOM terminal output:
+
+```text
+RuntimeError: MPS backend out of memory (MPS allocated: 27.89 GiB, other allocations: 2.07 GiB, max allowed: 30.19 GiB). Tried to allocate 256.00 MiB on private pool.
+```
+
+Fallback command:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=torch_sp1024_d512_l4_b32k_s1_seq1024_smoke TOKENIZER_PATH=/tmp/parameter-golf-official.BbMmsz/data/tokenizers/fineweb_1024_bpe.model DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VAL_DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VOCAB_SIZE=1024 TOKEN_DTYPE=uint16 AVG_BYTES_PER_TOKEN=2.442303811509075 D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=32768 VAL_BATCH_TOKENS=32768 VAL_STEPS=16 VAL_LOSS_EVERY=0 MAX_STEPS=1 COOLDOWN_FRACTION=0.25 QAT_START_FRACTION=1.0 DEVICE=mps STATS_PATH=runs/official_torch_sp1024/torch_sp1024_d512_l4_b32k_s1_seq1024_smoke.json uv run python train_gpt.py
+```
+
+Fallback terminal output:
+
+```text
+=== final_stats ===
+steps=1
+seconds=1.85
+final_val_loss=6.7130
+final_val_bpb=3.9736
+compressed_model_size_bytes=3565073
+code_size_bytes=37388
+total_artifact_bytes=3602461
+artifact_budget_ok=True
+stats_path=runs/official_torch_sp1024/torch_sp1024_d512_l4_b32k_s1_seq1024_smoke.json
+```
+
+Interpretation:
+
+- `SEQ_LEN=1024` is not dead locally.
+- It simply requires dropping the batch from `64k` to `32k`.
+- That fallback is still fast enough to be useful for local search.
+
+## Experiment 30. `SEQ_LEN=1024` Pilot and Token-Budget Match
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Compare the `SEQ_LEN=1024` branch fairly by first running a short pilot, then matching the training-token budget of the `SEQ_LEN=512` `20`-step run.
+
+Pilot command:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=torch_sp1024_d512_l4_b32k_s10_seq1024 TOKENIZER_PATH=/tmp/parameter-golf-official.BbMmsz/data/tokenizers/fineweb_1024_bpe.model DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VAL_DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VOCAB_SIZE=1024 TOKEN_DTYPE=uint16 AVG_BYTES_PER_TOKEN=2.442303811509075 D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=32768 VAL_BATCH_TOKENS=32768 VAL_STEPS=16 VAL_LOSS_EVERY=10 MAX_STEPS=10 COOLDOWN_FRACTION=0.25 QAT_START_FRACTION=1.0 DEVICE=mps STATS_PATH=runs/official_torch_sp1024/torch_sp1024_d512_l4_b32k_s10_seq1024.json uv run python train_gpt.py
+```
+
+Pilot terminal output:
+
+```text
+step=0 train_loss=7.0330 train_bpb=4.0486 val_loss=7.0155 val_bpb=4.1527 muon_lr=1.000e-03 adamw_lr=1.500e-05 elapsed=0.0s
+=== final_stats ===
+steps=10
+seconds=28.11
+final_val_loss=6.3621
+final_val_bpb=3.7702
+compressed_model_size_bytes=3567268
+code_size_bytes=37388
+total_artifact_bytes=3604656
+artifact_budget_ok=True
+stats_path=runs/official_torch_sp1024/torch_sp1024_d512_l4_b32k_s10_seq1024.json
+```
+
+Token-budget-matched command:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=torch_sp1024_d512_l4_b32k_s40_seq1024 TOKENIZER_PATH=/tmp/parameter-golf-official.BbMmsz/data/tokenizers/fineweb_1024_bpe.model DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VAL_DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VOCAB_SIZE=1024 TOKEN_DTYPE=uint16 AVG_BYTES_PER_TOKEN=2.442303811509075 D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=32768 VAL_BATCH_TOKENS=32768 VAL_STEPS=16 VAL_LOSS_EVERY=20 MAX_STEPS=40 COOLDOWN_FRACTION=0.25 QAT_START_FRACTION=1.0 DEVICE=mps STATS_PATH=runs/official_torch_sp1024/torch_sp1024_d512_l4_b32k_s40_seq1024.json uv run python train_gpt.py
+```
+
+Token-budget-matched terminal output:
+
+```text
+step=0 train_loss=7.0330 train_bpb=4.0486 val_loss=7.0155 val_bpb=4.1527 muon_lr=1.000e-03 adamw_lr=1.500e-05 elapsed=0.0s
+step=20 train_loss=5.8047 train_bpb=3.4195 val_loss=5.7390 val_bpb=3.4009 muon_lr=2.000e-02 adamw_lr=3.000e-04 elapsed=43.6s
+=== final_stats ===
+steps=40
+seconds=90.60
+final_val_loss=5.1800
+final_val_bpb=3.0763
+compressed_model_size_bytes=3522792
+code_size_bytes=37388
+total_artifact_bytes=3560180
+artifact_budget_ok=True
+stats_path=runs/official_torch_sp1024/torch_sp1024_d512_l4_b32k_s40_seq1024.json
+```
+
+Interpretation:
+
+- This is where the feedback started looking decisively correct.
+- At matched training-token budget, `SEQ_LEN=1024` beat the `SEQ_LEN=512` pilot by a large margin:
+  - `3.0763` versus `3.3877`
+- Long context was not the dead end; unfair step-count comparisons were.
+
+## Experiment 31. `SEQ_LEN=1024` `200`-Step Long-Context Run
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Push the now-validated `SEQ_LEN=1024`, `32k` batch regime to a proper longer run with no QAT and the revised cooldown.
+
+Command:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=torch_sp1024_d512_l4_b32k_s200_seq1024 TOKENIZER_PATH=/tmp/parameter-golf-official.BbMmsz/data/tokenizers/fineweb_1024_bpe.model DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VAL_DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VOCAB_SIZE=1024 TOKEN_DTYPE=uint16 AVG_BYTES_PER_TOKEN=2.442303811509075 D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=32768 VAL_BATCH_TOKENS=32768 VAL_STEPS=16 VAL_LOSS_EVERY=50 MAX_STEPS=200 COOLDOWN_FRACTION=0.25 QAT_START_FRACTION=1.0 DEVICE=mps STATS_PATH=runs/official_torch_sp1024/torch_sp1024_d512_l4_b32k_s200_seq1024.json uv run python train_gpt.py
+```
+
+Terminal output:
+
+```text
+step=0 train_loss=7.0330 train_bpb=4.0486 val_loss=7.0155 val_bpb=4.1527 muon_lr=1.000e-03 adamw_lr=1.500e-05 elapsed=0.0s
+step=50 train_loss=4.5096 train_bpb=2.6665 val_loss=4.4793 val_bpb=2.6544 muon_lr=1.774e-02 adamw_lr=2.660e-04 elapsed=101.5s
+step=100 train_loss=4.1133 train_bpb=2.4946 val_loss=3.9488 val_bpb=2.3451 muon_lr=7.809e-03 adamw_lr=1.171e-04 elapsed=201.1s
+step=150 train_loss=3.8094 train_bpb=2.2180 val_loss=3.7763 val_bpb=2.2305 muon_lr=2.000e-03 adamw_lr=3.000e-05 elapsed=300.0s
+=== final_stats ===
+steps=200
+seconds=400.57
+final_val_loss=3.7196
+final_val_bpb=2.2033
+compressed_model_size_bytes=3544560
+code_size_bytes=37388
+total_artifact_bytes=3581948
+artifact_budget_ok=True
+stats_path=runs/official_torch_sp1024/torch_sp1024_d512_l4_b32k_s200_seq1024.json
+```
+
+Interpretation:
+
+- The long-context branch is real and stable.
+- It did not beat the older `1.9955` sampled best yet, but it also used only half the training-token budget of that run.
+- The right comparison was therefore not `200` steps versus `200` steps; it was matched total tokens.
+
+## Experiment 32. `SEQ_LEN=1024` `400`-Step Matched-Token Run
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Match the total training-token budget of the older `SEQ_LEN=128`, `64k`, `200`-step run and see whether long context closes the gap when compared fairly.
+
+Command:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=torch_sp1024_d512_l4_b32k_s400_seq1024 TOKENIZER_PATH=/tmp/parameter-golf-official.BbMmsz/data/tokenizers/fineweb_1024_bpe.model DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VAL_DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VOCAB_SIZE=1024 TOKEN_DTYPE=uint16 AVG_BYTES_PER_TOKEN=2.442303811509075 D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=32768 VAL_BATCH_TOKENS=32768 VAL_STEPS=16 VAL_LOSS_EVERY=100 MAX_STEPS=400 COOLDOWN_FRACTION=0.25 QAT_START_FRACTION=1.0 DEVICE=mps STATS_PATH=runs/official_torch_sp1024/torch_sp1024_d512_l4_b32k_s400_seq1024.json uv run python train_gpt.py
+```
+
+Terminal output:
+
+```text
+step=0 train_loss=7.0330 train_bpb=4.0486 val_loss=7.0155 val_bpb=4.1527 muon_lr=1.000e-03 adamw_lr=1.500e-05 elapsed=0.0s
+step=100 train_loss=4.1389 train_bpb=2.5102 val_loss=3.9680 val_bpb=2.3514 muon_lr=1.661e-02 adamw_lr=2.492e-04 elapsed=177.9s
+step=200 train_loss=3.5787 train_bpb=2.0785 val_loss=3.5770 val_bpb=2.1243 muon_lr=7.095e-03 adamw_lr=1.064e-04 elapsed=360.5s
+step=300 train_loss=3.4236 train_bpb=1.9999 val_loss=3.4518 val_bpb=2.0388 muon_lr=2.000e-03 adamw_lr=3.000e-05 elapsed=544.6s
+=== final_stats ===
+steps=400
+seconds=727.44
+final_val_loss=3.4013
+final_val_bpb=2.0147
+compressed_model_size_bytes=3545750
+code_size_bytes=37388
+total_artifact_bytes=3583138
+artifact_budget_ok=True
+stats_path=runs/official_torch_sp1024/torch_sp1024_d512_l4_b32k_s400_seq1024.json
+```
+
+Interpretation:
+
+- This is the key result from the feedback-driven reset.
+- At matched total training tokens, the best long-context branch is now only `0.0192` bpb worse than the old sampled best `1.9955`.
+- That difference is inside the local sampled-eval noise band, so we should treat the two branches as roughly tied for now.
+- The long-context branch is therefore not a regression.
+- It is the better search base going forward because:
+  - it obeys the reviewer's core argument about context
+  - it runs much more predictably on the local machine
+  - it gives us a cleaner regime for schedule tuning next
+
 ## Current Working Hypothesis
 
 The best immediate path is now:
 
 1. use the fast PyTorch/MPS trainer as the main local loop
 2. keep exact SentencePiece byte accounting enabled so we stay aligned with the official tokenizer semantics
-3. use sampled exact validation for iteration speed, then reserve full validation scans for the most promising checkpoints
-4. keep increasing effective batch size while the model still fits, because the `64k` probe improved tokens-per-second materially
+3. treat sampled exact validation as a proxy only, and do not trust differences below about `0.05` bpb
+4. use `SEQ_LEN=1024` as the new primary local search regime when the token budget is matched fairly
+5. disable QAT during local search and reserve it for final artifact-budget measurement
+6. tune the schedule in the long-context regime before changing architecture again
+7. keep batch large enough for throughput, but compare regimes by total training tokens rather than by raw step count
 
 Reasoning:
 
 - The official MLX path is correct but too slow on this Mac to be the main search engine.
 - The new exact SentencePiece path in `train_gpt.py` is much faster while still respecting official tokenizer byte semantics.
-- We now have a concrete score trajectory, not just infrastructure.
-- The next wins are likely to come from:
-  - longer schedules
-  - later QAT
-  - better cooldown placement
-  - larger train batches
+- We now have a concrete exact sampled score trajectory, not just infrastructure.
+- The outside review was directionally right that context length needed to be tested much more seriously.
+- The follow-up experiments showed that naive step-count comparisons were misleading because the `1024` path needed a smaller batch locally.
+- The next wins are most likely to come from:
+  - schedule tuning in the `SEQ_LEN=1024`, `32k` batch regime
+  - longer token budgets in that same regime
+  - no-QAT local sweeps
+  - later architecture work only after the long-context regime is established
 
 ## Next Command To Run
 
-This is the command currently in progress:
+This is the next command to run:
 
 ```bash
-PYTHONUNBUFFERED=1 RUN_ID=torch_sp1024_d512_l4_b64k_s200 TOKENIZER_PATH=/tmp/parameter-golf-official.BbMmsz/data/tokenizers/fineweb_1024_bpe.model DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VAL_DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VOCAB_SIZE=1024 TOKEN_DTYPE=uint16 AVG_BYTES_PER_TOKEN=2.442303811509075 D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 SEQ_LEN=128 TRAIN_BATCH_TOKENS=65536 VAL_BATCH_TOKENS=32768 VAL_STEPS=16 VAL_LOSS_EVERY=50 MAX_STEPS=200 COOLDOWN_FRACTION=0.05 QAT_START_FRACTION=0.98 DEVICE=mps STATS_PATH=runs/official_torch_sp1024/torch_sp1024_d512_l4_b64k_s200.json .venv/bin/python train_gpt.py
+PYTHONUNBUFFERED=1 RUN_ID=torch_sp1024_d512_l4_b32k_s400_seq1024_cd30 TOKENIZER_PATH=/tmp/parameter-golf-official.BbMmsz/data/tokenizers/fineweb_1024_bpe.model DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VAL_DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VOCAB_SIZE=1024 TOKEN_DTYPE=uint16 AVG_BYTES_PER_TOKEN=2.442303811509075 D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=32768 VAL_BATCH_TOKENS=32768 VAL_STEPS=16 VAL_LOSS_EVERY=100 MAX_STEPS=400 COOLDOWN_FRACTION=0.30 QAT_START_FRACTION=1.0 DEVICE=mps STATS_PATH=runs/official_torch_sp1024/torch_sp1024_d512_l4_b32k_s400_seq1024_cd30.json uv run python train_gpt.py
 ```
 
 Why this exact command:
 
-- It extends the now-proven `64k` batch path instead of guessing again.
-- It delays cooldown and QAT so the short-run schedule should stop fighting convergence.
-- It is the shortest next run that can tell us whether this exact sampled-bpb loop is actually heading toward the `1.5` target.
+- It keeps the newly validated long-context regime fixed and only tunes the schedule.
+- It disables QAT for local search.
+- It increases cooldown from `0.25` to `0.30`, which is directly suggested by the feedback for longer runs.
+- It is the cleanest next test for whether the `SEQ_LEN=1024` branch can move from "roughly tied with the old best" to "clearly ahead."

@@ -84,6 +84,12 @@ Important nuance:
 - the leaderboard is displayed in `val_bpb`
 - for tokenizer changes, OpenAI says submissions will be examined more carefully
 
+Unit conversion we should use in all local score tracking:
+
+- `bpb = nats * log2(e)`
+- `0.005 nats = 0.007213475204444817 bpb`
+- with the current public leader at `1.22436570`, a record claim should target `1.217152224795555` bpb or better before we treat it as PR-ready
+
 ### 6. Tokenizer and dataset changes are allowed, but scrutinized
 
 The official README explicitly allows tokenizer and dataset changes, but with extra burden of proof:
