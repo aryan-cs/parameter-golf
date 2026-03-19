@@ -104,6 +104,9 @@ class Config:
     device: str
     compile_model: bool
     use_smear: bool
+    mlp_kind: str
+    use_block_scales: bool
+    use_resid_mix: bool
     tied_embeddings: bool
     share_blocks: bool
     artifact_path: str
@@ -148,6 +151,9 @@ class Config:
             device=os.environ.get("DEVICE", ""),
             compile_model=env_bool("COMPILE_MODEL", False),
             use_smear=env_bool("USE_SMEAR", True),
+            mlp_kind=os.environ.get("MLP_KIND", "swiglu").strip().lower(),
+            use_block_scales=env_bool("USE_BLOCK_SCALES", False),
+            use_resid_mix=env_bool("USE_RESID_MIX", False),
             tied_embeddings=env_bool("TIED_EMBEDDINGS", False),
             share_blocks=env_bool("SHARE_BLOCKS", True),
             artifact_path=os.environ.get("ARTIFACT_PATH", ""),
@@ -248,6 +254,9 @@ if torch is not None:
             num_kv_heads: int,
             d_ff: int,
             qk_gain_init: float,
+            mlp_kind: str,
+            use_block_scales: bool,
+            use_resid_mix: bool,
             dropout: float = 0.0,
         ) -> None:
             super().__init__()
@@ -255,11 +264,16 @@ if torch is not None:
                 raise ValueError("D_MODEL must be divisible by N_HEADS")
             if n_heads % num_kv_heads != 0:
                 raise ValueError("N_HEADS must be divisible by NUM_KV_HEADS")
+            if mlp_kind not in {"swiglu", "relu2"}:
+                raise ValueError(f"Unsupported MLP_KIND: {mlp_kind}")
             self.d_model = d_model
             self.n_heads = n_heads
             self.num_kv_heads = num_kv_heads
             self.d_head = d_model // n_heads
             self.kv_repeat = n_heads // num_kv_heads
+            self.mlp_kind = mlp_kind
+            self.use_block_scales = use_block_scales
+            self.use_resid_mix = use_resid_mix
             self.norm1 = RMSNorm(d_model)
             self.norm2 = RMSNorm(d_model)
             kv_dim = num_kv_heads * self.d_head
@@ -270,9 +284,15 @@ if torch is not None:
             self.q_norm = RMSNorm(self.d_head)
             self.k_norm = RMSNorm(self.d_head)
             self.q_gain = nn.Parameter(torch.full((n_heads,), qk_gain_init))
-            self.ff_gate = QATLinear(d_model, d_ff, bias=False)
             self.ff_up = QATLinear(d_model, d_ff, bias=False)
             self.ff_down = QATLinear(d_ff, d_model, bias=False)
+            self.ff_gate = QATLinear(d_model, d_ff, bias=False) if mlp_kind == "swiglu" else None
+            self.attn_scale = nn.Parameter(torch.ones(d_model)) if use_block_scales else None
+            self.mlp_scale = nn.Parameter(torch.ones(d_model)) if use_block_scales else None
+            self.resid_mix = (
+                nn.Parameter(torch.stack((torch.ones(d_model), torch.zeros(d_model))).float())
+                if use_resid_mix else None
+            )
             self.dropout = nn.Dropout(dropout)
 
         def attention(self, x, cos, sin):
@@ -301,11 +321,27 @@ if torch is not None:
             return self.out_proj(out)
 
         def ffn(self, x):
-            return self.ff_down(F.silu(self.ff_gate(x)) * self.ff_up(x))
+            if self.mlp_kind == "swiglu":
+                if self.ff_gate is None:
+                    raise RuntimeError("ff_gate is required for SwiGLU")
+                return self.ff_down(F.silu(self.ff_gate(x)) * self.ff_up(x))
+            hidden = torch.relu(self.ff_up(x))
+            return self.ff_down(hidden * hidden)
 
-        def forward(self, x, cos, sin):
-            x = x + self.dropout(self.attention(self.norm1(x), cos, sin))
-            x = x + self.dropout(self.ffn(self.norm2(x)))
+        def forward(self, x, cos, sin, x0=None):
+            if self.resid_mix is not None:
+                if x0 is None:
+                    raise RuntimeError("x0 is required when USE_RESID_MIX=1")
+                mix = self.resid_mix.to(dtype=x.dtype)
+                x = mix[0].view(1, 1, -1) * x + mix[1].view(1, 1, -1) * x0
+            attn_out = self.dropout(self.attention(self.norm1(x), cos, sin))
+            if self.attn_scale is not None:
+                attn_out = attn_out * self.attn_scale.to(dtype=attn_out.dtype).view(1, 1, -1)
+            x = x + attn_out
+            mlp_out = self.dropout(self.ffn(self.norm2(x)))
+            if self.mlp_scale is not None:
+                mlp_out = mlp_out * self.mlp_scale.to(dtype=mlp_out.dtype).view(1, 1, -1)
+            x = x + mlp_out
             return x
 
 
@@ -320,6 +356,9 @@ if torch is not None:
             n_loops: int,
             max_seq_len: int,
             use_smear: bool,
+            mlp_kind: str,
+            use_block_scales: bool,
+            use_resid_mix: bool,
             tied_embeddings: bool,
             share_blocks: bool,
             qk_gain_init: float,
@@ -334,13 +373,31 @@ if torch is not None:
             self.smear = SmearBlock(d_model) if use_smear else nn.Identity()
             self.rope = RotaryEmbedding(d_model // n_heads, max_seq_len)
             if self.share_blocks:
-                self.block = SharedTransformerBlock(d_model, n_heads, num_kv_heads, d_ff, qk_gain_init)
+                self.block = SharedTransformerBlock(
+                    d_model,
+                    n_heads,
+                    num_kv_heads,
+                    d_ff,
+                    qk_gain_init,
+                    mlp_kind,
+                    use_block_scales,
+                    use_resid_mix,
+                )
                 self.blocks = None
                 self.loop_embeddings = nn.Embedding(n_loops, d_model)
             else:
                 self.block = None
                 self.blocks = nn.ModuleList(
-                    SharedTransformerBlock(d_model, n_heads, num_kv_heads, d_ff, qk_gain_init)
+                    SharedTransformerBlock(
+                        d_model,
+                        n_heads,
+                        num_kv_heads,
+                        d_ff,
+                        qk_gain_init,
+                        mlp_kind,
+                        use_block_scales,
+                        use_resid_mix,
+                    )
                     for _ in range(n_loops)
                 )
                 self.loop_embeddings = None
@@ -366,16 +423,17 @@ if torch is not None:
             _, seq_len = input_ids.shape
             x = self.embed(input_ids)
             x = self.smear(x)
+            x0 = x
             cos, sin = self.rope(seq_len, x.dtype)
             if self.share_blocks:
                 loop_ids = torch.arange(self.n_loops, device=input_ids.device)
                 loop_emb = self.loop_embeddings(loop_ids)
                 for loop_idx in range(self.n_loops):
                     x = x + loop_emb[loop_idx].view(1, 1, -1)
-                    x = self.block(x, cos, sin)
+                    x = self.block(x, cos, sin, x0=x0)
             else:
                 for block in self.blocks:
-                    x = block(x, cos, sin)
+                    x = block(x, cos, sin, x0=x0)
             x = self.final_norm(x)
             logits = self.head(x)
             if self.logit_softcap > 0.0:
@@ -914,6 +972,9 @@ def main() -> int:
         n_loops=cfg.n_loops,
         max_seq_len=cfg.seq_len,
         use_smear=cfg.use_smear,
+        mlp_kind=cfg.mlp_kind,
+        use_block_scales=cfg.use_block_scales,
+        use_resid_mix=cfg.use_resid_mix,
         tied_embeddings=cfg.tied_embeddings,
         share_blocks=cfg.share_blocks,
         qk_gain_init=cfg.qk_gain_init,

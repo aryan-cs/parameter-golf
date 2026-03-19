@@ -20,7 +20,7 @@ Build toward a strong Parameter Golf submission with:
 
 ## Official Leaderboard Reference
 
-As of March 18, 2026, the official repo leaderboard shows:
+As of March 19, 2026, the official repo leaderboard still shows:
 
 - rank 1: `Naive Baseline`
 - displayed README score: `1.2244`
@@ -45,14 +45,14 @@ This section should always answer two questions:
 Current score to beat for the main leaderboard:
 
 - exact `val_bpb` to beat: `1.22436570`
-- source: official `Naive Baseline` record on March 18, 2026
+- source: official `Naive Baseline` record, rechecked on March 19, 2026
 - official record-claim significance margin: `0.005 nats = 0.007213475204444817 bpb`
 - practical record-claim target: `1.217152224795555` bpb or better
 
 Current interesting non-record comparison:
 
 - exact `val_bpb`: `1.20737944`
-- source: official `4-Hour Baseline` non-record run on March 18, 2026
+- source: official `4-Hour Baseline` non-record run, rechecked on March 19, 2026
 
 Our current best local exact result:
 
@@ -90,10 +90,10 @@ Current best exact `24k` ByteLevel result:
 Current live frontier checkpoint:
 
 - run id: `bytelevel32k_d512_gqa_softcap_s3200`
-- latest checkpoint: `step=800`
-- live `val_bpb`: `1.7785`
-- gap to local `1.5`: `0.2785`
-- status: in progress; slower than the `24k` branch, but currently ahead of the `24k` branch at the same checkpoint (`1.8085`)
+- latest checkpoint: `step=1600`
+- live `val_bpb`: `1.6975`
+- gap to local `1.5`: `0.1975`
+- status: in progress; the `32k` branch started ahead at `step=800`, but by `step=1600` it is now behind the `24k` branch at the same checkpoint (`1.6664`)
 
 Current prepared next-tokenizer branch:
 
@@ -111,6 +111,12 @@ Prepared tokenizer ladder behind the live branch:
   - train `avg_bytes_per_token`: `4.62566836285424`
   - val `avg_bytes_per_token`: `4.534385498540016`
 - status: contingency branches prepared so we can keep moving if `32k` still stops short of `1.5`
+
+Current prepared next-architecture branch:
+
+- knobs: `MLP_KIND=relu2`, `USE_BLOCK_SCALES=1`, `USE_RESID_MIX=1`
+- status: implemented and smoke-tested on CPU, but not yet validated in a long exact run
+- rationale: this is the closest local approximation so far to the baseline-style deeper-block behavior without abandoning the current looped training stack
 
 Gap versus official main-track leader for our best exact sampled official-tokenizer run:
 
@@ -3482,6 +3488,95 @@ Interpretation:
 - Each rung materially increases bytes per token, so if the model-side branch is the same quality in nats, the bpb denominator should keep improving.
 - We still need actual training runs to know whether the larger vocabularies hurt optimization enough to offset that benefit.
 
+## Experiment 52. Mid-Run Checkpoint For The `32k` Branch
+
+Status:
+
+- In progress
+
+Purpose:
+
+- Check whether the live `32k` tokenizer branch is still on track to beat the `24k` branch, or whether the denominator gain is getting offset by weaker optimization.
+
+Command:
+
+```bash
+tail -n 80 runs/bytelevel32k/bytelevel32k_d512_gqa_softcap_s3200.log
+```
+
+Terminal output:
+
+```text
+step=0 train_loss=10.4906 train_bpb=3.3573 val_loss=10.4514 val_bpb=3.4403 muon_lr=2.000e-03 adamw_lr=3.000e-05 elapsed=0.0s
+step=800 train_loss=5.0753 train_bpb=1.6506 val_loss=5.4205 val_bpb=1.7785 muon_lr=3.225e-02 adamw_lr=4.838e-04 elapsed=1279.1s
+step=1600 train_loss=4.7604 train_bpb=1.5083 val_loss=5.1868 val_bpb=1.6975 muon_lr=1.527e-02 adamw_lr=2.290e-04 elapsed=2624.8s
+```
+
+Interpretation:
+
+- The `32k` branch is alive and making real progress.
+- It looked better than `24k` at `step=800`, but by `step=1600` it is now `0.0311` bpb worse than the `24k` branch at the same checkpoint (`1.6975` versus `1.6664`).
+- That means `32k` is no longer the obvious winning tokenizer rung.
+- We should still let it finish, because the larger denominator might still help late in training, but `48k` is now the next most plausible escalation if `32k` stalls in the mid-`1.6`s.
+
+## Experiment 53. Add Baseline-Inspired Block Knobs
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Prepare the next model-side branch without waiting for the live `32k` tokenizer run to finish.
+- Add a small set of baseline-inspired block controls so we can test whether more expressive residual mixing and a `ReLU^2` MLP help the exact large-tokenizer regime.
+
+Code added to `train_gpt.py`:
+
+```python
+mlp_kind=os.environ.get("MLP_KIND", "swiglu").strip().lower()
+use_block_scales=env_bool("USE_BLOCK_SCALES", False)
+use_resid_mix=env_bool("USE_RESID_MIX", False)
+```
+
+```python
+if self.mlp_kind == "swiglu":
+    return self.ff_down(F.silu(self.ff_gate(x)) * self.ff_up(x))
+hidden = torch.relu(self.ff_up(x))
+return self.ff_down(hidden * hidden)
+```
+
+```python
+if self.resid_mix is not None:
+    mix = self.resid_mix.to(dtype=x.dtype)
+    x = mix[0].view(1, 1, -1) * x + mix[1].view(1, 1, -1) * x0
+```
+
+Smoke-test command:
+
+```bash
+RUN_ID=baseline_block_smoke DEVICE=cpu MAX_STEPS=1 VAL_LOSS_EVERY=1 VAL_STEPS=1 D_MODEL=64 N_HEADS=8 NUM_KV_HEADS=4 D_FF=128 N_LOOPS=2 SEQ_LEN=32 TRAIN_BATCH_TOKENS=256 VAL_BATCH_TOKENS=256 VOCAB_SIZE=512 TOKEN_DTYPE=uint16 AVG_BYTES_PER_TOKEN=3.5 TIED_EMBEDDINGS=1 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 MLP_KIND=relu2 USE_BLOCK_SCALES=1 USE_RESID_MIX=1 uv run python train_gpt.py
+```
+
+Terminal output:
+
+```text
+parameters=62,104
+step=0 train_loss=6.2520 train_bpb=2.5771 val_loss=6.2495 val_bpb=2.5760 muon_lr=2.000e-02 adamw_lr=3.000e-04 elapsed=0.0s
+=== final_stats ===
+steps=1
+seconds=0.11
+final_val_bpb=2.5767
+total_artifact_bytes=131827
+artifact_budget_ok=True
+```
+
+Interpretation:
+
+- The new knobs compile and run correctly.
+- The active `32k` run does not include these changes, because it started before this patch.
+- If the live `32k` branch misses `1.5`, these knobs are ready to combine with either the `24k` or `48k` tokenizer path without another refactor cycle.
+- This checkpoint also promoted the external reviewer handoff to `DRAFT3.md`.
+
 ## Current Working Hypothesis
 
 The best immediate path is now:
@@ -3497,8 +3592,9 @@ The best immediate path is now:
 9. longer horizon plus later cooldown is currently the strongest confirmed lever inside the `24k` branch
 10. GQA plus query gain plus logit softcap is now the strongest confirmed architecture tweak on top of that schedule
 11. longer horizon still helps, but with diminishing returns
-12. the next high-value test is to combine the proven GQA/softcap schedule with the prepared `32k` tokenizer branch
-13. if `32k` still misses, the next denominator-only escalation is already prepared at `48k` and `64k`
+12. the live `32k` tokenizer branch is still worth finishing, but it is no longer clearly winning against `24k` at matched checkpoint
+13. if `32k` still misses, the next denominator-only escalation is `48k`, not `64k`, because it is the next clean rung with less risk of optimization collapse
+14. in parallel, the new baseline-inspired block knobs are ready as the next model-side lever if denominator scaling alone stalls
 
 Reasoning:
 
@@ -3512,14 +3608,14 @@ Reasoning:
 - On top of that schedule, the official-baseline attention knobs added another clean improvement.
 - The `3200`-step continuation shows optimization horizon is still useful, but no longer enough to expect a free drop to `1.5`.
 - The next wins are most likely to come from:
-  - the prepared `32k` tokenizer branch on top of the proven GQA/softcap setup
-  - then the prepared `48k` and `64k` branches if the `32k` run is good but still short
+  - letting the active `32k` branch finish so we stop guessing about whether it really beats `24k`
+  - then the prepared `48k` branch if `32k` still lands in the mid-`1.6`s
   - maybe another longer continuation after we know whether the tokenizer denominator gain is real in practice
-  - only then another architecture or width change if the curve still stalls
+  - then the new `relu2` plus block-scale plus residual-mix branch if tokenizer-only scaling stops paying off
 
 ## Next Command To Run
 
-This is the next command to run:
+The current active command is:
 
 ```bash
 PYTHONUNBUFFERED=1 RUN_ID=bytelevel32k_d512_gqa_softcap_s3200 TOKENIZER_PREFIX=./data/tokenizers/fineweb_32k_sample DATA_PATH=./data/tokens/fineweb_32k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_32k_sample/val D_MODEL=512 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=800 MAX_STEPS=3200 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 DEVICE=mps STATS_PATH=runs/bytelevel32k/bytelevel32k_d512_gqa_softcap_s3200.json uv run python train_gpt.py | tee runs/bytelevel32k/bytelevel32k_d512_gqa_softcap_s3200.log
@@ -3530,3 +3626,9 @@ Why this exact command:
 - The `24k` branch is now close enough to `1.5` that a real tokenizer denominator gain is the highest-leverage remaining lever.
 - The model-side recipe is already proven: GQA, query gain, logit softcap, `SEQ_LEN=1024`, `3200` steps.
 - Keeping the model recipe fixed while changing only the tokenizer branch is the cleanest next experiment.
+
+If the current `32k` run finishes above the `24k` branch, the next command should be:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel48k_d512_gqa_softcap_s3200 TOKENIZER_PREFIX=./data/tokenizers/fineweb_48k_sample DATA_PATH=./data/tokens/fineweb_48k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_48k_sample/val D_MODEL=512 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=800 MAX_STEPS=3200 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 DEVICE=mps STATS_PATH=runs/bytelevel48k/bytelevel48k_d512_gqa_softcap_s3200.json uv run python train_gpt.py | tee runs/bytelevel48k/bytelevel48k_d512_gqa_softcap_s3200.log
+```
