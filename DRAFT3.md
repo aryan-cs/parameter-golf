@@ -22,7 +22,7 @@ Current facts that matter most:
   - `step=2400 val_bpb = 1.6675`
 - The active frontier is now:
   - `bytelevel24k_d640_gqa_softcap_s1600`
-  - `step=400 val_bpb = 1.8951`
+  - `step=800 val_bpb = 1.7533`
 - The `32k` branch is no longer better than `24k`.
   - at `step=800`, `32k` was ahead
   - at `step=1600`, `32k` was behind `24k`
@@ -244,15 +244,20 @@ Its first real checkpoint is:
 
 ```text
 step=400 train_loss=5.3712 train_bpb=1.8237 val_loss=5.5845 val_bpb=1.8951
+step=800 train_loss=5.0739 train_bpb=1.6821 val_loss=5.2047 val_bpb=1.7533
 ```
 
 The older plain `24k` `d512` reference at the same checkpoint was:
 
 ```text
 step=400 ... val_bpb=1.9226
+step=800 ... val_bpb=1.7954
 ```
 
-So the wider branch is `0.0275` bpb better at `step=400`.
+So the wider branch is:
+
+- `0.0275` bpb better at `step=400`
+- `0.0421` bpb better at `step=800`
 
 This is the first early checkpoint in a while that actually beats the old reference, which makes the width-upscaled plain branch the strongest live hypothesis in the project right now.
 

@@ -98,9 +98,9 @@ Most recent stopped frontier checkpoint:
 Current live frontier checkpoint:
 
 - run id: `bytelevel24k_d640_gqa_softcap_s1600`
-- latest checkpoint: `step=400`
-- live `val_bpb`: `1.8951`
-- gap to local `1.5`: `0.3951`
+- latest checkpoint: `step=800`
+- live `val_bpb`: `1.7533`
+- gap to local `1.5`: `0.2533`
 - status: now active on MPS as the width-upscaled version of the proven plain `24k` GQA/softcap recipe
 
 Current prepared next-tokenizer branch:
@@ -3861,6 +3861,7 @@ Terminal output so far:
 parameters=20,238,248
 step=0 train_loss=10.1780 train_bpb=3.3062 val_loss=10.1269 val_bpb=3.4676 muon_lr=2.000e-03 adamw_lr=3.000e-05 elapsed=0.0s
 step=400 train_loss=5.3712 train_bpb=1.8237 val_loss=5.5845 val_bpb=1.8951 muon_lr=3.251e-02 adamw_lr=4.876e-04 elapsed=599.1s
+step=800 train_loss=5.0739 train_bpb=1.6821 val_loss=5.2047 val_bpb=1.7533 muon_lr=1.542e-02 adamw_lr=2.314e-04 elapsed=1197.8s
 ```
 
 Interpretation:
@@ -3868,6 +3869,8 @@ Interpretation:
 - This is the first early checkpoint in quite a while that is actually better than the older plain `24k` reference.
 - At `step=400`, it is `0.0275` bpb better than the old plain `24k` `step=400` checkpoint (`1.9226`).
 - That makes the wider plain `24k` branch the strongest active hypothesis now.
+- At `step=800`, it is `0.0421` bpb better than the closest old `24k` `1600`-schedule reference (`1.7954`).
+- That is now close to the edge of the local proxy-noise band in the good direction, so this branch has earned the right to continue toward `step=1600`.
 
 ## Experiment 53. Add Baseline-Inspired Block Knobs
 
