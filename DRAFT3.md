@@ -21,8 +21,8 @@ Current facts that matter most:
   - `bytelevel32k_d512_gqa_softcap_s3200`
   - `step=2400 val_bpb = 1.6675`
 - The active frontier is now:
-  - `bytelevel24k_d512_gqa_softcap_relu2_s1600`
-  - `step=800 val_bpb = 1.8192`
+  - `bytelevel24k_d640_gqa_softcap_s1600`
+  - `step=400 val_bpb = 1.8951`
 - The `32k` branch is no longer better than `24k`.
   - at `step=800`, `32k` was ahead
   - at `step=1600`, `32k` was behind `24k`
@@ -38,7 +38,7 @@ Main conclusion:
 - The project is no longer blocked on infrastructure.
 - The current decision is no longer “wait for `32k` to rescue us.”
 - We promoted `48k`, rejected the full-width local form for memory reasons, and even the healthier accumulated `48k d384` path still lost by `step=1600`.
-- The live question is now whether the baseline-inspired block variant can improve nats on the best `24k` tokenizer family.
+- The `relu2` block family underperformed, so the live question is now whether a wider plain `24k` model is the simpler path to lower bpb.
 
 ## 2. Official Score Check
 
@@ -221,6 +221,40 @@ step=800 ... val_bpb=1.7954
 So the new branch is `0.0238` bpb worse at `step=800`.
 
 That is still inside the local proxy-noise band, so the branch has not failed yet, but it also has not earned the right to be called better.
+
+The simplified `relu2`-only follow-up behaved almost the same way:
+
+```text
+step=800 train_loss=5.3235 train_bpb=1.7648 val_loss=5.3960 val_bpb=1.8177
+```
+
+That is still `0.0223` bpb worse than the old plain `24k` reference (`1.7954`).
+
+So the project stopped spending MPS time on `relu2` variants and moved to the next cleaner lever: more width on the plain winning recipe.
+
+### 3.4 A wider plain `24k` branch is now the strongest live hypothesis
+
+The current active run is:
+
+```text
+bytelevel24k_d640_gqa_softcap_s1600
+```
+
+Its first real checkpoint is:
+
+```text
+step=400 train_loss=5.3712 train_bpb=1.8237 val_loss=5.5845 val_bpb=1.8951
+```
+
+The older plain `24k` `d512` reference at the same checkpoint was:
+
+```text
+step=400 ... val_bpb=1.9226
+```
+
+So the wider branch is `0.0275` bpb better at `step=400`.
+
+This is the first early checkpoint in a while that actually beats the old reference, which makes the width-upscaled plain branch the strongest live hypothesis in the project right now.
 
 ## 4. Exact Commands And Outputs
 
@@ -412,8 +446,8 @@ step=1600 val_bpb=1.7439
 The active frontier is:
 
 ```text
-bytelevel24k_d512_gqa_softcap_relu2_s1600
-step=800 val_bpb=1.8192
+bytelevel24k_d640_gqa_softcap_s1600
+step=400 val_bpb=1.8951
 ```
 
 The active model-side ablation is:
