@@ -22,7 +22,7 @@ Current facts that matter most:
   - `step=2400 val_bpb = 1.6675`
 - The active frontier is now:
   - `bytelevel24k_d640_gqa_softcap_s3200`
-  - `step=0 val_bpb = 3.4676`
+  - `step=800 val_bpb = 1.7610`
 - The `32k` branch is no longer better than `24k`.
   - at `step=800`, `32k` was ahead
   - at `step=1600`, `32k` was behind `24k`
@@ -285,6 +285,7 @@ The promoted continuation has started cleanly:
 
 ```text
 step=0 val_bpb=3.4676
+step=800 val_bpb=1.7610
 ```
 
 ## 4. Exact Commands And Outputs

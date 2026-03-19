@@ -98,8 +98,9 @@ Most recent stopped frontier checkpoint:
 Current live frontier checkpoint:
 
 - run id: `bytelevel24k_d640_gqa_softcap_s3200`
-- latest checkpoint: `step=0`
-- live `val_bpb`: `3.4676`
+- latest checkpoint: `step=800`
+- live `val_bpb`: `1.7610`
+- gap to local `1.5`: `0.2610`
 - status: now active on MPS as the promoted `3200`-step continuation of the width-upscaled plain `24k` GQA/softcap recipe
 
 Current prepared next-tokenizer branch:
@@ -3900,12 +3901,16 @@ Terminal output so far:
 ```text
 parameters=20,238,248
 step=0 train_loss=10.1780 train_bpb=3.3062 val_loss=10.1269 val_bpb=3.4676 muon_lr=2.000e-03 adamw_lr=3.000e-05 elapsed=0.0s
+step=800 train_loss=5.0383 train_bpb=1.6703 val_loss=5.1894 val_bpb=1.7610 muon_lr=3.225e-02 adamw_lr=4.838e-04 elapsed=1189.7s
 ```
 
 Interpretation:
 
 - This is the right place to spend more training tokens now.
 - The live question is no longer "does width help?" but "how much of the old `3200`-step improvement curve survives when the wider branch starts from a stronger base?"
+- At `step=800`, the continuation is only `0.0077` bpb worse than the shorter `d640` run at the same checkpoint (`1.7533`).
+- More importantly, it is still `0.0475` bpb better than the old plain `d512` `3200`-step checkpoint (`1.8085`).
+- So the continuation is still good enough to keep running toward `step=1600`.
 
 ## Experiment 53. Add Baseline-Inspired Block Knobs
 
