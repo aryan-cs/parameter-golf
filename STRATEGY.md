@@ -56,10 +56,10 @@ Current interesting non-record comparison:
 
 Our current best local exact result:
 
-- exact `final_val_bpb`: `1.7853542005916354`
-- short form: `1.7854`
-- run id: `bytelevel24k_d512_tied_lr2x_s1600`
-- artifact: `22,405,986` bytes
+- exact `final_val_bpb`: `1.748414205194488`
+- short form: `1.7484`
+- run id: `bytelevel24k_d512_gqa_softcap_s1600`
+- artifact: `22,076,698` bytes
 - status: exact ByteLevel BPE on the local `24k` sample-data path; strong local milestone, but not competition-valid and not artifact-valid yet
 
 Current best official-tokenizer local exact-bpb result:
@@ -81,10 +81,10 @@ Current best long-context (`SEQ_LEN=1024`) official-tokenizer result:
 
 Current best exact `24k` ByteLevel result:
 
-- exact sampled `best_val_bpb`: `1.7853542005916354`
-- short form: `1.7854`
-- run id: `bytelevel24k_d512_tied_lr2x_s1600`
-- artifact: `22,405,986` bytes
+- exact sampled `best_val_bpb`: `1.748414205194488`
+- short form: `1.7484`
+- run id: `bytelevel24k_d512_gqa_softcap_s1600`
+- artifact: `22,076,698` bytes
 - status: best exact large-tokenizer result so far; still far above the artifact cap, but now the strongest overall local exact score in the repo
 
 Gap versus official main-track leader for our best exact sampled official-tokenizer run:
@@ -94,12 +94,12 @@ Gap versus official main-track leader for our best exact sampled official-tokeni
 
 Gap versus official main-track leader for our best tokenizer-changed local exact run:
 
-- `1.7853542005916354 - 1.22436570 = 0.5609885005916355` bpb worse
-- `0.5609885005916355 / log2(e) = 0.3888475975116434` nats worse
+- `1.748414205194488 - 1.22436570 = 0.5240485051944881` bpb worse
+- `0.5240485051944881 / log2(e) = 0.3632426926515397` nats worse
 
 Gap versus the immediate `1.5` local target:
 
-- `1.7853542005916354 - 1.5 = 0.2853542005916354` bpb worse
+- `1.748414205194488 - 1.5 = 0.24841420519448798` bpb worse
 
 PR opening rule:
 
@@ -3313,6 +3313,44 @@ Interpretation:
 - The extra horizon and later cooldown mattered much more than recent width, loop-depth, or accumulation changes.
 - We are still `0.2854` bpb away from the local `1.5` target, so longer training alone probably is not sufficient.
 
+## Experiment 48. Add GQA, Query Gain, and Logit Softcap To The Best `1600`-Step Branch
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Test whether the new baseline-aligned attention knobs improve the strongest `24k` long-horizon branch when everything else stays fixed.
+
+Command:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_d512_gqa_softcap_s1600 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=512 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=400 MAX_STEPS=1600 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_d512_gqa_softcap_s1600.json uv run python train_gpt.py | tee runs/bytelevel24k/bytelevel24k_d512_gqa_softcap_s1600.log
+```
+
+Terminal output:
+
+```text
+parameters=15,470,216
+step=400 train_loss=5.4697 train_bpb=1.8571 val_loss=5.6657 val_bpb=1.9226 muon_lr=3.251e-02 adamw_lr=4.876e-04 elapsed=482.8s
+step=800 train_loss=5.2379 train_bpb=1.7365 val_loss=5.3298 val_bpb=1.7954 muon_lr=1.542e-02 adamw_lr=2.314e-04 elapsed=964.4s
+step=1200 train_loss=4.8926 train_bpb=1.6949 val_loss=5.1954 val_bpb=1.7756 muon_lr=4.357e-03 adamw_lr=6.535e-05 elapsed=1443.8s
+=== final_stats ===
+steps=1600
+seconds=1922.98
+final_val_bpb=1.7484
+total_artifact_bytes=22076698
+artifact_budget_ok=False
+```
+
+Interpretation:
+
+- This is the new best local exact result in the repo.
+- Relative to the plain `1600`-step branch (`1.7854`), the GQA/softcap branch improved by `0.0369` bpb.
+- The variant also reduced parameters from `15,732,352` to `15,470,216` and trimmed artifact size by `329,288` bytes.
+- GQA plus query gain plus logit softcap is now a confirmed useful direction, not just a theoretical baseline-alignment idea.
+
 ## Current Working Hypothesis
 
 The best immediate path is now:
@@ -3326,7 +3364,8 @@ The best immediate path is now:
 7. keep batch large enough for throughput, but compare regimes by total training tokens rather than by raw step count
 8. treat the `24k` exact tokenizer path as the current best local scoring branch, but still optimization-limited and artifact-limited rather than architecture-limited
 9. longer horizon plus later cooldown is currently the strongest confirmed lever inside the `24k` branch
-10. the next high-value test is to layer official-baseline attention choices on top of that same strong schedule instead of reopening weaker branches
+10. GQA plus query gain plus logit softcap is now the strongest confirmed architecture tweak on top of that schedule
+11. the next high-value test is to extend this improved branch further before reopening broader architecture search
 
 Reasoning:
 
@@ -3337,9 +3376,10 @@ Reasoning:
 - The follow-up experiments showed that naive step-count comparisons were misleading because the `1024` path needed a smaller batch locally.
 - The `24k` exact tokenizer path is now the strongest local branch we have, but it is still bottlenecked by optimization and artifact size more than by missing infrastructure.
 - Inside that branch, better LR plus much longer horizon moved the score more than bigger effective batch, extra loops, or extra width.
+- On top of that schedule, the official-baseline attention knobs added another clean improvement.
 - The next wins are most likely to come from:
-  - baseline-aligned attention changes on top of the same promoted `24k` schedule
-  - maybe another schedule adjustment around that same branch if the GQA/softcap run is neutral
+  - extending the improved GQA/softcap branch to a longer horizon
+  - maybe another schedule adjustment around that same branch if the longer continuation starts flattening
   - only then another architecture or width change if the curve still stalls
 
 ## Next Command To Run
@@ -3347,11 +3387,11 @@ Reasoning:
 This is the next command to run:
 
 ```bash
-PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_d512_gqa_softcap_s1600 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=512 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=400 MAX_STEPS=1600 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_d512_gqa_softcap_s1600.json uv run python train_gpt.py | tee runs/bytelevel24k/bytelevel24k_d512_gqa_softcap_s1600.log
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_d512_gqa_softcap_s3200 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=512 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=800 MAX_STEPS=3200 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_d512_gqa_softcap_s3200.json uv run python train_gpt.py | tee runs/bytelevel24k/bytelevel24k_d512_gqa_softcap_s3200.log
 ```
 
 Why this exact command:
 
-- The `1600`-step `24k` run is now the best local exact result in the repo, so the clean next comparison is to keep that schedule fixed and change only the newly added baseline-aligned attention knobs.
-- `NUM_KV_HEADS=4`, `QK_GAIN_INIT=1.5`, and `LOGIT_SOFTCAP=30` are directly motivated by the official baseline rather than by random local tinkering.
-- `VAL_LOSS_EVERY=400` preserves the useful checkpoints without paying too much eval overhead.
+- The GQA/softcap `1600`-step run is now the best local exact result in the repo, so the clean next move is to extend that exact improved branch rather than reopening a worse configuration.
+- `VAL_LOSS_EVERY=800` reduces eval overhead now that we already trust this branch enough to let it run longer between checkpoints.
+- If this longer continuation still improves materially, it will tell us that the local bottleneck is still optimization horizon rather than missing architecture.
