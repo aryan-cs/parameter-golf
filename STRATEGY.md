@@ -2653,6 +2653,49 @@ Interpretation:
   - it runs much more predictably on the local machine
   - it gives us a cleaner regime for schedule tuning next
 
+## Experiment 33. `SEQ_LEN=1024` Schedule Tuning: `COOLDOWN_FRACTION=0.30`
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Test the next feedback-suggested cooldown point while holding the validated long-context regime fixed.
+
+Command:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=torch_sp1024_d512_l4_b32k_s400_seq1024_cd30 TOKENIZER_PATH=/tmp/parameter-golf-official.BbMmsz/data/tokenizers/fineweb_1024_bpe.model DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VAL_DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VOCAB_SIZE=1024 TOKEN_DTYPE=uint16 AVG_BYTES_PER_TOKEN=2.442303811509075 D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=32768 VAL_BATCH_TOKENS=32768 VAL_STEPS=16 VAL_LOSS_EVERY=100 MAX_STEPS=400 COOLDOWN_FRACTION=0.30 QAT_START_FRACTION=1.0 DEVICE=mps STATS_PATH=runs/official_torch_sp1024/torch_sp1024_d512_l4_b32k_s400_seq1024_cd30.json uv run python train_gpt.py
+```
+
+Terminal output:
+
+```text
+step=0 train_loss=7.0330 train_bpb=4.0486 val_loss=7.0155 val_bpb=4.1527 muon_lr=1.000e-03 adamw_lr=1.500e-05 elapsed=0.0s
+step=100 train_loss=4.1367 train_bpb=2.5088 val_loss=3.9693 val_bpb=2.3522 muon_lr=1.611e-02 adamw_lr=2.417e-04 elapsed=176.2s
+step=200 train_loss=3.5799 train_bpb=2.0792 val_loss=3.5779 val_bpb=2.1249 muon_lr=5.887e-03 adamw_lr=8.831e-05 elapsed=357.1s
+step=300 train_loss=3.4364 train_bpb=2.0074 val_loss=3.4660 val_bpb=2.0472 muon_lr=1.667e-03 adamw_lr=2.500e-05 elapsed=545.0s
+=== final_stats ===
+steps=400
+seconds=731.03
+final_val_loss=3.4199
+final_val_bpb=2.0258
+compressed_model_size_bytes=3541387
+code_size_bytes=37388
+total_artifact_bytes=3578775
+artifact_budget_ok=True
+stats_path=runs/official_torch_sp1024/torch_sp1024_d512_l4_b32k_s400_seq1024_cd30.json
+```
+
+Interpretation:
+
+- `COOLDOWN_FRACTION=0.30` is slightly worse than `0.25` in this regime:
+  - `2.0258` versus `2.0147`
+- The difference is small, but the direction is consistent at intermediate checkpoints too.
+- So the feedback-driven schedule sweep has already ruled out one branch.
+- The next fair comparison is `COOLDOWN_FRACTION=0.20`.
+
 ## Current Working Hypothesis
 
 The best immediate path is now:
@@ -2683,12 +2726,12 @@ Reasoning:
 This is the next command to run:
 
 ```bash
-PYTHONUNBUFFERED=1 RUN_ID=torch_sp1024_d512_l4_b32k_s400_seq1024_cd30 TOKENIZER_PATH=/tmp/parameter-golf-official.BbMmsz/data/tokenizers/fineweb_1024_bpe.model DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VAL_DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VOCAB_SIZE=1024 TOKEN_DTYPE=uint16 AVG_BYTES_PER_TOKEN=2.442303811509075 D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=32768 VAL_BATCH_TOKENS=32768 VAL_STEPS=16 VAL_LOSS_EVERY=100 MAX_STEPS=400 COOLDOWN_FRACTION=0.30 QAT_START_FRACTION=1.0 DEVICE=mps STATS_PATH=runs/official_torch_sp1024/torch_sp1024_d512_l4_b32k_s400_seq1024_cd30.json uv run python train_gpt.py
+PYTHONUNBUFFERED=1 RUN_ID=torch_sp1024_d512_l4_b32k_s400_seq1024_cd20 TOKENIZER_PATH=/tmp/parameter-golf-official.BbMmsz/data/tokenizers/fineweb_1024_bpe.model DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VAL_DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VOCAB_SIZE=1024 TOKEN_DTYPE=uint16 AVG_BYTES_PER_TOKEN=2.442303811509075 D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=32768 VAL_BATCH_TOKENS=32768 VAL_STEPS=16 VAL_LOSS_EVERY=100 MAX_STEPS=400 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 DEVICE=mps STATS_PATH=runs/official_torch_sp1024/torch_sp1024_d512_l4_b32k_s400_seq1024_cd20.json uv run python train_gpt.py
 ```
 
 Why this exact command:
 
 - It keeps the newly validated long-context regime fixed and only tunes the schedule.
 - It disables QAT for local search.
-- It increases cooldown from `0.25` to `0.30`, which is directly suggested by the feedback for longer runs.
-- It is the cleanest next test for whether the `SEQ_LEN=1024` branch can move from "roughly tied with the old best" to "clearly ahead."
+- It tests the remaining cooldown point from the reviewer's suggested local sweep after `0.30` came back slightly worse.
+- It is the cleanest next test for whether `0.25` is actually the local optimum or whether a slightly earlier cooldown works better.
