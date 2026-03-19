@@ -89,19 +89,19 @@ Current best exact `24k` ByteLevel result:
 
 Most recent stopped frontier checkpoint:
 
-- run id: `bytelevel32k_d512_gqa_softcap_s3200`
-- latest checkpoint: `step=2400`
-- exact `val_bpb`: `1.6675`
-- gap to local `1.5`: `0.1675`
-- status: stopped early after `step=2400`; the branch was still behind the `24k` branch at the same checkpoint (`1.6536`) and no longer had a plausible path to `1.5` in the final `800` steps
+- run id: `bytelevel48k_d384_gqa_softcap_accum_s3200`
+- latest checkpoint: `step=1600`
+- exact `val_bpb`: `1.7439`
+- gap to local `1.5`: `0.2439`
+- status: stopped early after `step=1600`; the resized accumulated `48k` branch was still `0.0775` bpb worse than the older `24k` `step=1600` reference (`1.6664`)
 
 Current live frontier checkpoint:
 
-- run id: `bytelevel48k_d384_gqa_softcap_accum_s3200`
-- latest checkpoint: `step=1200`
-- live `val_bpb`: `1.7978`
-- gap to local `1.5`: `0.2978`
-- status: now active on MPS as the resized and accumulated `48k` branch after the full-width `48k` variants proved too memory-heavy
+- run id: `bytelevel24k_d512_gqa_softcap_relu2_s1600`
+- latest checkpoint: `step=400`
+- live `val_bpb`: `1.9406`
+- gap to local `1.5`: `0.4406`
+- status: now active on MPS as the first long exact test of the baseline-inspired `relu2 + block_scales + resid_mix` branch
 
 Current prepared next-tokenizer branch:
 
@@ -118,13 +118,13 @@ Prepared tokenizer ladder behind the live branch:
 - `fineweb_64k_sample`
   - train `avg_bytes_per_token`: `4.62566836285424`
   - val `avg_bytes_per_token`: `4.534385498540016`
-- status: `48k` is now active; `64k` remains prepared behind it if this rung still stops short of `1.5`
+- status: `48k` is now a rejected local branch; `64k` remains prepared only as a contingency, not the current main line
 
 Current prepared next-architecture branch:
 
 - knobs: `MLP_KIND=relu2`, `USE_BLOCK_SCALES=1`, `USE_RESID_MIX=1`
-- status: implemented and smoke-tested on CPU, but not yet validated in a long exact run
-- rationale: this is the closest local approximation so far to the baseline-style deeper-block behavior without abandoning the current looped training stack
+- status: now upgraded from "prepared" to "live exact run" on the `24k` tokenizer family
+- rationale: denominator scaling stalled, so the next clean lever is improving nats on the strongest tokenizer branch instead
 
 Gap versus official main-track leader for our best exact sampled official-tokenizer run:
 
@@ -3739,6 +3739,61 @@ Interpretation:
 - At `step=1200`, it is `0.0222` bpb behind the older `24k` step-`1200` reference (`1.7756`).
 - That is a slightly worse relative position than at `step=800`, so the branch now needs a stronger `1200 -> 1600` segment to remain the best active denominator test.
 
+## Experiment 60. Cut The Resized `48k` Branch At `Step=1600`
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Give the healthiest local `48k` configuration one more full segment to prove it could beat the older `24k` family, then stop if it still lagged materially.
+
+Terminal output:
+
+```text
+step=1600 train_loss=4.8752 train_bpb=1.5162 val_loss=5.4769 val_bpb=1.7439 muon_lr=1.527e-02 adamw_lr=2.290e-04 elapsed=2197.8s
+^C
+```
+
+Interpretation:
+
+- The branch stayed stable, but it did not become good enough.
+- At `step=1600`, it was `0.0775` bpb worse than the older `24k` `step=1600` reference (`1.6664`).
+- That is well outside the local `+/- 0.05` proxy-noise band.
+- So denominator scaling stopped being the best active hypothesis, and the device was reassigned to the model-side block ablation.
+
+## Experiment 61. Launch The `24k` Block-Variant Branch
+
+Status:
+
+- In progress
+
+Purpose:
+
+- Test the baseline-inspired `relu2 + block_scales + resid_mix` branch on the strongest tokenizer family we have so far, now that the `48k` denominator path has failed locally.
+
+Command:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_d512_gqa_softcap_relu2_s1600 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=512 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=400 MAX_STEPS=1600 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 MLP_KIND=relu2 USE_BLOCK_SCALES=1 USE_RESID_MIX=1 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_d512_gqa_softcap_relu2_s1600.json uv run python train_gpt.py | tee runs/bytelevel24k/bytelevel24k_d512_gqa_softcap_relu2_s1600.log
+```
+
+Terminal output so far:
+
+```text
+parameters=14,773,384
+step=0 train_loss=10.1931 train_bpb=3.3111 val_loss=10.1343 val_bpb=3.4702 muon_lr=2.000e-03 adamw_lr=3.000e-05 elapsed=0.0s
+step=400 train_loss=5.5333 train_bpb=1.8787 val_loss=5.7186 val_bpb=1.9406 muon_lr=3.251e-02 adamw_lr=4.876e-04 elapsed=477.7s
+```
+
+Interpretation:
+
+- The new branch starts cleanly and is lighter than the plain `24k` SwiGLU branch.
+- At `step=400`, it is `0.0180` bpb worse than the older plain `24k` reference (`1.9226`).
+- That is not an immediate win, but it is still inside the local proxy-noise band.
+- So this branch deserves at least one more segment before we decide whether the new block controls are helping or hurting.
+
 ## Experiment 53. Add Baseline-Inspired Block Knobs
 
 Status:
@@ -3813,9 +3868,9 @@ The best immediate path is now:
 10. GQA plus query gain plus logit softcap is now the strongest confirmed architecture tweak on top of that schedule
 11. longer horizon still helps, but with diminishing returns
 12. the `32k` tokenizer branch was informative but no longer worth finishing once it reached `1.6675` at `step=2400`
-13. the live denominator-scaling frontier is now the accumulated `48k d384` branch, not the failing full-width `48k` branch
-14. `64k` is still held back as a contingency rather than the immediate jump
-15. in parallel, the new baseline-inspired block knobs are ready as the next model-side lever if the accumulated `48k` branch still stalls above `1.5`
+13. the accumulated `48k d384` branch was the best local denominator test we found, but it still lost clearly by `step=1600`
+14. the live frontier is now the `24k` block-variant branch with `relu2 + block_scales + resid_mix`
+15. `64k` remains a contingency, but denominator scaling is no longer the main active hypothesis
 
 Reasoning:
 
@@ -3829,27 +3884,26 @@ Reasoning:
 - On top of that schedule, the official-baseline attention knobs added another clean improvement.
 - The `3200`-step continuation shows optimization horizon is still useful, but no longer enough to expect a free drop to `1.5`.
 - The next wins are most likely to come from:
-  - the active accumulated `48k d384` branch if the larger denominator is still optimization-compatible enough to matter
-  - then the prepared `64k` branch only if `48k` looks close but still short
-  - or the new `relu2` plus block-scale plus residual-mix branch if the tokenizer ladder keeps flattening
+  - the active `24k` block-variant branch if the new residual/MLP controls improve nats on the best tokenizer family
+  - then a simplified ablation of those same knobs if the all-at-once branch is inconclusive
+  - only then reconsider more denominator scaling such as `64k`
 
 ## Next Command To Run
 
 The current active command is:
 
 ```bash
-PYTHONUNBUFFERED=1 RUN_ID=bytelevel48k_d384_gqa_softcap_accum_s3200 TOKENIZER_PREFIX=./data/tokenizers/fineweb_48k_sample DATA_PATH=./data/tokens/fineweb_48k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_48k_sample/val D_MODEL=384 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1024 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 TRAIN_MICROBATCH_TOKENS=8192 VAL_BATCH_TOKENS=8192 VAL_STEPS=16 VAL_LOSS_EVERY=400 MAX_STEPS=3200 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 DEVICE=mps STATS_PATH=runs/bytelevel48k/bytelevel48k_d384_gqa_softcap_accum_s3200.json uv run python train_gpt.py | tee runs/bytelevel48k/bytelevel48k_d384_gqa_softcap_accum_s3200.log
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_d512_gqa_softcap_relu2_s1600 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=512 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=400 MAX_STEPS=1600 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 MLP_KIND=relu2 USE_BLOCK_SCALES=1 USE_RESID_MIX=1 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_d512_gqa_softcap_relu2_s1600.json uv run python train_gpt.py | tee runs/bytelevel24k/bytelevel24k_d512_gqa_softcap_relu2_s1600.log
 ```
 
 Why this exact command:
 
-- The `32k` branch was no longer improving fast enough to justify more time.
-- The model-side recipe is already proven: GQA, query gain, logit softcap, `SEQ_LEN=1024`, `3200` steps.
-- Keeping the model recipe fixed while changing only the tokenizer branch remains the cleanest next experiment.
-- The only adjustment here is making the `48k` branch actually fit via width reduction and microbatching.
+- The `48k` denominator path has now had a fair local test and came up short.
+- The model-side recipe is already proven on the `24k` tokenizer family: GQA, query gain, logit softcap, `SEQ_LEN=1024`, long horizon.
+- So the clean next question is whether the new block controls improve nats on that exact winning tokenizer path.
 
-If the current `48k` run misses badly, the next command should be:
+If the current `24k` block-variant run misses badly, the next command should be:
 
 ```bash
-PYTHONUNBUFFERED=1 RUN_ID=bytelevel48k_d512_gqa_softcap_relu2_s3200 TOKENIZER_PREFIX=./data/tokenizers/fineweb_48k_sample DATA_PATH=./data/tokens/fineweb_48k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_48k_sample/val D_MODEL=512 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=800 MAX_STEPS=3200 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 MLP_KIND=relu2 USE_BLOCK_SCALES=1 USE_RESID_MIX=1 DEVICE=mps STATS_PATH=runs/bytelevel48k/bytelevel48k_d512_gqa_softcap_relu2_s3200.json uv run python train_gpt.py | tee runs/bytelevel48k/bytelevel48k_d512_gqa_softcap_relu2_s3200.log
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_d512_gqa_softcap_relu2_core_s1600 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=512 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=400 MAX_STEPS=1600 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 MLP_KIND=relu2 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_d512_gqa_softcap_relu2_core_s1600.json uv run python train_gpt.py | tee runs/bytelevel24k/bytelevel24k_d512_gqa_softcap_relu2_core_s1600.log
 ```

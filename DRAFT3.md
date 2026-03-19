@@ -21,8 +21,8 @@ Current facts that matter most:
   - `bytelevel32k_d512_gqa_softcap_s3200`
   - `step=2400 val_bpb = 1.6675`
 - The active frontier is now:
-  - `bytelevel48k_d384_gqa_softcap_accum_s3200`
-  - `step=1200 val_bpb = 1.7978`
+  - `bytelevel24k_d512_gqa_softcap_relu2_s1600`
+  - `step=400 val_bpb = 1.9406`
 - The `32k` branch is no longer better than `24k`.
   - at `step=800`, `32k` was ahead
   - at `step=1600`, `32k` was behind `24k`
@@ -37,8 +37,8 @@ Main conclusion:
 
 - The project is no longer blocked on infrastructure.
 - The current decision is no longer “wait for `32k` to rescue us.”
-- We promoted `48k`, rejected the full-width local form for memory reasons, and kept the rung alive by resizing to `d384` and adding accumulation.
-- The next real decision is whether this healthier `48k` path has enough headroom before we switch to the new baseline-inspired block variant.
+- We promoted `48k`, rejected the full-width local form for memory reasons, and even the healthier accumulated `48k d384` path still lost by `step=1600`.
+- The live question is now whether the baseline-inspired block variant can improve nats on the best `24k` tokenizer family.
 
 ## 2. Official Score Check
 
@@ -123,12 +123,21 @@ So the project did not abandon `48k`; it changed the local form:
 - keep the effective batch at `16384`
 - lower peak memory with `TRAIN_MICROBATCH_TOKENS=8192`
 
-That gives the current live branch:
+That branch later reached:
 
 ```text
-bytelevel48k_d384_gqa_softcap_accum_s3200
-step=0 val_bpb=3.4832
+step=1600 train_loss=4.8752 train_bpb=1.5162 val_loss=5.4769 val_bpb=1.7439
 ```
+
+The relevant older `24k` reference at the same checkpoint was:
+
+```text
+step=1600 ... val_bpb=1.6664
+```
+
+So the resized `48k` branch was still `0.0775` bpb worse, which is well outside the local proxy noise band.
+
+That is why the project stopped denominator scaling as the main hypothesis and moved the active device to the block-variant run on `24k`.
 
 ### 3.2 We added a new baseline-inspired model branch
 
@@ -172,6 +181,30 @@ Why this matters:
 - it gives us a new model-side lever that is closer to the official baseline family
 - it does not require deleting the current looped/GQA/softcap path
 - it is ready to combine with either the `24k` or `48k` tokenizer branch if the pure denominator climb stalls
+
+### 3.3 The block-variant branch is now the live test
+
+The current active run is:
+
+```text
+bytelevel24k_d512_gqa_softcap_relu2_s1600
+```
+
+Its first real checkpoint is:
+
+```text
+step=400 train_loss=5.5333 train_bpb=1.8787 val_loss=5.7186 val_bpb=1.9406
+```
+
+The older plain `24k` reference at `step=400` was:
+
+```text
+step=400 ... val_bpb=1.9226
+```
+
+So the new block branch starts `0.0180` bpb worse than the old one.
+
+That is not a clear win, but it is still inside the local `+/- 0.05` proxy-noise band, so this branch deserves at least one more segment before being rejected.
 
 ## 4. Exact Commands And Outputs
 
@@ -356,18 +389,18 @@ The best completed local exact result is still:
 The most important stopped comparison run is:
 
 ```text
-bytelevel32k_d512_gqa_softcap_s3200
-step=2400 val_bpb=1.6675
+bytelevel48k_d384_gqa_softcap_accum_s3200
+step=1600 val_bpb=1.7439
 ```
 
 The active frontier is:
 
 ```text
-bytelevel48k_d384_gqa_softcap_accum_s3200
-step=1200 val_bpb=1.7978
+bytelevel24k_d512_gqa_softcap_relu2_s1600
+step=400 val_bpb=1.9406
 ```
 
-The next prepared model-side branch is:
+The active model-side ablation is:
 
 ```text
 MLP_KIND=relu2
