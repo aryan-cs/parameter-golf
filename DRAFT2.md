@@ -23,7 +23,7 @@ The short version:
 - Fixing context length was the correct direction.
 - The best long-context local result is now within `0.0095` bpb of the old sampled best.
 - Exact ByteLevel BPE experiments are now real, not proxy-only.
-- The larger-tokenizer path is alive, but currently optimization-limited.
+- The larger-tokenizer path is now the best overall exact local branch, but it is still optimization- and artifact-limited.
 - We still have not reached `1.5`.
 
 Current best numbers worth knowing:
@@ -31,20 +31,23 @@ Current best numbers worth knowing:
 - Official main-track score to beat: `1.22436570`
 - Practical clean-record target after the `0.005 nats` significance bar:
   - `1.217152224795555` bpb
-- Best overall sampled local exact result so far:
+- Best overall local exact result so far:
+  - `bytelevel24k_d512_tied_lr2x_s800`
+  - `final_val_bpb = 1.9059446644848441`
+- Best official-tokenizer sampled local exact result so far:
   - `torch_sp1024_d512_l4_b64k_s200`
   - `best_val_bpb = 1.995522745133331`
 - Best long-context sampled local exact result so far:
   - `torch_sp1024_d512_l4_b32k_s400_seq1024_cd20`
   - `best_val_bpb = 2.0050325515775427`
 - Best exact `24k` tokenizer result so far:
-  - `bytelevel24k_d512_tied_lr2x_s400`
-  - `final_val_bpb = 2.0389186731250394`
+  - `bytelevel24k_d512_tied_lr2x_s800`
+  - `final_val_bpb = 1.9059446644848441`
 
 Main conclusion right now:
 
 - The search no longer has an infrastructure bottleneck.
-- The current bottleneck is getting the promising exact `24k` branch enough effective batch and enough optimization quality to keep dropping below the low `2`s.
+- The current bottleneck is pushing the promising exact `24k` branch below the high `1`s while eventually pulling its artifact size back down.
 
 ## 2. What Changed Since `DRAFT1`
 
@@ -86,7 +89,7 @@ This is the largest code-side capability upgrade after `DRAFT1`.
 
 That means our `16k` and `24k` tokenizer experiments are no longer based only on metadata averages.
 
-### 2.4 The `24k` tokenizer was re-opened and is no longer a dead branch
+### 2.4 The `24k` tokenizer was re-opened and is now the main local scoring branch
 
 Before the feedback, the `24k` tokenizer had been treated as basically rejected.
 That is no longer justified.
@@ -97,14 +100,19 @@ What actually happened after re-testing:
   - `2.593778352406914`
 - `24k` exact, tied embeddings, `400` steps:
   - `2.0819050756023527`
+- `24k` exact, tied embeddings, `400` steps, `2x` LR:
+  - `2.0389181133431182`
+- `24k` exact, tied embeddings, `800` steps, `2x` LR:
+  - `1.9059446644848441`
 - `16k` exact, tied embeddings, `40` steps:
   - `2.6767`
 
 So:
 
 - `24k` is clearly better than `16k` in this regime.
-- It is not yet good enough.
-- The current problem seems to be optimization / effective batch, not a broken tokenizer path.
+- the `24k` branch is now better than every local official-tokenizer run too
+- it is still not good enough
+- the current problem seems to be optimization horizon and artifact size, not a broken tokenizer path
 
 ## 3. New Code Capabilities
 
@@ -189,28 +197,33 @@ Interpretation:
 
 Best exact result so far:
 
-- `bytelevel24k_d512_tied_lr2x_s400`
-  - `final_val_bpb = 2.0389186731250394`
+- `bytelevel24k_d512_tied_lr2x_s800`
+  - `final_val_bpb = 1.9059446644848441`
 
 Supporting results:
 
 - `bytelevel24k_d512_tied_s40`
   - `2.593778352406914`
 - `bytelevel24k_d512_tied_lr2x_s40`
-  - `2.4864508082634324`
+  - `2.486486775516235`
 - `bytelevel24k_d512_tied_lr3x_s40`
-  - `2.4673573651098164`
+  - `2.4673788844876348`
+- `bytelevel24k_d512_tied_lr2x_s400`
+  - `2.0389181133431182`
 - `bytelevel24k_d512_tied_l8_s100`
   - `2.3681701384086318`
 - `bytelevel24k_eff64k_accum_s100`
-  - `2.300725775147912`
+  - `2.3006986857952625`
+- `bytelevel24k_eff64k_accum_lr2x_s100`
+  - `2.2311532389896986`
 
 Interpretation:
 
 - deeper loops did not rescue the `24k` branch
 - raw bigger batch by itself did not rescue it either
-- the strongest new lever inside this branch has been learning-rate retuning
-- the branch still improves steadily, but still flattens too high
+- the strongest new lever inside this branch has been learning-rate retuning plus more training horizon
+- this branch is now the best overall local exact line we have
+- the branch still improves steadily, but it remains far over the artifact cap
 
 ### 4.3 Exact `16k` tokenizer branch
 
@@ -264,43 +277,45 @@ It looks like:
 4. Use the promoted `2x` learning rate.
 5. Extend that branch longer before touching width again.
 6. Use accumulation only when the direct-memory limit blocks a genuinely better regime.
+7. Do not let artifact-size blindness hide the fact that this branch will eventually need a smaller valid variant.
 
 Why this seems best:
 
 - `24k` clearly beat `16k`
 - exact byte accounting is now real
-- the branch now reaches `2.0389`
+- the branch now reaches `1.9059`
 - width and deeper loops have not moved it much
-- optimization is still the most responsive lever
+- optimization horizon is still the most responsive lever
 
 ## 6. What Still Looks Wrong or Incomplete
 
-### 6.1 We still do not have a path to `1.5`
+### 6.1 We still do not have a complete path to `1.5`
 
-That is the blunt truth.
+That is still the blunt truth.
 
-The best overall sampled exact score is still `1.9955`.
-The best long-context score is `2.0050`.
-The best exact `24k` score is `2.0819`.
+The best overall local exact score is now `1.9059`.
+The best official-tokenizer sampled exact score is `1.9955`.
+The best long-context official-tokenizer score is `2.0050`.
 
-We are meaningfully better than where we were at `DRAFT1`, but still far from the local target.
+So we are materially better than where we were at `DRAFT1`, but still `0.4059` bpb away from the local `1.5` target.
 
-### 6.2 The larger-tokenizer branch is still over the artifact cap
+### 6.2 The larger-tokenizer branch is still badly over the artifact cap
 
 Even with tied embeddings:
 
-- `24k`, `d_model=512` is still far over
-- `16k`, `d_model=512` is only slightly over, but also scores worse
+- `24k`, `d_model=512`, `800` steps produced `22,746,326` artifact bytes
+- the cap is `16,000,000`, so this branch is over by `6,746,326` bytes
+- `16k`, `d_model=512` is smaller, but it also scores much worse locally
 
 So if the `24k` branch eventually becomes the best score path, it will still need a later artifact-compression / smaller-width / different-model pass.
 
-### 6.3 We have not yet tested the strongest next accumulated-batch run
+### 6.3 We have not yet tested the strongest next long-horizon continuation
 
-The most obvious next run is:
+The most obvious next run is now:
 
 ```bash
 PYTHONUNBUFFERED=1 \
-RUN_ID=bytelevel24k_d512_tied_lr2x_s800 \
+RUN_ID=bytelevel24k_d512_tied_lr2x_s1600 \
 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample \
 DATA_PATH=./data/tokens/fineweb_24k_sample/train \
 VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val \
@@ -312,8 +327,8 @@ SEQ_LEN=1024 \
 TRAIN_BATCH_TOKENS=16384 \
 VAL_BATCH_TOKENS=16384 \
 VAL_STEPS=16 \
-VAL_LOSS_EVERY=200 \
-MAX_STEPS=800 \
+VAL_LOSS_EVERY=400 \
+MAX_STEPS=1600 \
 COOLDOWN_FRACTION=0.20 \
 QAT_START_FRACTION=1.0 \
 TIED_EMBEDDINGS=1 \
@@ -323,7 +338,7 @@ DEVICE=mps \
 uv run python train_gpt.py
 ```
 
-That run has not been completed yet at the time of this draft.
+That is the cleanest next continuation because the `800`-step run was the strongest result we have, and we still do not know whether that branch has actually saturated.
 
 ## 7. Reviewer Questions
 
@@ -344,6 +359,7 @@ Compared with `DRAFT1`, the project is in a much better state:
 - the exact ByteLevel tokenizer path exists
 - tied embeddings exist
 - gradient accumulation exists
+- the `24k` branch now has a real exact local score in the `1.9`s
 
 But the bottom-line score has still not crossed `1.5`.
 

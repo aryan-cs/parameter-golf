@@ -54,13 +54,13 @@ Current interesting non-record comparison:
 - exact `val_bpb`: `1.20737944`
 - source: official `4-Hour Baseline` non-record run on March 18, 2026
 
-Our current best local result:
+Our current best local exact result:
 
-- exact `final_val_bpb`: `3.1106495880562357`
-- short form: `3.1106`
-- run id: `fineweb16k_d496_l4`
-- artifact: `15,999,366` bytes
-- status: valid local proxy, not competition-valid yet
+- exact `final_val_bpb`: `1.9059446644848441`
+- short form: `1.9059`
+- run id: `bytelevel24k_d512_tied_lr2x_s800`
+- artifact: `22,746,326` bytes
+- status: exact ByteLevel BPE on the local `24k` sample-data path; strong local milestone, but not competition-valid and not artifact-valid yet
 
 Current best official-tokenizer local exact-bpb result:
 
@@ -81,25 +81,25 @@ Current best long-context (`SEQ_LEN=1024`) official-tokenizer result:
 
 Current best exact `24k` ByteLevel result:
 
-- exact sampled `best_val_bpb`: `2.0389186731250394`
-- short form: `2.0389`
-- run id: `bytelevel24k_d512_tied_lr2x_s400`
-- artifact: `23,422,947` bytes
-- status: best exact large-tokenizer result so far; still far above the artifact cap, but materially better than the earlier `24k` branch before LR retuning
+- exact sampled `best_val_bpb`: `1.9059446644848441`
+- short form: `1.9059`
+- run id: `bytelevel24k_d512_tied_lr2x_s800`
+- artifact: `22,746,326` bytes
+- status: best exact large-tokenizer result so far; still far above the artifact cap, but now the strongest overall local exact score in the repo
 
 Gap versus official main-track leader for our best exact sampled official-tokenizer run:
 
 - `1.995522745133331 - 1.22436570 = 0.7711570451333312` bpb worse
 - `0.7711570451333312 / log2(e) = 0.534525331603107` nats worse
 
-Gap versus official main-track leader for our best older tokenizer-changed local proxy:
+Gap versus official main-track leader for our best tokenizer-changed local exact run:
 
-- `3.1106495880562357 - 1.22436570 = 1.8862838880562358` bpb worse
-- `1.8862838880562358 / log2(e) = 1.3074723587418313` nats worse
+- `1.9059446644848441 - 1.22436570 = 0.6815789644848442` bpb worse
+- `0.6815789644848442 / log2(e) = 0.4724345375616369` nats worse
 
 Gap versus the immediate `1.5` local target:
 
-- `1.995522745133331 - 1.5 = 0.49552274513333105` bpb worse
+- `1.9059446644848441 - 1.5 = 0.4059446644848441` bpb worse
 
 PR opening rule:
 
@@ -3183,6 +3183,43 @@ Interpretation:
 - `d_model=640` was only trivially better than `d_model=512` at the same short-horizon setting.
 - That means the next higher-value move is more optimization on the `d_model=512` branch, not a width jump.
 
+## Experiment 45. Extended `24k` `2x` LR Run To 800 Steps
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Find out whether the promoted `24k` `2x` LR branch was still descending materially after the `400`-step milestone.
+
+Command:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_d512_tied_lr2x_s800 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=200 MAX_STEPS=800 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_d512_tied_lr2x_s800.json uv run python train_gpt.py
+```
+
+Terminal output summary:
+
+```text
+step=200 ... val_bpb=2.0980
+step=400 ... val_bpb=1.9514
+step=600 ... val_bpb=1.9351
+=== final_stats ===
+steps=800
+seconds=936.27
+final_val_bpb=1.9059
+total_artifact_bytes=22746326
+artifact_budget_ok=False
+```
+
+Interpretation:
+
+- This is now the best overall exact local score in the repo.
+- Extending the same branch from `400` to `800` steps improved `final_val_bpb` from `2.0389` to `1.9059`.
+- The improvement from the extra horizon was much larger than the recent width or accumulation experiments.
+- The branch is still badly over the artifact cap, but it is now much closer to the local `1.5` target than any official-tokenizer branch.
+
 ## Current Working Hypothesis
 
 The best immediate path is now:
@@ -3194,8 +3231,8 @@ The best immediate path is now:
 5. disable QAT during local search and reserve it for final artifact-budget measurement
 6. use gradient accumulation when the promising branch is memory-bound rather than accepting an artificially tiny effective batch
 7. keep batch large enough for throughput, but compare regimes by total training tokens rather than by raw step count
-8. treat the `24k` exact tokenizer path as still alive, but currently optimization-limited rather than architecture-limited
-9. learning-rate retuning is currently the strongest lever inside the `24k` branch
+8. treat the `24k` exact tokenizer path as the current best local scoring branch, but still optimization-limited rather than architecture-limited
+9. learning-rate retuning plus longer horizon is currently the strongest lever inside the `24k` branch
 
 Reasoning:
 
@@ -3204,10 +3241,10 @@ Reasoning:
 - We now have a concrete exact sampled score trajectory, not just infrastructure.
 - The outside review was directionally right that context length needed to be tested much more seriously.
 - The follow-up experiments showed that naive step-count comparisons were misleading because the `1024` path needed a smaller batch locally.
-- The `24k` exact tokenizer path is now real, but it is bottlenecked by batch size and optimization more than by missing infrastructure.
-- Inside that branch, a better LR setting moved the score more than bigger effective batch or extra loops.
+- The `24k` exact tokenizer path is now the strongest local branch we have, but it is still bottlenecked by optimization and artifact size more than by missing infrastructure.
+- Inside that branch, better LR plus more horizon moved the score more than bigger effective batch, extra loops, or extra width.
 - The next wins are most likely to come from:
-  - longer training on the promoted `24k` `2x` LR branch
+  - one more longer training extension on the promoted `24k` `2x` LR branch
   - maybe another schedule adjustment around that same branch
   - only then another architecture or width change if the curve still stalls
 
@@ -3216,11 +3253,11 @@ Reasoning:
 This is the next command to run:
 
 ```bash
-PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_d512_tied_lr2x_s800 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=200 MAX_STEPS=800 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_d512_tied_lr2x_s800.json uv run python train_gpt.py
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_d512_tied_lr2x_s1600 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=400 MAX_STEPS=1600 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_d512_tied_lr2x_s1600.json uv run python train_gpt.py
 ```
 
 Why this exact command:
 
-- It extends the best exact `24k` branch we have rather than reopening weaker batch or width variants.
-- It keeps the now-promoted `2x` learning rate fixed.
-- It is the shortest next run that can tell us whether the improved branch keeps descending or has already hit its practical floor.
+- The `800`-step extension was the best overall exact local score we have seen so far, so the branch deserves one more longer-horizon check before we reopen architecture search.
+- It keeps the now-promoted `2x` learning rate fixed instead of conflating horizon and optimizer changes.
+- `VAL_LOSS_EVERY=400` trims evaluation overhead while still giving us a mid-run checkpoint and a final answer.
