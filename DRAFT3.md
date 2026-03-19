@@ -25,7 +25,7 @@ Current facts that matter most:
   - `step=2400 val_bpb = 1.6118`
 - The active frontier is now:
   - `bytelevel24k_d640_gqa_softcap_cd05_s3200`
-  - `step=1200 val_bpb = 1.6760`
+  - `step=1600 val_bpb = 1.6143`
 - The `32k` branch is no longer better than `24k`.
   - at `step=800`, `32k` was ahead
   - at `step=1600`, `32k` was behind `24k`
@@ -556,12 +556,39 @@ That matters because:
 
 This is not enough to declare success, but it is enough to keep the branch alive until the `step=1600` comparison.
 
+That comparison has now landed:
+
+```text
+step=1600 train_loss=4.4516 train_bpb=1.5058 val_loss=4.7778 val_bpb=1.6143 muon_lr=2.069e-02 adamw_lr=3.104e-04 elapsed=2397.8s
+```
+
+The result is nuanced:
+
+```text
+original d640 schedule at step=1600: 1.6102
+late-cooldown d640 at step=1600:     1.6143
+```
+
+So the restart is:
+
+```text
+0.0041 bpb worse
+```
+
+That is disappointing, but not enough to kill the branch yet.
+
+- it is still `0.0521` bpb better than the old plain `d512` curve at the same horizon
+- it is still carrying a materially higher learning rate than the original schedule at this point
+- the whole reason for the restart was to improve the `1600 -> 2400` segment, not just the midpoint
+
+So the branch stays alive until the `step=2400` comparison.
+
 ## 5. What I Think Now
 
 The search tree is now:
 
-1. Let the live `bytelevel24k_d640_gqa_softcap_cd05_s3200` run reach `step=1600` and compare it against the original `d640` run's `1.6102`.
-2. If the later-cooldown retry stays close or ahead there, keep schedule-tuned width as the main line.
+1. Let the live `bytelevel24k_d640_gqa_softcap_cd05_s3200` run reach `step=2400` and compare it against the original `d640` run's `1.6118`.
+2. If the later-cooldown retry wins there, keep schedule-tuned width as the main line.
 3. If it still flattens, bracket the width sweet spot with `d576` and `d704`.
 4. Keep the `relu2 + block_scales + resid_mix` branch as a prepared fallback, not the first next move.
 5. Treat `48k` and `64k` as contingency denominator branches only after schedule-tuned width stops paying.
@@ -608,7 +635,7 @@ The active frontier is:
 
 ```text
 bytelevel24k_d640_gqa_softcap_cd05_s3200
-step=1200 val_bpb=1.6760
+step=1600 val_bpb=1.6143
 ```
 
 The prepared model-side ablation is:

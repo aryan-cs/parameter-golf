@@ -98,10 +98,10 @@ Most recent stopped frontier checkpoint:
 Current live frontier checkpoint:
 
 - run id: `bytelevel24k_d640_gqa_softcap_cd05_s3200`
-- latest checkpoint: `step=1200`
-- live `val_bpb`: `1.6760`
-- gap to local `1.5`: `0.1760`
-- status: active late-cooldown retry of the same `d640` width recipe; the branch has now improved cleanly across `400 -> 800 -> 1200` and remains the strongest live line in the repo
+- latest checkpoint: `step=1600`
+- live `val_bpb`: `1.6143`
+- gap to local `1.5`: `0.1143`
+- status: active late-cooldown retry of the same `d640` width recipe; effectively tied with the original `d640` schedule at `step=1600` (`1.6102` versus `1.6143`) while retaining a much higher learning rate, so it is still alive for the later segments
 
 Current prepared next-tokenizer branch:
 
@@ -4165,3 +4165,26 @@ Interpretation:
 - The later-cooldown retry is still descending at a healthy rate.
 - This is not the kind of flat `1600 -> 2400` behavior that killed the original schedule.
 - The run still needs a strong `1200 -> 1600` segment to make `1.5` plausible, but it has earned the wall-clock to keep going.
+
+Fourth checkpoint from the restarted branch:
+
+```text
+step=1600 train_loss=4.4516 train_bpb=1.5058 val_loss=4.7778 val_bpb=1.6143 muon_lr=2.069e-02 adamw_lr=3.104e-04 elapsed=2397.8s
+```
+
+Matched-horizon comparisons:
+
+- original `d640` schedule at `step=1600`: `1.6102`
+- restarted `d640 cd05` schedule at `step=1600`: `1.6143`
+- difference: `0.0041` bpb worse
+- old plain `24k d512` curve at `step=1600`: `1.6664`
+- improvement over old plain `d512`: `0.0521` bpb
+- remaining gap to local `1.5`: `0.1143` bpb
+
+Interpretation:
+
+- This is not the clean win we got at `step=800`, but it is also not a real loss signal.
+- The retry is only `0.0041` bpb behind the original `d640` run at the same horizon, which is small enough to treat as essentially tied for local search purposes.
+- The key difference is optimization state: the restarted branch is still at `muon_lr=2.069e-02`, far above the original schedule's `1.527e-02` at the same checkpoint.
+- That means the later-cooldown hypothesis still has a real chance to pay off in the `1600 -> 2400` segment, which is exactly where the original run flattened.
+- The next critical comparison is `step=2400`, where the target to beat is the original `d640` schedule's `1.6118`.
