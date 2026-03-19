@@ -20,9 +20,12 @@ Current facts that matter most:
 - The `32k` tokenizer branch was stopped early at:
   - `bytelevel32k_d512_gqa_softcap_s3200`
   - `step=2400 val_bpb = 1.6675`
-- The active frontier is now:
+- The most recent stopped width continuation is now:
   - `bytelevel24k_d640_gqa_softcap_s3200`
-  - `step=1600 val_bpb = 1.6102`
+  - `step=2400 val_bpb = 1.6118`
+- The active frontier is now:
+  - `bytelevel24k_d640_gqa_softcap_cd05_s3200`
+  - `step=0 val_bpb = 3.4676`
 - The `32k` branch is no longer better than `24k`.
   - at `step=800`, `32k` was ahead
   - at `step=1600`, `32k` was behind `24k`
@@ -39,7 +42,7 @@ Main conclusion:
 - The current decision is no longer “wait for `32k` to rescue us.”
 - We promoted `48k`, rejected the full-width local form for memory reasons, and even the healthier accumulated `48k d384` path still lost by `step=1600`.
 - The `relu2` block family underperformed, so the live question is now whether a wider plain `24k` model is the simpler path to lower bpb.
-- The new `step=1600` width checkpoint says “yes, at least locally”: `d640` is now `0.0562` bpb better than the old `d512` curve at matched horizon.
+- The width answer is now clearer: `d640` stayed ahead through `step=2400`, but the original schedule flattened hard enough that the next live test is a later-cooldown restart of the same width recipe.
 
 ## 2. Official Score Check
 
@@ -432,7 +435,7 @@ Interpretation:
 - It is safe to launch as soon as the current MPS run frees up.
 - The active `32k` run does not include these changes, because it started before this code landed.
 
-### 3.7 The `d640` continuation became the best live branch by a meaningful margin
+### 3.7 The `d640` continuation became the best width signal, then exposed a schedule problem
 
 The current live command is:
 
@@ -466,37 +469,78 @@ This changes the recommendation:
 - if it later stalls, width bracketing (`d576` or `d704`) is still the cleanest next move
 - do not fall back to `48k` or `relu2` first, because width is now the first branch that has held its advantage at matched horizon
 
+The next checkpoint then changed the decision:
+
+```text
+step=2400 train_loss=4.2979 train_bpb=1.3887 val_loss=4.7161 val_bpb=1.6118 muon_lr=4.351e-03 adamw_lr=6.527e-05 elapsed=3569.9s
+```
+
+That is still better than the old plain `24k d512` curve at the same horizon:
+
+```text
+1.6536 -> 1.6118
+```
+
+But it is not better than the same run at `step=1600`:
+
+```text
+1.6102 -> 1.6118
+```
+
+That matters a lot.
+
+- width is still the best confirmed direction
+- but the original `COOLDOWN_FRACTION=0.20` schedule is now a real suspect
+- by `step=2400`, `muon_lr` had already fallen to `4.351e-03`
+- the branch no longer looked like a plausible direct path to `1.5` on that exact schedule
+
+So the project stopped that run early on purpose and immediately relaunched the same `d640` recipe with later decay:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_d640_gqa_softcap_cd05_s3200 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=640 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1706 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=400 MAX_STEPS=3200 COOLDOWN_FRACTION=0.05 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_d640_gqa_softcap_cd05_s3200.json uv run python train_gpt.py | tee runs/bytelevel24k/bytelevel24k_d640_gqa_softcap_cd05_s3200.log
+```
+
+Launch output:
+
+```text
+parameters=20,238,248
+step=0 train_loss=10.1780 train_bpb=3.3062 val_loss=10.1269 val_bpb=3.4676 muon_lr=2.000e-03 adamw_lr=3.000e-05 elapsed=0.0s
+```
+
+That is the current active frontier.
+
 ## 5. What I Think Now
 
 The search tree is now:
 
-1. Let the live `bytelevel24k_d640_gqa_softcap_s3200` run continue through `step=2400` and `step=3200`.
-2. If it holds most of its midpoint edge, keep pushing width in this neighborhood rather than jumping tokenizers again.
-3. If it flattens hard from here, bracket the width sweet spot with `d576` and `d704`.
+1. Let the live `bytelevel24k_d640_gqa_softcap_cd05_s3200` run reach at least `step=400` and then compare its curve to the original `d640` run.
+2. If the later-cooldown retry stays ahead after `step=1600`, keep schedule-tuned width as the main line.
+3. If it still flattens, bracket the width sweet spot with `d576` and `d704`.
 4. Keep the `relu2 + block_scales + resid_mix` branch as a prepared fallback, not the first next move.
-5. Treat `48k` and `64k` as contingency denominator branches only after the width line stops paying.
+5. Treat `48k` and `64k` as contingency denominator branches only after schedule-tuned width stops paying.
 
 Why width is now the lead hypothesis:
 
-- `d640` is now `0.0562` bpb better than the old plain `d512` curve at matched `step=1600`
+- the original `d640` run was `0.0562` bpb better than the old plain `d512` curve at matched `step=1600`
+- it was still `0.0418` bpb better at `step=2400`
 - that is outside the local proxy noise band we have been using
 - the gain survived long enough that it no longer looks like a warmup artifact
-- width is the first recent lever that stayed ahead after a fair matched-horizon check
+- the only thing that broke was the late-stage improvement rate, which points to schedule before it points away from width
 
 Why I am not prioritizing `48k` or `relu2` first:
 
 - the healthiest `48k` local branch still lost clearly by `step=1600`
 - the `relu2` family underperformed both in the all-at-once form and in the simpler core-only form
-- the current live `d640` branch is closer to `1.5` than either of those branches ever got at the same maturity
+- the current width line is closer to `1.5` than either of those branches ever got at similar maturity
 
 ## 6. Reviewer Questions
 
 These are the questions I would most want external feedback on now:
 
-1. If the live `d640` branch finishes just above `1.5`, is the next best move `d704`, or is that likely to become a memory/optimization regression on this hardware?
-2. Is there a better way to spend extra capacity in the `24k` family than pure width, given that tokenizer scaling beyond `24k` has not yet paid off locally?
-3. Are there baseline-inspired tweaks more promising than the current `relu2 + block_scales + resid_mix` branch, which now looks second-tier?
-4. How much confidence should we place in a `0.0562` bpb matched-horizon gain on this local setup before committing more wall-clock to width bracketing?
+1. Is restarting `d640` with a later cooldown the right reaction to the `step=1600 -> step=2400` plateau, or should the project have finished the original run before changing schedule?
+2. If this late-cooldown retry still stalls, is `d704` the right next move, or is that likely to overrun local optimization quality on this hardware?
+3. Is there a better way to spend extra capacity in the `24k` family than pure width, given that tokenizer scaling beyond `24k` has not yet paid off locally?
+4. Are there baseline-inspired tweaks more promising than the current `relu2 + block_scales + resid_mix` branch, which now looks second-tier?
 
 ## 7. Current Bottom Line
 
@@ -509,15 +553,15 @@ The best completed local exact result is still:
 The most important stopped comparison run is:
 
 ```text
-bytelevel48k_d384_gqa_softcap_accum_s3200
-step=1600 val_bpb=1.7439
+bytelevel24k_d640_gqa_softcap_s3200
+step=2400 val_bpb=1.6118
 ```
 
 The active frontier is:
 
 ```text
-bytelevel24k_d640_gqa_softcap_s3200
-step=1600 val_bpb=1.6102
+bytelevel24k_d640_gqa_softcap_cd05_s3200
+step=0 val_bpb=3.4676
 ```
 
 The prepared model-side ablation is:

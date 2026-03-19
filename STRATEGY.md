@@ -89,19 +89,19 @@ Current best exact `24k` ByteLevel result:
 
 Most recent stopped frontier checkpoint:
 
-- run id: `bytelevel24k_d640_gqa_softcap_s1600`
-- latest checkpoint: `final`
-- exact `val_bpb`: `1.6874`
-- gap to local `1.5`: `0.1874`
-- status: completed cleanly and beat the older plain `24k` `1600`-step reference by `0.0610` bpb, which was strong enough to promote directly to a `3200`-step continuation
+- run id: `bytelevel24k_d640_gqa_softcap_s3200`
+- latest checkpoint: `step=2400`
+- exact `val_bpb`: `1.6118`
+- gap to local `1.5`: `0.1118`
+- status: validated width over the old `24k d512` curve at matched horizon (`1.6536 -> 1.6118`), but plateaued enough from `step=1600 -> step=2400` that the schedule was promoted to the next hypothesis instead of blindly finishing the run
 
 Current live frontier checkpoint:
 
-- run id: `bytelevel24k_d640_gqa_softcap_s3200`
-- latest checkpoint: `step=1600`
-- live `val_bpb`: `1.6102`
-- gap to local `1.5`: `0.1102`
-- status: still active on MPS and now materially ahead of the old plain `24k` `3200`-step curve at matched horizon (`1.6664 -> 1.6102`), so width remains the strongest active lever
+- run id: `bytelevel24k_d640_gqa_softcap_cd05_s3200`
+- latest checkpoint: `step=0`
+- live `val_bpb`: `3.4676`
+- gap to local `1.5`: `1.9676`
+- status: active late-cooldown retry of the same `d640` width recipe; launched because the previous schedule decayed to `muon_lr=4.351e-03` by `step=2400` and stopped turning width gains into lower validation bpb
 
 Current prepared next-tokenizer branch:
 
@@ -122,9 +122,9 @@ Prepared tokenizer ladder behind the live branch:
 
 Current prepared next-architecture branch:
 
-- knobs: nearby width variants such as `D_MODEL=576` and `D_MODEL=704`
-- status: ready as follow-up capacity bracketing if the active `d640` continuation underperforms
-- rationale: the tokenizer ladder and `relu2` block variants both stalled, so width is now the main active capacity lever
+- knobs: nearby width variants such as `D_MODEL=576` and `D_MODEL=704`, plus the already-implemented `relu2` branch as a backup
+- status: ready as follow-up bracketing if the late-cooldown `d640` retry still stalls
+- rationale: the tokenizer ladder stalled, the original `d640` schedule plateaued, and the cleanest unresolved question is now schedule versus width rather than denominator scaling
 
 Gap versus official main-track leader for our best exact sampled official-tokenizer run:
 
@@ -4060,3 +4060,50 @@ Interpretation:
 - The gain did not wash out by the midpoint of the longer run; it grew into a real matched-horizon advantage.
 - That does not mean the branch will reach `1.5`, but it keeps that goal plausible enough that the right move is to let this run continue instead of thrashing into a new branch early.
 - If the later segments flatten too hard, the next clean follow-up is still nearby width bracketing rather than returning to `48k` or the `relu2` family.
+
+## 2026-03-19: `d640` continuation plateaus by `step=2400`, so restart with later cooldown
+
+Context:
+
+- After the strong `step=1600` checkpoint, the live question became whether the wider branch would keep converting that edge into lower validation bpb.
+- The schedule was already a suspect, because the cosine path drives the learning rate down to `10%` of `max_lr` by `cooldown_start`, and with `COOLDOWN_FRACTION=0.20` that happens too early for this longer run.
+
+New terminal output from the original continuation:
+
+```text
+step=2400 train_loss=4.2979 train_bpb=1.3887 val_loss=4.7161 val_bpb=1.6118 muon_lr=4.351e-03 adamw_lr=6.527e-05 elapsed=3569.9s
+```
+
+Comparison points:
+
+- old `24k d512` `3200`-step curve at `step=2400`: `1.6536`
+- current `24k d640` continuation at `step=2400`: `1.6118`
+- matched-horizon improvement from width: `0.0418` bpb
+- change from the same run's `step=1600 -> step=2400`: `1.6102 -> 1.6118`
+- gap from this checkpoint to `1.5`: `0.1118` bpb
+
+Interpretation:
+
+- Width is still helping; the run remains better than the old `d512` curve at the same horizon.
+- But the width gain is no longer compounding, because the run effectively flatlined across the `1600 -> 2400` segment.
+- That makes this look more like a schedule cap than a pure capacity cap.
+- So the right move is not “finish this run no matter what.” The right move is to preserve the evidence, stop the job, and relaunch the same width recipe with a later cooldown.
+
+New active command:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_d640_gqa_softcap_cd05_s3200 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=640 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1706 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=400 MAX_STEPS=3200 COOLDOWN_FRACTION=0.05 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_d640_gqa_softcap_cd05_s3200.json uv run python train_gpt.py | tee runs/bytelevel24k/bytelevel24k_d640_gqa_softcap_cd05_s3200.log
+```
+
+Launch output:
+
+```text
+parameters=20,238,248
+step=0 train_loss=10.1780 train_bpb=3.3062 val_loss=10.1269 val_bpb=3.4676 muon_lr=2.000e-03 adamw_lr=3.000e-05 elapsed=0.0s
+```
+
+What this changes:
+
+- The project is no longer testing “does width help?” That question is answered yes.
+- The new question is whether width plus a later LR floor can keep improving after `step=1600`.
+- If this retry still flattens, then width bracketing (`d576` or `d704`) becomes the next clean move.
