@@ -25,7 +25,7 @@ Current facts that matter most:
   - `step=2400 val_bpb = 1.6118`
 - The active frontier is now:
   - `bytelevel24k_d640_gqa_softcap_cd05_s3200`
-  - `step=0 val_bpb = 3.4676`
+  - `step=400 val_bpb = 1.8955`
 - The `32k` branch is no longer better than `24k`.
   - at `step=800`, `32k` was ahead
   - at `step=1600`, `32k` was behind `24k`
@@ -507,14 +507,26 @@ parameters=20,238,248
 step=0 train_loss=10.1780 train_bpb=3.3062 val_loss=10.1269 val_bpb=3.4676 muon_lr=2.000e-03 adamw_lr=3.000e-05 elapsed=0.0s
 ```
 
-That is the current active frontier.
+The first real checkpoint from that restart is now:
+
+```text
+step=400 train_loss=5.3774 train_bpb=1.8258 val_loss=5.5858 val_bpb=1.8955 muon_lr=3.861e-02 adamw_lr=5.792e-04 elapsed=599.0s
+```
+
+That is early, but it is already ahead of the old plain `24k d512` `step=400` checkpoint:
+
+```text
+1.9226 -> 1.8955
+```
+
+So the later-cooldown retry is alive enough to keep running.
 
 ## 5. What I Think Now
 
 The search tree is now:
 
-1. Let the live `bytelevel24k_d640_gqa_softcap_cd05_s3200` run reach at least `step=400` and then compare its curve to the original `d640` run.
-2. If the later-cooldown retry stays ahead after `step=1600`, keep schedule-tuned width as the main line.
+1. Let the live `bytelevel24k_d640_gqa_softcap_cd05_s3200` run reach `step=800` and compare it against the original `d640` run's `1.7610`.
+2. If the later-cooldown retry stays close or ahead there, keep schedule-tuned width as the main line.
 3. If it still flattens, bracket the width sweet spot with `d576` and `d704`.
 4. Keep the `relu2 + block_scales + resid_mix` branch as a prepared fallback, not the first next move.
 5. Treat `48k` and `64k` as contingency denominator branches only after schedule-tuned width stops paying.
@@ -561,7 +573,7 @@ The active frontier is:
 
 ```text
 bytelevel24k_d640_gqa_softcap_cd05_s3200
-step=0 val_bpb=3.4676
+step=400 val_bpb=1.8955
 ```
 
 The prepared model-side ablation is:

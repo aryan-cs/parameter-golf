@@ -98,10 +98,10 @@ Most recent stopped frontier checkpoint:
 Current live frontier checkpoint:
 
 - run id: `bytelevel24k_d640_gqa_softcap_cd05_s3200`
-- latest checkpoint: `step=0`
-- live `val_bpb`: `3.4676`
-- gap to local `1.5`: `1.9676`
-- status: active late-cooldown retry of the same `d640` width recipe; launched because the previous schedule decayed to `muon_lr=4.351e-03` by `step=2400` and stopped turning width gains into lower validation bpb
+- latest checkpoint: `step=400`
+- live `val_bpb`: `1.8955`
+- gap to local `1.5`: `0.3955`
+- status: active late-cooldown retry of the same `d640` width recipe; the first early checkpoint is already ahead of the old plain `24k d512` curve at the same horizon (`1.9226 -> 1.8955`), so the retry is alive enough to keep running
 
 Current prepared next-tokenizer branch:
 
@@ -4107,3 +4107,21 @@ What this changes:
 - The project is no longer testing “does width help?” That question is answered yes.
 - The new question is whether width plus a later LR floor can keep improving after `step=1600`.
 - If this retry still flattens, then width bracketing (`d576` or `d704`) becomes the next clean move.
+
+First checkpoint from the restarted branch:
+
+```text
+step=400 train_loss=5.3774 train_bpb=1.8258 val_loss=5.5858 val_bpb=1.8955 muon_lr=3.861e-02 adamw_lr=5.792e-04 elapsed=599.0s
+```
+
+Early comparison point:
+
+- old plain `24k d512` `3200`-step curve at `step=400`: `1.9226`
+- restarted `d640 cd05` curve at `step=400`: `1.8955`
+- early matched-horizon improvement: `0.0271` bpb
+
+Interpretation:
+
+- This does not prove the late-cooldown retry will win, because the original `d640` run did not record a `step=400` checkpoint.
+- But it is a clean enough early result to keep the retry alive.
+- The next meaningful decision point is `step=800`, where we can compare against the original `d640` run's `1.7610`.
