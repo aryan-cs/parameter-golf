@@ -99,10 +99,10 @@ Most recent stopped frontier checkpoint:
 Current live frontier checkpoint:
 
 - run id: `bytelevel24k_d640_gqa_softcap_cd10_s4800`
-- latest checkpoint: `step=400`
-- live `val_bpb`: `1.8966`
-- gap to local `1.5`: `0.3966`
-- status: active schedule-retune of the best local recipe with checkpointing enabled; slightly behind the `cd05 s4800` branch at the same horizon (`1.8951 -> 1.8966`), but close enough to keep alive for the `step=800` comparison
+- latest checkpoint: `step=800`
+- live `val_bpb`: `1.7388`
+- gap to local `1.5`: `0.2388`
+- status: active schedule-retune of the best local recipe with checkpointing enabled; effectively tied with the strongest prior `d640` checkpoints at the same horizon, so it stays alive for the later comparisons
 
 Current prepared next-tokenizer branch:
 
@@ -4489,3 +4489,23 @@ Interpretation:
 - This is close enough to keep the run alive.
 - The milder cooldown is not winning early, but it is not clearly losing either.
 - The next meaningful comparison point is `step=800`.
+
+Second checkpoint from the new `cd10 s4800` branch:
+
+```text
+step=800 train_loss=5.0352 train_bpb=1.6693 val_loss=5.1616 val_bpb=1.7388 muon_lr=3.716e-02 adamw_lr=5.573e-04 elapsed=1333.1s
+checkpoint=saved path=/Users/aryan/Desktop/golf/runs/bytelevel24k/bytelevel24k_d640_gqa_softcap_cd10_s4800.pt step=801
+```
+
+Matched-horizon comparison:
+
+- `cd05 s4800` at `step=800`: `1.7362`
+- completed `3200`-step `d640 + cd05` branch at `step=800`: `1.7390`
+- `cd10 s4800` at `step=800`: `1.7388`
+
+Interpretation:
+
+- `cd10` is essentially tied with the strongest existing references at this checkpoint.
+- It is a little worse than `cd05 s4800`, but only by `0.0026` bpb.
+- It is still slightly better than the completed `3200`-step branch by `0.0002` bpb.
+- That is not enough to declare a winner, but it is enough to keep the checkpointed run alive.

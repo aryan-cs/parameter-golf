@@ -25,7 +25,7 @@ Current facts that matter most:
   - `step=3200 val_bpb = 1.6063`
 - The active frontier is now:
   - `bytelevel24k_d640_gqa_softcap_cd10_s4800`
-  - `step=400 val_bpb = 1.8966`
+  - `step=800 val_bpb = 1.7388`
 - The `32k` branch is no longer better than `24k`.
   - at `step=800`, `32k` was ahead
   - at `step=1600`, `32k` was behind `24k`
@@ -860,12 +860,36 @@ cd10 s4800 at step=400: 1.8966
 
 So `cd10` is only `0.0015` bpb worse so far, which is close enough to keep alive.
 
+The next checkpoint keeps it alive:
+
+```text
+step=800 train_loss=5.0352 train_bpb=1.6693 val_loss=5.1616 val_bpb=1.7388 muon_lr=3.716e-02 adamw_lr=5.573e-04 elapsed=1333.1s
+checkpoint=saved path=/Users/aryan/Desktop/golf/runs/bytelevel24k/bytelevel24k_d640_gqa_softcap_cd10_s4800.pt step=801
+```
+
+Compared with the best existing references:
+
+```text
+cd05 s4800 at step=800:      1.7362
+completed 3200-step at 800:  1.7390
+cd10 s4800 at step=800:      1.7388
+```
+
+So `cd10` is:
+
+```text
+0.0026 bpb worse than cd05 s4800
+0.0002 bpb better than the completed 3200-step run
+```
+
+That is still effectively a tie, so the checkpointed `cd10` branch stays alive.
+
 ## 5. What I Think Now
 
 The search tree is now:
 
-1. Let the live `bytelevel24k_d640_gqa_softcap_cd10_s4800` run reach `step=800`.
-2. If the milder cooldown is still close or better there, keep schedule search as the main line.
+1. Let the live `bytelevel24k_d640_gqa_softcap_cd10_s4800` run reach `step=1200` and `step=1600`.
+2. If it stays competitive there, keep schedule search as the main line.
 3. If it still underperforms, reconsider batch or denominator before spending more time on horizon alone.
 4. Keep the `relu2 + block_scales + resid_mix` branch as a prepared fallback, not the first next move.
 5. Treat `48k` and `64k` as contingency denominator branches only after schedule-tuned width stops paying.
@@ -912,7 +936,7 @@ The active frontier is:
 
 ```text
 bytelevel24k_d640_gqa_softcap_cd10_s4800
-step=400 val_bpb=1.8966
+step=800 val_bpb=1.7388
 ```
 
 The prepared model-side ablation is:
