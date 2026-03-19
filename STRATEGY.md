@@ -98,9 +98,9 @@ Most recent stopped frontier checkpoint:
 Current live frontier checkpoint:
 
 - run id: `bytelevel24k_d512_gqa_softcap_relu2_s1600`
-- latest checkpoint: `step=400`
-- live `val_bpb`: `1.9406`
-- gap to local `1.5`: `0.4406`
+- latest checkpoint: `step=800`
+- live `val_bpb`: `1.8192`
+- gap to local `1.5`: `0.3192`
 - status: now active on MPS as the first long exact test of the baseline-inspired `relu2 + block_scales + resid_mix` branch
 
 Current prepared next-tokenizer branch:
@@ -3785,6 +3785,7 @@ Terminal output so far:
 parameters=14,773,384
 step=0 train_loss=10.1931 train_bpb=3.3111 val_loss=10.1343 val_bpb=3.4702 muon_lr=2.000e-03 adamw_lr=3.000e-05 elapsed=0.0s
 step=400 train_loss=5.5333 train_bpb=1.8787 val_loss=5.7186 val_bpb=1.9406 muon_lr=3.251e-02 adamw_lr=4.876e-04 elapsed=477.7s
+step=800 train_loss=5.3204 train_bpb=1.7638 val_loss=5.4004 val_bpb=1.8192 muon_lr=1.542e-02 adamw_lr=2.314e-04 elapsed=954.7s
 ```
 
 Interpretation:
@@ -3793,6 +3794,8 @@ Interpretation:
 - At `step=400`, it is `0.0180` bpb worse than the older plain `24k` reference (`1.9226`).
 - That is not an immediate win, but it is still inside the local proxy-noise band.
 - So this branch deserves at least one more segment before we decide whether the new block controls are helping or hurting.
+- At `step=800`, it is `0.0238` bpb worse than the closest old `24k` reference with the same `1600`-step schedule (`1.7954`).
+- So it is still slightly behind, but not badly enough to reject yet.
 
 ## Experiment 53. Add Baseline-Inspired Block Knobs
 

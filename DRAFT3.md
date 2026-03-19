@@ -22,7 +22,7 @@ Current facts that matter most:
   - `step=2400 val_bpb = 1.6675`
 - The active frontier is now:
   - `bytelevel24k_d512_gqa_softcap_relu2_s1600`
-  - `step=400 val_bpb = 1.9406`
+  - `step=800 val_bpb = 1.8192`
 - The `32k` branch is no longer better than `24k`.
   - at `step=800`, `32k` was ahead
   - at `step=1600`, `32k` was behind `24k`
@@ -205,6 +205,22 @@ step=400 ... val_bpb=1.9226
 So the new block branch starts `0.0180` bpb worse than the old one.
 
 That is not a clear win, but it is still inside the local `+/- 0.05` proxy-noise band, so this branch deserves at least one more segment before being rejected.
+
+At the next checkpoint it reached:
+
+```text
+step=800 train_loss=5.3204 train_bpb=1.7638 val_loss=5.4004 val_bpb=1.8192
+```
+
+The closest old `24k` reference with the same `1600`-step schedule was:
+
+```text
+step=800 ... val_bpb=1.7954
+```
+
+So the new branch is `0.0238` bpb worse at `step=800`.
+
+That is still inside the local proxy-noise band, so the branch has not failed yet, but it also has not earned the right to be called better.
 
 ## 4. Exact Commands And Outputs
 
@@ -397,7 +413,7 @@ The active frontier is:
 
 ```text
 bytelevel24k_d512_gqa_softcap_relu2_s1600
-step=400 val_bpb=1.9406
+step=800 val_bpb=1.8192
 ```
 
 The active model-side ablation is:
