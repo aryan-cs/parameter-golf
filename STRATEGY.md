@@ -90,19 +90,19 @@ Current best exact `24k` ByteLevel result:
 
 Most recent stopped frontier checkpoint:
 
-- run id: `bytelevel24k_d704_gqa_softcap_cd05_s3200`
-- latest checkpoint: `step=800`
-- live `val_bpb`: `1.7553`
-- gap to local `1.5`: `0.2553`
-- status: cut early because it trailed the completed `d640 + cd05` branch at both `step=400` and `step=800`, so extra width was not paying for itself cleanly enough
+- run id: `bytelevel24k_d640_gqa_softcap_cd05_s4800`
+- latest checkpoint: `step=3200`
+- live `val_bpb`: `1.6063`
+- gap to local `1.5`: `0.1063`
+- status: cut at the matched-horizon checkpoint because the longer-horizon retry still was not beating the completed `3200`-step branch strongly enough to justify another `1600` steps
 
 Current live frontier checkpoint:
 
-- run id: `bytelevel24k_d640_gqa_softcap_cd05_s4800`
-- latest checkpoint: `step=2400`
-- live `val_bpb`: `1.5969`
-- gap to local `1.5`: `0.0969`
-- status: active longer-horizon retry of the best completed local recipe; still effectively tied with the completed `3200`-step branch at the same horizon (`1.5943 -> 1.5969`), so the post-`2400` segment remains the real test
+- run id: `bytelevel24k_d640_gqa_softcap_cd10_s4800`
+- latest checkpoint: `step=0`
+- live `val_bpb`: `3.4676`
+- gap to local `1.5`: `1.9676`
+- status: active schedule-retune of the best local recipe with checkpointing enabled; launched because `cd05 s4800` stayed essentially tied through `step=3200`, so the next highest-value lever is a slightly earlier cooldown on the same winning family
 
 Current prepared next-tokenizer branch:
 
@@ -4427,4 +4427,46 @@ Launch output:
 ```text
 parameters=20,238,248
 step=0 train_loss=10.1780 train_bpb=3.3062 val_loss=10.1269 val_bpb=3.4676 muon_lr=2.000e-03 adamw_lr=3.000e-05 elapsed=0.0s
+```
+
+First through eighth checkpoints from the new `4800`-step branch:
+
+```text
+step=400 train_loss=5.3749 train_bpb=1.8249 val_loss=5.5847 val_bpb=1.8951 muon_lr=3.938e-02 adamw_lr=5.907e-04 elapsed=599.2s
+step=800 train_loss=5.0293 train_bpb=1.6673 val_loss=5.1540 val_bpb=1.7362 muon_lr=3.744e-02 adamw_lr=5.616e-04 elapsed=1212.4s
+step=1200 train_loss=4.5526 train_bpb=1.5772 val_loss=4.9028 val_bpb=1.6756 muon_lr=3.433e-02 adamw_lr=5.149e-04 elapsed=1949.5s
+step=1600 train_loss=4.4452 train_bpb=1.5036 val_loss=4.7855 val_bpb=1.6169 muon_lr=3.027e-02 adamw_lr=4.541e-04 elapsed=2834.9s
+step=2000 train_loss=4.1914 train_bpb=1.3970 val_loss=4.7615 val_bpb=1.6054 muon_lr=2.559e-02 adamw_lr=3.838e-04 elapsed=3801.9s
+step=2400 train_loss=4.2118 train_bpb=1.3609 val_loss=4.6866 val_bpb=1.5969 muon_lr=2.063e-02 adamw_lr=3.095e-04 elapsed=4760.1s
+step=2800 train_loss=3.9201 train_bpb=1.2929 val_loss=4.7087 val_bpb=1.5970 muon_lr=1.578e-02 adamw_lr=2.367e-04 elapsed=5555.5s
+step=3200 train_loss=3.8179 train_bpb=1.2391 val_loss=4.7321 val_bpb=1.6063 muon_lr=1.140e-02 adamw_lr=1.710e-04 elapsed=6250.8s
+```
+
+Matched-horizon takeaways:
+
+- versus completed `3200`-step branch:
+  - `step=800`: `1.7390 -> 1.7362` (`0.0028` better)
+  - `step=1600`: `1.6143 -> 1.6169` (`0.0026` worse)
+  - `step=2400`: `1.5943 -> 1.5969` (`0.0026` worse)
+  - `step=3200 final`: `1.6017 -> 1.6063` (`0.0046` worse)
+
+Interpretation:
+
+- The longer horizon did not meaningfully improve the winning `d640 + cd05` recipe at matched checkpoints.
+- It stayed close enough to matter, but it never turned that extra optimization room into a clean gain.
+- So the next best lever is a schedule retune inside the same winning family rather than more width or more wall-clock on the exact same `cd05` setup.
+
+New active command after cutting `cd05 s4800`:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_d640_gqa_softcap_cd10_s4800 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=640 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1706 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=400 MAX_STEPS=4800 COOLDOWN_FRACTION=0.10 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 DEVICE=mps CHECKPOINT_PATH=runs/bytelevel24k/bytelevel24k_d640_gqa_softcap_cd10_s4800.pt STATS_PATH=runs/bytelevel24k/bytelevel24k_d640_gqa_softcap_cd10_s4800.json uv run python train_gpt.py | tee runs/bytelevel24k/bytelevel24k_d640_gqa_softcap_cd10_s4800.log
+```
+
+Launch output:
+
+```text
+parameters=20,238,248
+checkpoint=missing path=/Users/aryan/Desktop/golf/runs/bytelevel24k/bytelevel24k_d640_gqa_softcap_cd10_s4800.pt
+step=0 train_loss=10.1780 train_bpb=3.3062 val_loss=10.1269 val_bpb=3.4676 muon_lr=2.000e-03 adamw_lr=3.000e-05 elapsed=0.0s
+checkpoint=saved path=/Users/aryan/Desktop/golf/runs/bytelevel24k/bytelevel24k_d640_gqa_softcap_cd10_s4800.pt step=1
 ```

@@ -21,11 +21,11 @@ Current facts that matter most:
   - `bytelevel32k_d512_gqa_softcap_s3200`
   - `step=2400 val_bpb = 1.6675`
 - The most recent stopped width continuation is now:
-  - `bytelevel24k_d704_gqa_softcap_cd05_s3200`
-  - `step=800 val_bpb = 1.7553`
-- The active frontier is now:
   - `bytelevel24k_d640_gqa_softcap_cd05_s4800`
-  - `step=2400 val_bpb = 1.5969`
+  - `step=3200 val_bpb = 1.6063`
+- The active frontier is now:
+  - `bytelevel24k_d640_gqa_softcap_cd10_s4800`
+  - `step=0 val_bpb = 3.4676`
 - The `32k` branch is no longer better than `24k`.
   - at `step=800`, `32k` was ahead
   - at `step=1600`, `32k` was behind `24k`
@@ -808,13 +808,49 @@ parameters=20,238,248
 step=0 train_loss=10.1780 train_bpb=3.3062 val_loss=10.1269 val_bpb=3.4676 muon_lr=2.000e-03 adamw_lr=3.000e-05 elapsed=0.0s
 ```
 
+That `cd05 s4800` run eventually reached:
+
+```text
+step=3200 train_loss=3.8179 train_bpb=1.2391 val_loss=4.7321 val_bpb=1.6063 muon_lr=1.140e-02 adamw_lr=1.710e-04 elapsed=6250.8s
+```
+
+Compared with the completed `3200`-step branch:
+
+```text
+completed 3200-step branch final: 1.6017
+cd05 s4800 at step=3200:          1.6063
+```
+
+So the longer-horizon retry was:
+
+```text
+0.0046 bpb worse
+```
+
+That is close enough to be informative, but not good enough to keep spending wall-clock on the exact same schedule.
+
+So the project made the next schedule move rather than the next width move:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_d640_gqa_softcap_cd10_s4800 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=640 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1706 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=400 MAX_STEPS=4800 COOLDOWN_FRACTION=0.10 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 DEVICE=mps CHECKPOINT_PATH=runs/bytelevel24k/bytelevel24k_d640_gqa_softcap_cd10_s4800.pt STATS_PATH=runs/bytelevel24k/bytelevel24k_d640_gqa_softcap_cd10_s4800.json uv run python train_gpt.py | tee runs/bytelevel24k/bytelevel24k_d640_gqa_softcap_cd10_s4800.log
+```
+
+Launch output:
+
+```text
+parameters=20,238,248
+checkpoint=missing path=/Users/aryan/Desktop/golf/runs/bytelevel24k/bytelevel24k_d640_gqa_softcap_cd10_s4800.pt
+step=0 train_loss=10.1780 train_bpb=3.3062 val_loss=10.1269 val_bpb=3.4676 muon_lr=2.000e-03 adamw_lr=3.000e-05 elapsed=0.0s
+checkpoint=saved path=/Users/aryan/Desktop/golf/runs/bytelevel24k/bytelevel24k_d640_gqa_softcap_cd10_s4800.pt step=1
+```
+
 ## 5. What I Think Now
 
 The search tree is now:
 
-1. Let the live `bytelevel24k_d640_gqa_softcap_cd05_s4800` run reach `step=3200`.
-2. If it finishes the matched horizon better than `1.6017`, the longer horizon becomes the main line instead of just a neutral extension.
-3. If it still flattens, reconsider whether the next lever is batch, denominator, or a baseline-inspired block change rather than more width.
+1. Let the live `bytelevel24k_d640_gqa_softcap_cd10_s4800` run reach `step=400` and `step=800`.
+2. If the milder cooldown is better than `cd05` at matched checkpoints, keep schedule search as the main line.
+3. If it still underperforms, reconsider batch or denominator before spending more time on horizon alone.
 4. Keep the `relu2 + block_scales + resid_mix` branch as a prepared fallback, not the first next move.
 5. Treat `48k` and `64k` as contingency denominator branches only after schedule-tuned width stops paying.
 
@@ -852,15 +888,15 @@ The best completed local exact result is still:
 The most important stopped comparison run is:
 
 ```text
-bytelevel24k_d704_gqa_softcap_cd05_s3200
-step=800 val_bpb=1.7553
+bytelevel24k_d640_gqa_softcap_cd05_s4800
+step=3200 val_bpb=1.6063
 ```
 
 The active frontier is:
 
 ```text
-bytelevel24k_d640_gqa_softcap_cd05_s4800
-step=2400 val_bpb=1.5969
+bytelevel24k_d640_gqa_softcap_cd10_s4800
+step=0 val_bpb=3.4676
 ```
 
 The prepared model-side ablation is:
