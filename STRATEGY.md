@@ -89,19 +89,18 @@ Current best exact `24k` ByteLevel result:
 
 Most recent stopped frontier checkpoint:
 
-- run id: `bytelevel24k_d512_gqa_softcap_relu2_core_s1600`
-- latest checkpoint: `step=800`
-- exact `val_bpb`: `1.8177`
-- gap to local `1.5`: `0.3177`
-- status: stopped early after `step=800`; the simplified `relu2` branch still trailed the older plain `24k` reference (`1.7954`), so the `relu2` family is no longer the main active hypothesis
+- run id: `bytelevel24k_d640_gqa_softcap_s1600`
+- latest checkpoint: `final`
+- exact `val_bpb`: `1.6874`
+- gap to local `1.5`: `0.1874`
+- status: completed cleanly and beat the older plain `24k` `1600`-step reference by `0.0610` bpb, which was strong enough to promote directly to a `3200`-step continuation
 
 Current live frontier checkpoint:
 
-- run id: `bytelevel24k_d640_gqa_softcap_s1600`
-- latest checkpoint: `step=800`
-- live `val_bpb`: `1.7533`
-- gap to local `1.5`: `0.2533`
-- status: now active on MPS as the width-upscaled version of the proven plain `24k` GQA/softcap recipe
+- run id: `bytelevel24k_d640_gqa_softcap_s3200`
+- latest checkpoint: `step=0`
+- live `val_bpb`: `3.4676`
+- status: now active on MPS as the promoted `3200`-step continuation of the width-upscaled plain `24k` GQA/softcap recipe
 
 Current prepared next-tokenizer branch:
 
@@ -122,9 +121,9 @@ Prepared tokenizer ladder behind the live branch:
 
 Current prepared next-architecture branch:
 
-- knobs: width-upscaled plain `24k` variants such as `D_MODEL=640`
-- status: now upgraded from "prepared" to "live exact run" on the `24k` tokenizer family
-- rationale: the tokenizer ladder and `relu2` block variants both stalled, so the next clean lever is more capacity on the strongest plain branch
+- knobs: nearby width variants such as `D_MODEL=576` and `D_MODEL=704`
+- status: ready as follow-up capacity bracketing if the active `d640` continuation underperforms
+- rationale: the tokenizer ladder and `relu2` block variants both stalled, so width is now the main active capacity lever
 
 Gap versus official main-track leader for our best exact sampled official-tokenizer run:
 
@@ -3862,6 +3861,11 @@ parameters=20,238,248
 step=0 train_loss=10.1780 train_bpb=3.3062 val_loss=10.1269 val_bpb=3.4676 muon_lr=2.000e-03 adamw_lr=3.000e-05 elapsed=0.0s
 step=400 train_loss=5.3712 train_bpb=1.8237 val_loss=5.5845 val_bpb=1.8951 muon_lr=3.251e-02 adamw_lr=4.876e-04 elapsed=599.1s
 step=800 train_loss=5.0739 train_bpb=1.6821 val_loss=5.2047 val_bpb=1.7533 muon_lr=1.542e-02 adamw_lr=2.314e-04 elapsed=1197.8s
+step=1200 train_loss=4.6817 train_bpb=1.6219 val_loss=5.0355 val_bpb=1.7210 muon_lr=4.357e-03 adamw_lr=6.535e-05 elapsed=1796.8s
+=== final_stats ===
+steps=1600
+seconds=2397.01
+final_val_bpb=1.6874
 ```
 
 Interpretation:
@@ -3871,6 +3875,37 @@ Interpretation:
 - That makes the wider plain `24k` branch the strongest active hypothesis now.
 - At `step=800`, it is `0.0421` bpb better than the closest old `24k` `1600`-schedule reference (`1.7954`).
 - That is now close to the edge of the local proxy-noise band in the good direction, so this branch has earned the right to continue toward `step=1600`.
+- At `step=1200`, it is `0.0546` bpb better than the old plain `24k` `step=1200` reference (`1.7756`).
+- The completed `1600`-step run finishes at `1.6874`, which is `0.0610` bpb better than the old plain `24k` `1600`-step reference (`1.7484`).
+- This is the first branch in a while that clearly outperforms its predecessor over a full local run.
+
+## Experiment 64. Promote The Wider Plain `24k` Branch To `3200` Steps
+
+Status:
+
+- In progress
+
+Purpose:
+
+- Extend the first clearly better branch rather than continuing to spend time on weaker ablations.
+
+Command:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_d640_gqa_softcap_s3200 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=640 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1706 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=800 MAX_STEPS=3200 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_d640_gqa_softcap_s3200.json uv run python train_gpt.py | tee runs/bytelevel24k/bytelevel24k_d640_gqa_softcap_s3200.log
+```
+
+Terminal output so far:
+
+```text
+parameters=20,238,248
+step=0 train_loss=10.1780 train_bpb=3.3062 val_loss=10.1269 val_bpb=3.4676 muon_lr=2.000e-03 adamw_lr=3.000e-05 elapsed=0.0s
+```
+
+Interpretation:
+
+- This is the right place to spend more training tokens now.
+- The live question is no longer "does width help?" but "how much of the old `3200`-step improvement curve survives when the wider branch starts from a stronger base?"
 
 ## Experiment 53. Add Baseline-Inspired Block Knobs
 
@@ -3948,7 +3983,7 @@ The best immediate path is now:
 12. the `32k` tokenizer branch was informative but no longer worth finishing once it reached `1.6675` at `step=2400`
 13. the accumulated `48k d384` branch was the best local denominator test we found, but it still lost clearly by `step=1600`
 14. the `relu2` family also underperformed, both in the all-at-once and simplified-core forms
-15. the live frontier is now a wider plain `24k` GQA/softcap branch, which is the first recent branch to beat the old `24k` reference at an early checkpoint
+15. the live frontier is now the `3200`-step continuation of a wider plain `24k` GQA/softcap branch, which is the first recent branch to beat the old `24k` reference over a full run
 
 Reasoning:
 
@@ -3962,7 +3997,7 @@ Reasoning:
 - On top of that schedule, the official-baseline attention knobs added another clean improvement.
 - The `3200`-step continuation shows optimization horizon is still useful, but no longer enough to expect a free drop to `1.5`.
 - The next wins are most likely to come from:
-  - the active wider plain `24k` branch if extra capacity keeps beating the old reference beyond the first checkpoint
+  - the active `d640` continuation if its stronger start converts into a better long-horizon finish
   - then nearby width variants such as `d576` or `d704` if we need to bracket the sweet spot
   - only then reconsider more denominator scaling such as `64k`
 
@@ -3971,7 +4006,7 @@ Reasoning:
 The current active command is:
 
 ```bash
-PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_d640_gqa_softcap_s1600 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=640 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1706 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=400 MAX_STEPS=1600 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_d640_gqa_softcap_s1600.json uv run python train_gpt.py | tee runs/bytelevel24k/bytelevel24k_d640_gqa_softcap_s1600.log
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_d640_gqa_softcap_s3200 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=640 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1706 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=800 MAX_STEPS=3200 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_d640_gqa_softcap_s3200.json uv run python train_gpt.py | tee runs/bytelevel24k/bytelevel24k_d640_gqa_softcap_s3200.log
 ```
 
 Why this exact command:
@@ -3979,7 +4014,8 @@ Why this exact command:
 - The `48k` denominator path has now had a fair local test and came up short.
 - The `relu2` family has also had a fair local test and came up short.
 - The model-side recipe is already proven on the `24k` tokenizer family: GQA, query gain, logit softcap, `SEQ_LEN=1024`, long horizon.
-- So the clean next question is whether simply giving that exact winning recipe more capacity works better than the failed tokenizer and block detours.
+- The `d640` variant is the first recent branch to beat that older recipe over a full run.
+- So the clean next question is how much of that gain survives when the wider branch gets the same longer horizon.
 
 If the current wider `24k` run misses badly, the next command should be:
 

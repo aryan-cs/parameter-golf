@@ -281,6 +281,12 @@ This is the first branch in a while that clearly beats the old reference over a 
 bytelevel24k_d640_gqa_softcap_s3200
 ```
 
+The promoted continuation has started cleanly:
+
+```text
+step=0 val_bpb=3.4676
+```
+
 ## 4. Exact Commands And Outputs
 
 ### 4.1 `32k` checkpoint inspection before promotion
