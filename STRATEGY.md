@@ -87,13 +87,20 @@ Current best exact `24k` ByteLevel result:
 - artifact: `21,566,256` bytes
 - status: best exact large-tokenizer result so far; still far above the artifact cap, but now the strongest overall local exact score in the repo
 
-Current live frontier checkpoint:
+Most recent stopped frontier checkpoint:
 
 - run id: `bytelevel32k_d512_gqa_softcap_s3200`
-- latest checkpoint: `step=1600`
-- live `val_bpb`: `1.6975`
-- gap to local `1.5`: `0.1975`
-- status: in progress; the `32k` branch started ahead at `step=800`, but by `step=1600` it is now behind the `24k` branch at the same checkpoint (`1.6664`)
+- latest checkpoint: `step=2400`
+- exact `val_bpb`: `1.6675`
+- gap to local `1.5`: `0.1675`
+- status: stopped early after `step=2400`; the branch was still behind the `24k` branch at the same checkpoint (`1.6536`) and no longer had a plausible path to `1.5` in the final `800` steps
+
+Current live frontier checkpoint:
+
+- run id: `bytelevel48k_d512_gqa_softcap_s3200`
+- latest checkpoint: `step=0`
+- live `val_bpb`: `3.5214`
+- status: now active on MPS as the promoted next denominator rung after the `32k` branch was cut early
 
 Current prepared next-tokenizer branch:
 
@@ -110,7 +117,7 @@ Prepared tokenizer ladder behind the live branch:
 - `fineweb_64k_sample`
   - train `avg_bytes_per_token`: `4.62566836285424`
   - val `avg_bytes_per_token`: `4.534385498540016`
-- status: contingency branches prepared so we can keep moving if `32k` still stops short of `1.5`
+- status: `48k` is now active; `64k` remains prepared behind it if this rung still stops short of `1.5`
 
 Current prepared next-architecture branch:
 
@@ -3519,6 +3526,74 @@ Interpretation:
 - That means `32k` is no longer the obvious winning tokenizer rung.
 - We should still let it finish, because the larger denominator might still help late in training, but `48k` is now the next most plausible escalation if `32k` stalls in the mid-`1.6`s.
 
+## Experiment 54. Promote `32k` To `Step=2400`, Then Cut It Early
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Wait long enough to tell whether the `32k` tokenizer branch had any realistic chance of reaching `1.5`, then stop it early if it was clearly not the best use of more MPS time.
+
+Command:
+
+```bash
+tail -n 80 runs/bytelevel32k/bytelevel32k_d512_gqa_softcap_s3200.log
+```
+
+Terminal output:
+
+```text
+step=800 train_loss=5.0753 train_bpb=1.6506 val_loss=5.4205 val_bpb=1.7785 muon_lr=3.225e-02 adamw_lr=4.838e-04 elapsed=1279.1s
+step=1600 train_loss=4.7604 train_bpb=1.5083 val_loss=5.1868 val_bpb=1.6975 muon_lr=1.527e-02 adamw_lr=2.290e-04 elapsed=2624.8s
+step=2400 train_loss=4.5696 train_bpb=1.4266 val_loss=5.0579 val_bpb=1.6675 muon_lr=4.351e-03 adamw_lr=6.527e-05 elapsed=4055.2s
+```
+
+Stop command:
+
+```bash
+^C
+```
+
+Interpretation:
+
+- The `32k` branch kept improving, but not fast enough.
+- At `step=2400`, it was still `0.0139` bpb worse than the `24k` branch at the same checkpoint (`1.6675` versus `1.6536`).
+- More importantly, it would have needed another `0.1675` bpb drop in the final `800` steps to hit `1.5`, which was not realistic given the observed curve.
+- Stopping it early and reallocating the device to `48k` was the highest-value move.
+
+## Experiment 55. Launch The `48k` Tokenizer Branch
+
+Status:
+
+- In progress
+
+Purpose:
+
+- Promote the next tokenizer rung immediately after the `32k` branch failed to show a plausible path to `1.5`.
+
+Command:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel48k_d512_gqa_softcap_s3200 TOKENIZER_PREFIX=./data/tokenizers/fineweb_48k_sample DATA_PATH=./data/tokens/fineweb_48k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_48k_sample/val D_MODEL=512 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=800 MAX_STEPS=3200 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 DEVICE=mps STATS_PATH=runs/bytelevel48k/bytelevel48k_d512_gqa_softcap_s3200.json uv run python train_gpt.py | tee runs/bytelevel48k/bytelevel48k_d512_gqa_softcap_s3200.log
+```
+
+Terminal output:
+
+```text
+vocab_size=49152 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_48k_sample/val
+avg_bytes_per_token=4.4668 source=metadata:/Users/aryan/Desktop/golf/data/tokens/fineweb_48k_sample/val
+parameters=28,053,128
+step=0 train_loss=10.8960 train_bpb=3.4711 val_loss=10.8959 val_bpb=3.5214 muon_lr=2.000e-03 adamw_lr=3.000e-05 elapsed=0.0s
+```
+
+Interpretation:
+
+- The `48k` branch starts from a significantly larger denominator than `24k` or `32k`.
+- The parameter count jumped a lot because the tied embedding table grew with the vocabulary.
+- The branch is now the live frontier and the next real question is whether the denominator gain survives optimization to `step=800` and beyond.
+
 ## Experiment 53. Add Baseline-Inspired Block Knobs
 
 Status:
@@ -3592,9 +3667,9 @@ The best immediate path is now:
 9. longer horizon plus later cooldown is currently the strongest confirmed lever inside the `24k` branch
 10. GQA plus query gain plus logit softcap is now the strongest confirmed architecture tweak on top of that schedule
 11. longer horizon still helps, but with diminishing returns
-12. the live `32k` tokenizer branch is still worth finishing, but it is no longer clearly winning against `24k` at matched checkpoint
-13. if `32k` still misses, the next denominator-only escalation is `48k`, not `64k`, because it is the next clean rung with less risk of optimization collapse
-14. in parallel, the new baseline-inspired block knobs are ready as the next model-side lever if denominator scaling alone stalls
+12. the `32k` tokenizer branch was informative but no longer worth finishing once it reached `1.6675` at `step=2400`
+13. the live denominator-scaling frontier is now `48k`, with `64k` held back as the next contingency rather than the immediate jump
+14. in parallel, the new baseline-inspired block knobs are ready as the next model-side lever if `48k` still stalls above `1.5`
 
 Reasoning:
 
@@ -3608,27 +3683,26 @@ Reasoning:
 - On top of that schedule, the official-baseline attention knobs added another clean improvement.
 - The `3200`-step continuation shows optimization horizon is still useful, but no longer enough to expect a free drop to `1.5`.
 - The next wins are most likely to come from:
-  - letting the active `32k` branch finish so we stop guessing about whether it really beats `24k`
-  - then the prepared `48k` branch if `32k` still lands in the mid-`1.6`s
-  - maybe another longer continuation after we know whether the tokenizer denominator gain is real in practice
-  - then the new `relu2` plus block-scale plus residual-mix branch if tokenizer-only scaling stops paying off
+  - the active `48k` branch if the larger denominator is still optimization-compatible enough to matter
+  - then the prepared `64k` branch only if `48k` looks close but still short
+  - or the new `relu2` plus block-scale plus residual-mix branch if the tokenizer ladder keeps flattening
 
 ## Next Command To Run
 
 The current active command is:
 
 ```bash
-PYTHONUNBUFFERED=1 RUN_ID=bytelevel32k_d512_gqa_softcap_s3200 TOKENIZER_PREFIX=./data/tokenizers/fineweb_32k_sample DATA_PATH=./data/tokens/fineweb_32k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_32k_sample/val D_MODEL=512 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=800 MAX_STEPS=3200 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 DEVICE=mps STATS_PATH=runs/bytelevel32k/bytelevel32k_d512_gqa_softcap_s3200.json uv run python train_gpt.py | tee runs/bytelevel32k/bytelevel32k_d512_gqa_softcap_s3200.log
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel48k_d512_gqa_softcap_s3200 TOKENIZER_PREFIX=./data/tokenizers/fineweb_48k_sample DATA_PATH=./data/tokens/fineweb_48k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_48k_sample/val D_MODEL=512 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=800 MAX_STEPS=3200 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 DEVICE=mps STATS_PATH=runs/bytelevel48k/bytelevel48k_d512_gqa_softcap_s3200.json uv run python train_gpt.py | tee runs/bytelevel48k/bytelevel48k_d512_gqa_softcap_s3200.log
 ```
 
 Why this exact command:
 
-- The `24k` branch is now close enough to `1.5` that a real tokenizer denominator gain is the highest-leverage remaining lever.
+- The `32k` branch was no longer improving fast enough to justify more time.
 - The model-side recipe is already proven: GQA, query gain, logit softcap, `SEQ_LEN=1024`, `3200` steps.
-- Keeping the model recipe fixed while changing only the tokenizer branch is the cleanest next experiment.
+- Keeping the model recipe fixed while changing only the tokenizer branch remains the cleanest next experiment.
 
-If the current `32k` run finishes above the `24k` branch, the next command should be:
+If the current `48k` run misses badly, the next command should be:
 
 ```bash
-PYTHONUNBUFFERED=1 RUN_ID=bytelevel48k_d512_gqa_softcap_s3200 TOKENIZER_PREFIX=./data/tokenizers/fineweb_48k_sample DATA_PATH=./data/tokens/fineweb_48k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_48k_sample/val D_MODEL=512 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=800 MAX_STEPS=3200 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 DEVICE=mps STATS_PATH=runs/bytelevel48k/bytelevel48k_d512_gqa_softcap_s3200.json uv run python train_gpt.py | tee runs/bytelevel48k/bytelevel48k_d512_gqa_softcap_s3200.log
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel48k_d512_gqa_softcap_relu2_s3200 TOKENIZER_PREFIX=./data/tokenizers/fineweb_48k_sample DATA_PATH=./data/tokens/fineweb_48k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_48k_sample/val D_MODEL=512 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=800 MAX_STEPS=3200 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 MLP_KIND=relu2 USE_BLOCK_SCALES=1 USE_RESID_MIX=1 DEVICE=mps STATS_PATH=runs/bytelevel48k/bytelevel48k_d512_gqa_softcap_relu2_s3200.json uv run python train_gpt.py | tee runs/bytelevel48k/bytelevel48k_d512_gqa_softcap_relu2_s3200.log
 ```
