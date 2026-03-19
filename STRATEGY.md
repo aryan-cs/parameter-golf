@@ -98,10 +98,10 @@ Most recent stopped frontier checkpoint:
 Current live frontier checkpoint:
 
 - run id: `bytelevel24k_d640_gqa_softcap_cd05_s3200`
-- latest checkpoint: `step=400`
-- live `val_bpb`: `1.8955`
-- gap to local `1.5`: `0.3955`
-- status: active late-cooldown retry of the same `d640` width recipe; the first early checkpoint is already ahead of the old plain `24k d512` curve at the same horizon (`1.9226 -> 1.8955`), so the retry is alive enough to keep running
+- latest checkpoint: `step=800`
+- live `val_bpb`: `1.7390`
+- gap to local `1.5`: `0.2390`
+- status: active late-cooldown retry of the same `d640` width recipe; now ahead of both the old plain `24k d512` curve at `step=800` (`1.8085 -> 1.7390`) and the original `d640` schedule at `step=800` (`1.7610 -> 1.7390`)
 
 Current prepared next-tokenizer branch:
 
@@ -4125,3 +4125,23 @@ Interpretation:
 - This does not prove the late-cooldown retry will win, because the original `d640` run did not record a `step=400` checkpoint.
 - But it is a clean enough early result to keep the retry alive.
 - The next meaningful decision point is `step=800`, where we can compare against the original `d640` run's `1.7610`.
+
+Second checkpoint from the restarted branch:
+
+```text
+step=800 train_loss=5.0390 train_bpb=1.6705 val_loss=5.1623 val_bpb=1.7390 muon_lr=3.439e-02 adamw_lr=5.159e-04 elapsed=1198.1s
+```
+
+Matched-horizon comparisons:
+
+- old plain `24k d512` `3200`-step curve at `step=800`: `1.8085`
+- original `d640` schedule at `step=800`: `1.7610`
+- restarted `d640 cd05` curve at `step=800`: `1.7390`
+- improvement over old plain `d512`: `0.0695` bpb
+- improvement over original `d640` schedule: `0.0220` bpb
+
+Interpretation:
+
+- The later-cooldown retry is no longer just plausible; it is now measurably better than the original `d640` run at the first apples-to-apples checkpoint.
+- That does not prove it will hold through `step=1600`, but it is strong enough that the correct move is to keep this run alive.
+- The next key comparison is `step=1600`, where the target to beat is the original `d640` schedule's `1.6102`.
