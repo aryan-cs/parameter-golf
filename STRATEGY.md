@@ -157,6 +157,18 @@ Sampled-eval policy:
 - Do not make architecture decisions from local sampled exact validation deltas smaller than about `0.05` bpb
 - Label sampled exact results as proxies until we run a full fixed-split validation pass
 
+Training loop update:
+
+- Added opt-in checkpoint save/resume to `train_gpt.py`
+- `CHECKPOINT_PATH` writes checkpoints on the validation cadence and at final exit
+- `RESUME_CHECKPOINT_PATH` restores model, optimizer, RNG, and batcher state before training
+- Smoke test result:
+```text
+checkpoint=saved path=/private/tmp/golf-checkpoint.pt step=1
+checkpoint=loaded path=/private/tmp/golf-checkpoint.pt step=1 elapsed=0.1s
+checkpoint=saved path=/private/tmp/golf-checkpoint.pt step=2
+```
+
 Non-record PR rule:
 
 - Even without beating `1.22436570`, we can still consider a PR for `records/track_non_record_16mb/` if the run is interesting, under the artifact cap, and well documented

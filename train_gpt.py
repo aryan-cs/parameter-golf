@@ -110,6 +110,8 @@ class Config:
     tied_embeddings: bool
     share_blocks: bool
     artifact_path: str
+    checkpoint_path: str
+    resume_checkpoint_path: str
     stats_path: str
 
     @classmethod
@@ -157,6 +159,9 @@ class Config:
             tied_embeddings=env_bool("TIED_EMBEDDINGS", False),
             share_blocks=env_bool("SHARE_BLOCKS", True),
             artifact_path=os.environ.get("ARTIFACT_PATH", ""),
+            checkpoint_path=os.environ.get("CHECKPOINT_PATH", ""),
+            resume_checkpoint_path=os.environ.get("RESUME_CHECKPOINT_PATH", "")
+            or os.environ.get("CHECKPOINT_PATH", ""),
             stats_path=os.environ.get("STATS_PATH", ""),
         )
 
@@ -501,7 +506,7 @@ class SyntheticTokenBatcher:
     def __init__(self, vocab_size: int, seq_len: int, seed: int) -> None:
         self.vocab_size = vocab_size
         self.seq_len = seq_len
-        self.generator = random.Random(seed)
+        self.generator = torch.Generator().manual_seed(seed)
 
     def next_batch(self, batch_size: int, device):
         if torch is None:
@@ -511,8 +516,17 @@ class SyntheticTokenBatcher:
             high=self.vocab_size,
             size=(batch_size, self.seq_len + 1),
             dtype=torch.long,
+            generator=self.generator,
         )
         return batch.to(device)
+
+    def state_dict(self) -> dict:
+        return {"generator_state": self.generator.get_state()}
+
+    def load_state_dict(self, state: dict) -> None:
+        generator_state = state.get("generator_state")
+        if generator_state is not None:
+            self.generator.set_state(generator_state)
 
 
 class PackedTokenBatcher:
@@ -530,6 +544,14 @@ class PackedTokenBatcher:
             start = self.rng.randrange(0, len(arr) - self.seq_len - 1)
             batch[row] = np.asarray(arr[start:start + self.seq_len + 1], dtype=np.int64)
         return torch.from_numpy(batch).to(device)
+
+    def state_dict(self) -> dict:
+        return {"rng_state": self.rng.getstate()}
+
+    def load_state_dict(self, state: dict) -> None:
+        rng_state = state.get("rng_state")
+        if rng_state is not None:
+            self.rng.setstate(rng_state)
 
 
 class SentencePieceBPBHelper:
@@ -776,6 +798,137 @@ def estimate_total_steps(cfg: Config, step: int, elapsed: float) -> int:
     return 1000
 
 
+RESUME_SAFE_CONFIG_FIELDS = (
+    "data_path",
+    "val_data_path",
+    "token_dtype",
+    "vocab_size",
+    "d_model",
+    "n_heads",
+    "num_kv_heads",
+    "d_ff",
+    "n_loops",
+    "seq_len",
+    "train_batch_tokens",
+    "train_microbatch_tokens",
+    "val_batch_tokens",
+    "tokenizer_path",
+    "tokenizer_prefix",
+    "muon_lr",
+    "adamw_lr",
+    "weight_decay",
+    "warmup_steps",
+    "cooldown_fraction",
+    "qk_gain_init",
+    "logit_softcap",
+    "qat_start_fraction",
+    "grad_clip",
+    "use_smear",
+    "mlp_kind",
+    "use_block_scales",
+    "use_resid_mix",
+    "tied_embeddings",
+    "share_blocks",
+)
+
+
+def checkpoint_state_dict(
+    cfg: Config,
+    model: nn.Module,
+    muon_opt,
+    adamw_opt,
+    scaler,
+    step: int,
+    elapsed_seconds: float,
+    best_val_loss,
+    best_val_bpb,
+    last_train_loss,
+    last_val_loss,
+    qat_enabled: bool,
+    train_batcher,
+    val_batcher,
+) -> dict:
+    state = {
+        "config": asdict(cfg),
+        "model": model.state_dict(),
+        "muon_opt": muon_opt.state_dict(),
+        "adamw_opt": adamw_opt.state_dict(),
+        "step": step,
+        "elapsed_seconds": elapsed_seconds,
+        "best_val_loss": best_val_loss,
+        "best_val_bpb": best_val_bpb,
+        "last_train_loss": last_train_loss,
+        "last_val_loss": last_val_loss,
+        "qat_enabled": qat_enabled,
+        "train_batcher_state": train_batcher.state_dict() if hasattr(train_batcher, "state_dict") else None,
+        "val_batcher_state": val_batcher.state_dict() if hasattr(val_batcher, "state_dict") else None,
+        "python_random_state": random.getstate(),
+        "torch_random_state": torch.get_rng_state(),
+    }
+    if np is not None:
+        state["numpy_random_state"] = np.random.get_state()
+    if scaler is not None and hasattr(scaler, "state_dict"):
+        state["scaler"] = scaler.state_dict()
+    if torch.cuda.is_available():
+        state["cuda_random_state_all"] = torch.cuda.get_rng_state_all()
+    return state
+
+
+def save_checkpoint(state: dict, path: str) -> None:
+    if not path:
+        return
+    checkpoint_path = Path(path)
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile("wb", suffix=".pt", dir=checkpoint_path.parent, delete=False) as handle:
+        tmp_path = Path(handle.name)
+        torch.save(state, handle)
+    tmp_path.replace(checkpoint_path)
+
+
+def restore_checkpoint(
+    cfg: Config,
+    model: nn.Module,
+    muon_opt,
+    adamw_opt,
+    scaler,
+    train_batcher,
+    val_batcher,
+    checkpoint_path: str,
+    device,
+) -> dict | None:
+    if not checkpoint_path:
+        return None
+    path = Path(checkpoint_path)
+    if not path.exists():
+        return None
+    checkpoint = torch.load(path, map_location=device, weights_only=False)
+    saved_cfg = checkpoint.get("config", {})
+    mismatches = []
+    for field in RESUME_SAFE_CONFIG_FIELDS:
+        if saved_cfg.get(field) != getattr(cfg, field):
+            mismatches.append(f"{field}: saved={saved_cfg.get(field)!r} current={getattr(cfg, field)!r}")
+    if mismatches:
+        raise ValueError("Checkpoint config mismatch:\n" + "\n".join(mismatches))
+    model.load_state_dict(checkpoint["model"])
+    muon_opt.load_state_dict(checkpoint["muon_opt"])
+    adamw_opt.load_state_dict(checkpoint["adamw_opt"])
+    if scaler is not None and "scaler" in checkpoint and hasattr(scaler, "load_state_dict"):
+        scaler.load_state_dict(checkpoint["scaler"])
+    if hasattr(train_batcher, "load_state_dict") and checkpoint.get("train_batcher_state") is not None:
+        train_batcher.load_state_dict(checkpoint["train_batcher_state"])
+    if hasattr(val_batcher, "load_state_dict") and checkpoint.get("val_batcher_state") is not None:
+        val_batcher.load_state_dict(checkpoint["val_batcher_state"])
+    random.setstate(checkpoint["python_random_state"])
+    torch.set_rng_state(checkpoint["torch_random_state"])
+    if np is not None and "numpy_random_state" in checkpoint:
+        np.random.set_state(checkpoint["numpy_random_state"])
+    if torch.cuda.is_available() and "cuda_random_state_all" in checkpoint:
+        torch.cuda.set_rng_state_all(checkpoint["cuda_random_state_all"])
+    if checkpoint.get("qat_enabled"):
+        enable_qat(model)
+    return checkpoint
+
+
 def maybe_save_artifact(compressed: bytes, path: str) -> None:
     if not path:
         return
@@ -962,6 +1115,10 @@ def main() -> int:
         print(f"tokenizer_path={Path(cfg.tokenizer_path).resolve()}")
     if cfg.tokenizer_prefix:
         print(f"tokenizer_prefix={Path(cfg.tokenizer_prefix).resolve()}")
+    if cfg.checkpoint_path:
+        print(f"checkpoint_path={Path(cfg.checkpoint_path).resolve()}")
+    if cfg.resume_checkpoint_path:
+        print(f"resume_checkpoint_path={Path(cfg.resume_checkpoint_path).resolve()}")
 
     model = LoopedTransformer(
         vocab_size=cfg.vocab_size,
@@ -999,6 +1156,31 @@ def main() -> int:
     last_val_loss = None
     best_val_loss = None
     best_val_bpb = None
+    resumed_checkpoint = restore_checkpoint(
+        cfg,
+        model,
+        muon_opt,
+        adamw_opt,
+        scaler,
+        train_batcher,
+        val_batcher,
+        cfg.resume_checkpoint_path,
+        device,
+    )
+    if resumed_checkpoint is not None:
+        step = int(resumed_checkpoint.get("step", 0))
+        start_time = time.perf_counter() - float(resumed_checkpoint.get("elapsed_seconds", 0.0))
+        last_train_loss = resumed_checkpoint.get("last_train_loss")
+        last_val_loss = resumed_checkpoint.get("last_val_loss")
+        best_val_loss = resumed_checkpoint.get("best_val_loss")
+        best_val_bpb = resumed_checkpoint.get("best_val_bpb")
+        qat_enabled = bool(resumed_checkpoint.get("qat_enabled", False))
+        print(
+            f"checkpoint=loaded path={Path(cfg.resume_checkpoint_path).resolve()} "
+            f"step={step} elapsed={resumed_checkpoint.get('elapsed_seconds', 0.0):.1f}s"
+        )
+    elif cfg.resume_checkpoint_path:
+        print(f"checkpoint=missing path={Path(cfg.resume_checkpoint_path).resolve()}")
     while True:
         elapsed = time.perf_counter() - start_time
         if cfg.max_steps > 0 and step >= cfg.max_steps:
@@ -1087,6 +1269,26 @@ def main() -> int:
                 f"adamw_lr={adamw_lr:.3e} "
                 f"elapsed={elapsed:.1f}s"
             )
+        next_step = step + 1
+        if cfg.checkpoint_path and (cfg.val_loss_every <= 0 or step % cfg.val_loss_every == 0 or next_step >= cfg.max_steps > 0):
+            checkpoint = checkpoint_state_dict(
+                cfg,
+                model,
+                muon_opt,
+                adamw_opt,
+                scaler,
+                next_step,
+                time.perf_counter() - start_time,
+                best_val_loss,
+                best_val_bpb,
+                last_train_loss,
+                last_val_loss,
+                qat_enabled,
+                train_batcher,
+                val_batcher,
+            )
+            save_checkpoint(checkpoint, cfg.checkpoint_path)
+            print(f"checkpoint=saved path={Path(cfg.checkpoint_path).resolve()} step={next_step}")
         step += 1
 
     total_time = time.perf_counter() - start_time
@@ -1157,6 +1359,25 @@ def main() -> int:
             handle.write("\n")
             temp_stats_path = handle.name
         print(f"stats_path={temp_stats_path}")
+    if cfg.checkpoint_path:
+        final_checkpoint = checkpoint_state_dict(
+            cfg,
+            model,
+            muon_opt,
+            adamw_opt,
+            scaler,
+            step,
+            total_time,
+            best_val_loss,
+            best_val_bpb,
+            last_train_loss,
+            last_val_loss,
+            qat_enabled,
+            train_batcher,
+            val_batcher,
+        )
+        save_checkpoint(final_checkpoint, cfg.checkpoint_path)
+        print(f"checkpoint=saved path={Path(cfg.checkpoint_path).resolve()} step={step}")
     return 0
 
 
