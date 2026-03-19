@@ -100,10 +100,10 @@ Most recent stopped frontier checkpoint:
 Current live frontier checkpoint:
 
 - run id: `bytelevel24k_d704_gqa_softcap_cd05_s3200`
-- latest checkpoint: `step=0`
-- live `val_bpb`: `3.4684`
-- gap to local `1.5`: `1.9684`
-- status: active next-width-bracket run; launched immediately after `d640 + cd05` finished because schedule-tuned width helped, but not enough to close the remaining `0.1017` gap to `1.5`
+- latest checkpoint: `step=400`
+- live `val_bpb`: `1.8962`
+- gap to local `1.5`: `0.3962`
+- status: active next-width-bracket run; essentially tied with `d640 + cd05` at the same horizon (`1.8955` versus `1.8962`), so it stays alive for the `step=800` comparison
 
 Current prepared next-tokenizer branch:
 
@@ -4272,3 +4272,21 @@ Launch output:
 parameters=22,758,392
 step=0 train_loss=10.1916 train_bpb=3.3106 val_loss=10.1290 val_bpb=3.4684 muon_lr=2.000e-03 adamw_lr=3.000e-05 elapsed=0.0s
 ```
+
+First checkpoint from the new `d704` branch:
+
+```text
+step=400 train_loss=5.3727 train_bpb=1.8242 val_loss=5.5879 val_bpb=1.8962 muon_lr=3.861e-02 adamw_lr=5.792e-04 elapsed=666.8s
+```
+
+Early comparison:
+
+- `d640 + cd05` at `step=400`: `1.8955`
+- `d704 + cd05` at `step=400`: `1.8962`
+- difference: `0.0007` bpb worse
+
+Interpretation:
+
+- This is effectively a tie.
+- The extra width has not yet bought a clean early win, but it also has not failed badly enough to stop.
+- The next meaningful comparison point is `step=800`, where the score to beat is `1.7390`.

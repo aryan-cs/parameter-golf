@@ -25,7 +25,7 @@ Current facts that matter most:
   - `final_val_bpb = 1.6017072436714903`
 - The active frontier is now:
   - `bytelevel24k_d704_gqa_softcap_cd05_s3200`
-  - `step=0 val_bpb = 3.4684`
+  - `step=400 val_bpb = 1.8962`
 - The `32k` branch is no longer better than `24k`.
   - at `step=800`, `32k` was ahead
   - at `step=1600`, `32k` was behind `24k`
@@ -661,12 +661,27 @@ parameters=22,758,392
 step=0 train_loss=10.1916 train_bpb=3.3106 val_loss=10.1290 val_bpb=3.4684 muon_lr=2.000e-03 adamw_lr=3.000e-05 elapsed=0.0s
 ```
 
+The first real checkpoint from the new width bracket is:
+
+```text
+step=400 train_loss=5.3727 train_bpb=1.8242 val_loss=5.5879 val_bpb=1.8962 muon_lr=3.861e-02 adamw_lr=5.792e-04 elapsed=666.8s
+```
+
+That is almost identical to the completed `d640 + cd05` branch at the same point:
+
+```text
+d640 + cd05 at step=400: 1.8955
+d704 + cd05 at step=400: 1.8962
+```
+
+So the new width branch is still alive, but not yet clearly better.
+
 ## 5. What I Think Now
 
 The search tree is now:
 
-1. Let the live `bytelevel24k_d704_gqa_softcap_cd05_s3200` run reach `step=400` and compare its early curve to the completed `d640 + cd05` branch.
-2. If it is still ahead there, keep schedule-tuned width as the main line and continue upward.
+1. Let the live `bytelevel24k_d704_gqa_softcap_cd05_s3200` run reach `step=800` and compare it against the completed `d640 + cd05` branch's `1.7390`.
+2. If it is clearly behind there, cut it and reconsider the next capacity move.
 3. If it still flattens, bracket the width sweet spot with `d576` and `d704`.
 4. Keep the `relu2 + block_scales + resid_mix` branch as a prepared fallback, not the first next move.
 5. Treat `48k` and `64k` as contingency denominator branches only after schedule-tuned width stops paying.
@@ -713,7 +728,7 @@ The active frontier is:
 
 ```text
 bytelevel24k_d704_gqa_softcap_cd05_s3200
-step=0 val_bpb=3.4684
+step=400 val_bpb=1.8962
 ```
 
 The prepared model-side ablation is:
