@@ -46,6 +46,9 @@ Current best numbers worth knowing:
 - Prepared next tokenizer branch:
   - `fineweb_32k_sample`
   - `train avg_bytes_per_token = 4.4202857706695236`
+- Prepared contingency tokenizer ladder:
+  - `fineweb_48k_sample train avg_bytes_per_token = 4.550211732381878`
+  - `fineweb_64k_sample train avg_bytes_per_token = 4.62566836285424`
 
 Main conclusion right now:
 
@@ -326,6 +329,7 @@ It looks like:
 8. Promote the prepared `32k` tokenizer branch as the next major denominator test.
 9. Use accumulation only when the direct-memory limit blocks a genuinely better regime.
 10. Do not let artifact-size blindness hide the fact that this branch will eventually need a smaller valid variant.
+11. Keep the prepared `48k` and `64k` tokenizer branches ready behind `32k` so we can keep moving if `32k` is close but not enough.
 
 Why this seems best:
 
@@ -335,6 +339,7 @@ Why this seems best:
 - width and deeper loops have not moved it much
 - optimization horizon is still the most responsive lever
 - the next clean question is whether the prepared `32k` tokenizer can convert its extra bytes/token into the remaining `0.1238` bpb we need
+- if it cannot, the next denominator jumps are already prepared at `48k` and `64k`
 
 ## 6. What Still Looks Wrong or Incomplete
 

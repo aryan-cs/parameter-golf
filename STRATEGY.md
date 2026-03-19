@@ -98,6 +98,16 @@ Current prepared next-tokenizer branch:
 - val `avg_bytes_per_token`: `4.351551413669658`
 - status: prepared on disk and ready for model training
 
+Prepared tokenizer ladder behind the live branch:
+
+- `fineweb_48k_sample`
+  - train `avg_bytes_per_token`: `4.550211732381878`
+  - val `avg_bytes_per_token`: `4.466813263206576`
+- `fineweb_64k_sample`
+  - train `avg_bytes_per_token`: `4.62566836285424`
+  - val `avg_bytes_per_token`: `4.534385498540016`
+- status: contingency branches prepared so we can keep moving if `32k` still stops short of `1.5`
+
 Gap versus official main-track leader for our best exact sampled official-tokenizer run:
 
 - `1.995522745133331 - 1.22436570 = 0.7711570451333312` bpb worse
@@ -3434,6 +3444,40 @@ Interpretation:
 - Relative to the `24k` branch, this increases bytes per token from about `4.25` to about `4.42` on train data.
 - That is exactly the kind of denominator gain that could matter once the model-side branch is already near `1.6`.
 
+## Experiment 51. Prepare `48k` And `64k` Tokenizer Contingencies
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Build a tokenizer ladder behind the active `32k` run so we can keep climbing the denominator without losing a setup cycle if `32k` still misses `1.5`.
+
+Commands:
+
+```bash
+uv run python train_tokenizer.py --input-file data/raw/fineweb_16k_sample/train.jsonl --vocab-size 49152 --output-dir data/tokenizers --prefix fineweb_48k_sample
+uv run python prepare_tokens.py --train-input-file data/raw/fineweb_16k_sample/train.jsonl --val-input-file data/raw/fineweb_16k_sample/val.jsonl --tokenizer-prefix ./data/tokenizers/fineweb_48k_sample --output-dir ./data/tokens/fineweb_48k_sample
+uv run python train_tokenizer.py --input-file data/raw/fineweb_16k_sample/train.jsonl --vocab-size 65535 --output-dir data/tokenizers --prefix fineweb_64k_sample
+uv run python prepare_tokens.py --train-input-file data/raw/fineweb_16k_sample/train.jsonl --val-input-file data/raw/fineweb_16k_sample/val.jsonl --tokenizer-prefix ./data/tokenizers/fineweb_64k_sample --output-dir ./data/tokens/fineweb_64k_sample
+```
+
+Terminal output summary:
+
+```text
+fineweb_48k_sample train avg_bytes_per_token=4.550211732381878
+fineweb_48k_sample val avg_bytes_per_token=4.466813263206576
+fineweb_64k_sample train avg_bytes_per_token=4.62566836285424
+fineweb_64k_sample val avg_bytes_per_token=4.534385498540016
+```
+
+Interpretation:
+
+- The tokenizer ladder is now `24k -> 32k -> 48k -> 64k`.
+- Each rung materially increases bytes per token, so if the model-side branch is the same quality in nats, the bpb denominator should keep improving.
+- We still need actual training runs to know whether the larger vocabularies hurt optimization enough to offset that benefit.
+
 ## Current Working Hypothesis
 
 The best immediate path is now:
@@ -3450,6 +3494,7 @@ The best immediate path is now:
 10. GQA plus query gain plus logit softcap is now the strongest confirmed architecture tweak on top of that schedule
 11. longer horizon still helps, but with diminishing returns
 12. the next high-value test is to combine the proven GQA/softcap schedule with the prepared `32k` tokenizer branch
+13. if `32k` still misses, the next denominator-only escalation is already prepared at `48k` and `64k`
 
 Reasoning:
 
@@ -3464,6 +3509,7 @@ Reasoning:
 - The `3200`-step continuation shows optimization horizon is still useful, but no longer enough to expect a free drop to `1.5`.
 - The next wins are most likely to come from:
   - the prepared `32k` tokenizer branch on top of the proven GQA/softcap setup
+  - then the prepared `48k` and `64k` branches if the `32k` run is good but still short
   - maybe another longer continuation after we know whether the tokenizer denominator gain is real in practice
   - only then another architecture or width change if the curve still stalls
 
