@@ -25,7 +25,7 @@ Current facts that matter most:
   - `step=2400 val_bpb = 1.6118`
 - The active frontier is now:
   - `bytelevel24k_d640_gqa_softcap_cd05_s3200`
-  - `step=2000 val_bpb = 1.6028`
+  - `step=2400 val_bpb = 1.5943`
 - The `32k` branch is no longer better than `24k`.
   - at `step=800`, `32k` was ahead
   - at `step=1600`, `32k` was behind `24k`
@@ -598,12 +598,38 @@ That matters because:
 
 So the late-cooldown idea is finally paying off in the part of training where the original schedule flattened.
 
+The direct late-horizon comparison has now landed:
+
+```text
+step=2400 train_loss=4.2399 train_bpb=1.3699 val_loss=4.6790 val_bpb=1.5943 muon_lr=7.844e-03 adamw_lr=1.177e-04 elapsed=3596.4s
+```
+
+This is the clean apples-to-apples result:
+
+```text
+original d640 schedule at step=2400: 1.6118
+late-cooldown d640 at step=2400:     1.5943
+```
+
+So the restart is now:
+
+```text
+0.0175 bpb better
+```
+
+That is the strongest confirmation yet that the restart was correct.
+
+- the branch is still `0.0943` bpb away from `1.5`
+- so it is not close enough to declare victory
+- but it is now clearly the best live width-and-schedule combination in the repo
+- the run should continue to `step=3200`
+
 ## 5. What I Think Now
 
 The search tree is now:
 
-1. Let the live `bytelevel24k_d640_gqa_softcap_cd05_s3200` run reach `step=2400` and compare it against the original `d640` run's `1.6118`.
-2. If the later-cooldown retry wins there, keep schedule-tuned width as the main line.
+1. Let the live `bytelevel24k_d640_gqa_softcap_cd05_s3200` run finish at `step=3200`.
+2. If it still misses `1.5`, keep schedule-tuned width as the main line and promote the next width bracket rather than falling back to tokenizer scaling.
 3. If it still flattens, bracket the width sweet spot with `d576` and `d704`.
 4. Keep the `relu2 + block_scales + resid_mix` branch as a prepared fallback, not the first next move.
 5. Treat `48k` and `64k` as contingency denominator branches only after schedule-tuned width stops paying.
@@ -650,7 +676,7 @@ The active frontier is:
 
 ```text
 bytelevel24k_d640_gqa_softcap_cd05_s3200
-step=2000 val_bpb=1.6028
+step=2400 val_bpb=1.5943
 ```
 
 The prepared model-side ablation is:

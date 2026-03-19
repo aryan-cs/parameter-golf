@@ -98,10 +98,10 @@ Most recent stopped frontier checkpoint:
 Current live frontier checkpoint:
 
 - run id: `bytelevel24k_d640_gqa_softcap_cd05_s3200`
-- latest checkpoint: `step=2000`
-- live `val_bpb`: `1.6028`
-- gap to local `1.5`: `0.1028`
-- status: active late-cooldown retry of the same `d640` width recipe; it has now moved back below the original schedule's `step=2400` score (`1.6118`) with `400` fewer steps, so the late-segment hypothesis is paying off enough to keep running
+- latest checkpoint: `step=2400`
+- live `val_bpb`: `1.5943`
+- gap to local `1.5`: `0.0943`
+- status: active late-cooldown retry of the same `d640` width recipe; it has now beaten the original schedule at the same late checkpoint (`1.6118 -> 1.5943`), so this is the strongest live schedule-tuned width branch so far
 
 Current prepared next-tokenizer branch:
 
@@ -4207,3 +4207,24 @@ Interpretation:
 - This is the first real sign that the later-cooldown retry is doing exactly what it was supposed to do: keep the late segment alive.
 - We still do not have the apples-to-apples `step=2400` comparison yet.
 - But the branch has earned the next segment, because it has already crossed below the original schedule's later checkpoint before reaching that same horizon.
+
+Sixth checkpoint from the restarted branch:
+
+```text
+step=2400 train_loss=4.2399 train_bpb=1.3699 val_loss=4.6790 val_bpb=1.5943 muon_lr=7.844e-03 adamw_lr=1.177e-04 elapsed=3596.4s
+```
+
+Matched late-horizon comparison:
+
+- original `d640` schedule at `step=2400`: `1.6118`
+- restarted `d640 cd05` schedule at `step=2400`: `1.5943`
+- improvement from the restart: `0.0175` bpb
+- improvement over old plain `24k d512` `step=2400`: `1.6536 -> 1.5943`
+- remaining gap to local `1.5`: `0.0943`
+
+Interpretation:
+
+- This is the cleanest validation yet that the later-cooldown restart was the right call.
+- The schedule change is now winning exactly where the original run failed: the late segment.
+- The branch is still not close enough to call `1.5` reachable by default, because it needs another `0.0943` bpb over the final `800` steps.
+- But it has earned the full run to `step=3200`, and it is now the best live guide for what to try next if width plus later cooldown still tops out above `1.5`.
