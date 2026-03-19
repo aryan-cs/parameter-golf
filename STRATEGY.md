@@ -56,11 +56,11 @@ Current interesting non-record comparison:
 
 Our current best local exact result:
 
-- exact `final_val_bpb`: `1.6238459688827054`
-- short form: `1.6238`
-- run id: `bytelevel24k_d512_gqa_softcap_s3200`
-- artifact: `21,566,256` bytes
-- status: exact ByteLevel BPE on the local `24k` sample-data path; strong local milestone, but not competition-valid and not artifact-valid yet
+- exact `final_val_bpb`: `1.6017072436714903`
+- short form: `1.6017`
+- run id: `bytelevel24k_d640_gqa_softcap_cd05_s3200`
+- artifact: `26,942,603` bytes
+- status: exact ByteLevel BPE on the local `24k` sample-data path; new best completed local exact result, still not competition-valid and still far above the artifact cap
 
 Current best official-tokenizer local exact-bpb result:
 
@@ -81,27 +81,29 @@ Current best long-context (`SEQ_LEN=1024`) official-tokenizer result:
 
 Current best exact `24k` ByteLevel result:
 
-- exact sampled `best_val_bpb`: `1.6238459688827054`
-- short form: `1.6238`
-- run id: `bytelevel24k_d512_gqa_softcap_s3200`
-- artifact: `21,566,256` bytes
-- status: best exact large-tokenizer result so far; still far above the artifact cap, but now the strongest overall local exact score in the repo
+- exact `final_val_bpb`: `1.6017072436714903`
+- exact sampled `best_val_bpb`: `1.5942796520064857`
+- short form: `1.6017`
+- run id: `bytelevel24k_d640_gqa_softcap_cd05_s3200`
+- artifact: `26,942,603` bytes
+- status: best exact large-tokenizer result so far; still far above the artifact cap, but now the strongest completed local exact score in the repo
 
 Most recent stopped frontier checkpoint:
 
-- run id: `bytelevel24k_d640_gqa_softcap_s3200`
-- latest checkpoint: `step=2400`
-- exact `val_bpb`: `1.6118`
-- gap to local `1.5`: `0.1118`
-- status: validated width over the old `24k d512` curve at matched horizon (`1.6536 -> 1.6118`), but plateaued enough from `step=1600 -> step=2400` that the schedule was promoted to the next hypothesis instead of blindly finishing the run
+- run id: `bytelevel24k_d640_gqa_softcap_cd05_s3200`
+- latest checkpoint: `final`
+- exact `final_val_bpb`: `1.6017072436714903`
+- best sampled checkpoint: `1.5942796520064857`
+- gap to local `1.5`: `0.10170724367149031`
+- status: completed cleanly and improved the best completed local exact score, but still missed `1.5`, so the next width bracket was promoted immediately
 
 Current live frontier checkpoint:
 
-- run id: `bytelevel24k_d640_gqa_softcap_cd05_s3200`
-- latest checkpoint: `step=2400`
-- live `val_bpb`: `1.5943`
-- gap to local `1.5`: `0.0943`
-- status: active late-cooldown retry of the same `d640` width recipe; it has now beaten the original schedule at the same late checkpoint (`1.6118 -> 1.5943`), so this is the strongest live schedule-tuned width branch so far
+- run id: `bytelevel24k_d704_gqa_softcap_cd05_s3200`
+- latest checkpoint: `step=0`
+- live `val_bpb`: `3.4684`
+- gap to local `1.5`: `1.9684`
+- status: active next-width-bracket run; launched immediately after `d640 + cd05` finished because schedule-tuned width helped, but not enough to close the remaining `0.1017` gap to `1.5`
 
 Current prepared next-tokenizer branch:
 
@@ -133,12 +135,12 @@ Gap versus official main-track leader for our best exact sampled official-tokeni
 
 Gap versus official main-track leader for our best tokenizer-changed local exact run:
 
-- `1.6238459688827054 - 1.22436570 = 0.3994802688827055` bpb worse
-- `0.3994802688827055 / log2(e) = 0.27689246300965436` nats worse
+- `1.6017072436714903 - 1.22436570 = 0.3773415436714904` bpb worse
+- `0.3773415436714904 / log2(e) = 0.26155322710403106` nats worse
 
 Gap versus the immediate `1.5` local target:
 
-- `1.6238459688827054 - 1.5 = 0.12384596888270538` bpb worse
+- `1.6017072436714903 - 1.5 = 0.10170724367149031` bpb worse
 
 PR opening rule:
 
@@ -4228,3 +4230,45 @@ Interpretation:
 - The schedule change is now winning exactly where the original run failed: the late segment.
 - The branch is still not close enough to call `1.5` reachable by default, because it needs another `0.0943` bpb over the final `800` steps.
 - But it has earned the full run to `step=3200`, and it is now the best live guide for what to try next if width plus later cooldown still tops out above `1.5`.
+
+Seventh checkpoint from the restarted branch:
+
+```text
+step=2800 train_loss=4.0143 train_bpb=1.3240 val_loss=4.6982 val_bpb=1.5935 muon_lr=4.558e-03 adamw_lr=6.837e-05 elapsed=4195.8s
+=== final_stats ===
+steps=3200
+seconds=4795.88
+final_val_loss=4.7186
+final_val_bpb=1.6017
+compressed_model_size_bytes=26896298
+code_size_bytes=46305
+total_artifact_bytes=26942603
+artifact_budget_ok=False
+stats_path=runs/bytelevel24k/bytelevel24k_d640_gqa_softcap_cd05_s3200.json
+```
+
+What we learned from the full run:
+
+- completed `final_val_bpb`: `1.6017072436714903`
+- best sampled checkpoint on the way: `1.5942796520064857`
+- improvement over the old best completed local exact result (`1.6238459688827054`): `0.02213872521121504` bpb
+- remaining gap to local `1.5`: `0.10170724367149031` bpb
+
+Interpretation:
+
+- The later-cooldown fix was directionally correct and materially improved the completed frontier.
+- But the branch still flattened too much in the last `800` steps to make `1.5` realistic.
+- That means the project should keep the winning schedule and move to the next width bracket instead of spending more time squeezing this exact `d640` recipe.
+
+New active command after the completed `d640` run:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_d704_gqa_softcap_cd05_s3200 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=704 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1877 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=400 MAX_STEPS=3200 COOLDOWN_FRACTION=0.05 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_d704_gqa_softcap_cd05_s3200.json uv run python train_gpt.py | tee runs/bytelevel24k/bytelevel24k_d704_gqa_softcap_cd05_s3200.log
+```
+
+Launch output:
+
+```text
+parameters=22,758,392
+step=0 train_loss=10.1916 train_bpb=3.3106 val_loss=10.1290 val_bpb=3.4684 muon_lr=2.000e-03 adamw_lr=3.000e-05 elapsed=0.0s
+```

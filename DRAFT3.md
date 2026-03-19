@@ -15,17 +15,17 @@ Current facts that matter most:
   - main-track score to beat: `1.22436570`
   - practical clean record target after the `0.005 nats` margin: `1.217152224795555`
 - Our best completed local exact result is still:
-  - `bytelevel24k_d512_gqa_softcap_s3200`
-  - `final_val_bpb = 1.6238459688827054`
+  - `bytelevel24k_d640_gqa_softcap_cd05_s3200`
+  - `final_val_bpb = 1.6017072436714903`
 - The `32k` tokenizer branch was stopped early at:
   - `bytelevel32k_d512_gqa_softcap_s3200`
   - `step=2400 val_bpb = 1.6675`
 - The most recent stopped width continuation is now:
-  - `bytelevel24k_d640_gqa_softcap_s3200`
-  - `step=2400 val_bpb = 1.6118`
-- The active frontier is now:
   - `bytelevel24k_d640_gqa_softcap_cd05_s3200`
-  - `step=2400 val_bpb = 1.5943`
+  - `final_val_bpb = 1.6017072436714903`
+- The active frontier is now:
+  - `bytelevel24k_d704_gqa_softcap_cd05_s3200`
+  - `step=0 val_bpb = 3.4684`
 - The `32k` branch is no longer better than `24k`.
   - at `step=800`, `32k` was ahead
   - at `step=1600`, `32k` was behind `24k`
@@ -53,22 +53,22 @@ The official repo still shows the same March 18 records when rechecked on March 
 
 This matters because nothing in our local search is PR-ready yet.
 
-Our best local exact result is still:
+Our best local exact result is now:
 
 ```text
-1.6238459688827054
+1.6017072436714903
 ```
 
 Gap to the official main-track leader:
 
 ```text
-1.6238459688827054 - 1.22436570 = 0.3994802688827055 bpb
+1.6017072436714903 - 1.22436570 = 0.3773415436714904 bpb
 ```
 
 Gap to the local interim target:
 
 ```text
-1.6238459688827054 - 1.5 = 0.12384596888270538 bpb
+1.6017072436714903 - 1.5 = 0.10170724367149031 bpb
 ```
 
 ## 3. What Changed Since `DRAFT2`
@@ -624,12 +624,49 @@ That is the strongest confirmation yet that the restart was correct.
 - but it is now clearly the best live width-and-schedule combination in the repo
 - the run should continue to `step=3200`
 
+The completed result is now in:
+
+```text
+step=2800 train_loss=4.0143 train_bpb=1.3240 val_loss=4.6982 val_bpb=1.5935 muon_lr=4.558e-03 adamw_lr=6.837e-05 elapsed=4195.8s
+=== final_stats ===
+steps=3200
+seconds=4795.88
+final_val_loss=4.7186
+final_val_bpb=1.6017
+compressed_model_size_bytes=26896298
+code_size_bytes=46305
+total_artifact_bytes=26942603
+artifact_budget_ok=False
+```
+
+So the final picture for this branch is:
+
+- completed exact `final_val_bpb = 1.6017072436714903`
+- best sampled checkpoint on the way was better at `1.5942796520064857`
+- the branch improved the best completed local exact score by `0.02213872521121504` bpb
+- it still missed `1.5` by `0.10170724367149031` bpb
+
+That means the branch was worth doing, but not worth repeating. The right follow-up is the next width bracket with the same improved schedule.
+
+That launch is already active:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_d704_gqa_softcap_cd05_s3200 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=704 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1877 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=400 MAX_STEPS=3200 COOLDOWN_FRACTION=0.05 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_d704_gqa_softcap_cd05_s3200.json uv run python train_gpt.py | tee runs/bytelevel24k/bytelevel24k_d704_gqa_softcap_cd05_s3200.log
+```
+
+Launch output:
+
+```text
+parameters=22,758,392
+step=0 train_loss=10.1916 train_bpb=3.3106 val_loss=10.1290 val_bpb=3.4684 muon_lr=2.000e-03 adamw_lr=3.000e-05 elapsed=0.0s
+```
+
 ## 5. What I Think Now
 
 The search tree is now:
 
-1. Let the live `bytelevel24k_d640_gqa_softcap_cd05_s3200` run finish at `step=3200`.
-2. If it still misses `1.5`, keep schedule-tuned width as the main line and promote the next width bracket rather than falling back to tokenizer scaling.
+1. Let the live `bytelevel24k_d704_gqa_softcap_cd05_s3200` run reach `step=400` and compare its early curve to the completed `d640 + cd05` branch.
+2. If it is still ahead there, keep schedule-tuned width as the main line and continue upward.
 3. If it still flattens, bracket the width sweet spot with `d576` and `d704`.
 4. Keep the `relu2 + block_scales + resid_mix` branch as a prepared fallback, not the first next move.
 5. Treat `48k` and `64k` as contingency denominator branches only after schedule-tuned width stops paying.
@@ -662,21 +699,21 @@ These are the questions I would most want external feedback on now:
 The best completed local exact result is still:
 
 ```text
-1.6238459688827054
+1.6017072436714903
 ```
 
 The most important stopped comparison run is:
 
 ```text
-bytelevel24k_d640_gqa_softcap_s3200
-step=2400 val_bpb=1.6118
+bytelevel24k_d640_gqa_softcap_cd05_s3200
+final_val_bpb=1.6017072436714903
 ```
 
 The active frontier is:
 
 ```text
-bytelevel24k_d640_gqa_softcap_cd05_s3200
-step=2400 val_bpb=1.5943
+bytelevel24k_d704_gqa_softcap_cd05_s3200
+step=0 val_bpb=3.4684
 ```
 
 The prepared model-side ablation is:
