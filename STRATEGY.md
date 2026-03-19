@@ -98,10 +98,10 @@ Most recent stopped frontier checkpoint:
 Current live frontier checkpoint:
 
 - run id: `bytelevel24k_d640_gqa_softcap_cd05_s3200`
-- latest checkpoint: `step=1600`
-- live `val_bpb`: `1.6143`
-- gap to local `1.5`: `0.1143`
-- status: active late-cooldown retry of the same `d640` width recipe; effectively tied with the original `d640` schedule at `step=1600` (`1.6102` versus `1.6143`) while retaining a much higher learning rate, so it is still alive for the later segments
+- latest checkpoint: `step=2000`
+- live `val_bpb`: `1.6028`
+- gap to local `1.5`: `0.1028`
+- status: active late-cooldown retry of the same `d640` width recipe; it has now moved back below the original schedule's `step=2400` score (`1.6118`) with `400` fewer steps, so the late-segment hypothesis is paying off enough to keep running
 
 Current prepared next-tokenizer branch:
 
@@ -4188,3 +4188,22 @@ Interpretation:
 - The key difference is optimization state: the restarted branch is still at `muon_lr=2.069e-02`, far above the original schedule's `1.527e-02` at the same checkpoint.
 - That means the later-cooldown hypothesis still has a real chance to pay off in the `1600 -> 2400` segment, which is exactly where the original run flattened.
 - The next critical comparison is `step=2400`, where the target to beat is the original `d640` schedule's `1.6118`.
+
+Fifth checkpoint from the restarted branch:
+
+```text
+step=2000 train_loss=4.1942 train_bpb=1.3980 val_loss=4.7537 val_bpb=1.6028 muon_lr=1.355e-02 adamw_lr=2.032e-04 elapsed=2997.2s
+```
+
+What this means:
+
+- improvement from `step=1600 -> step=2000`: `1.6143 -> 1.6028`
+- gap to local `1.5`: `0.1028`
+- original `d640` schedule at `step=2400`: `1.6118`
+- restarted branch is already `0.0090` bpb better than that with `400` fewer steps
+
+Interpretation:
+
+- This is the first real sign that the later-cooldown retry is doing exactly what it was supposed to do: keep the late segment alive.
+- We still do not have the apples-to-apples `step=2400` comparison yet.
+- But the branch has earned the next segment, because it has already crossed below the original schedule's later checkpoint before reaching that same horizon.
