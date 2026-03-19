@@ -25,7 +25,7 @@ Current facts that matter most:
   - `step=3200 val_bpb = 1.6063`
 - The active frontier is now:
   - `bytelevel24k_d640_gqa_softcap_cd10_s4800`
-  - `step=0 val_bpb = 3.4676`
+  - `step=400 val_bpb = 1.8966`
 - The `32k` branch is no longer better than `24k`.
   - at `step=800`, `32k` was ahead
   - at `step=1600`, `32k` was behind `24k`
@@ -844,12 +844,28 @@ step=0 train_loss=10.1780 train_bpb=3.3062 val_loss=10.1269 val_bpb=3.4676 muon_
 checkpoint=saved path=/Users/aryan/Desktop/golf/runs/bytelevel24k/bytelevel24k_d640_gqa_softcap_cd10_s4800.pt step=1
 ```
 
+The first real checkpoint from the new schedule branch is:
+
+```text
+step=400 train_loss=5.3829 train_bpb=1.8277 val_loss=5.5889 val_bpb=1.8966 muon_lr=3.931e-02 adamw_lr=5.897e-04 elapsed=703.7s
+checkpoint=saved path=/Users/aryan/Desktop/golf/runs/bytelevel24k/bytelevel24k_d640_gqa_softcap_cd10_s4800.pt step=401
+```
+
+Compared with `cd05 s4800` at the same point:
+
+```text
+cd05 s4800 at step=400: 1.8951
+cd10 s4800 at step=400: 1.8966
+```
+
+So `cd10` is only `0.0015` bpb worse so far, which is close enough to keep alive.
+
 ## 5. What I Think Now
 
 The search tree is now:
 
-1. Let the live `bytelevel24k_d640_gqa_softcap_cd10_s4800` run reach `step=400` and `step=800`.
-2. If the milder cooldown is better than `cd05` at matched checkpoints, keep schedule search as the main line.
+1. Let the live `bytelevel24k_d640_gqa_softcap_cd10_s4800` run reach `step=800`.
+2. If the milder cooldown is still close or better there, keep schedule search as the main line.
 3. If it still underperforms, reconsider batch or denominator before spending more time on horizon alone.
 4. Keep the `relu2 + block_scales + resid_mix` branch as a prepared fallback, not the first next move.
 5. Treat `48k` and `64k` as contingency denominator branches only after schedule-tuned width stops paying.
@@ -896,7 +912,7 @@ The active frontier is:
 
 ```text
 bytelevel24k_d640_gqa_softcap_cd10_s4800
-step=0 val_bpb=3.4676
+step=400 val_bpb=1.8966
 ```
 
 The prepared model-side ablation is:

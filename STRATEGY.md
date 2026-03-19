@@ -99,10 +99,10 @@ Most recent stopped frontier checkpoint:
 Current live frontier checkpoint:
 
 - run id: `bytelevel24k_d640_gqa_softcap_cd10_s4800`
-- latest checkpoint: `step=0`
-- live `val_bpb`: `3.4676`
-- gap to local `1.5`: `1.9676`
-- status: active schedule-retune of the best local recipe with checkpointing enabled; launched because `cd05 s4800` stayed essentially tied through `step=3200`, so the next highest-value lever is a slightly earlier cooldown on the same winning family
+- latest checkpoint: `step=400`
+- live `val_bpb`: `1.8966`
+- gap to local `1.5`: `0.3966`
+- status: active schedule-retune of the best local recipe with checkpointing enabled; slightly behind the `cd05 s4800` branch at the same horizon (`1.8951 -> 1.8966`), but close enough to keep alive for the `step=800` comparison
 
 Current prepared next-tokenizer branch:
 
@@ -4470,3 +4470,22 @@ checkpoint=missing path=/Users/aryan/Desktop/golf/runs/bytelevel24k/bytelevel24k
 step=0 train_loss=10.1780 train_bpb=3.3062 val_loss=10.1269 val_bpb=3.4676 muon_lr=2.000e-03 adamw_lr=3.000e-05 elapsed=0.0s
 checkpoint=saved path=/Users/aryan/Desktop/golf/runs/bytelevel24k/bytelevel24k_d640_gqa_softcap_cd10_s4800.pt step=1
 ```
+
+First checkpoint from the new `cd10 s4800` branch:
+
+```text
+step=400 train_loss=5.3829 train_bpb=1.8277 val_loss=5.5889 val_bpb=1.8966 muon_lr=3.931e-02 adamw_lr=5.897e-04 elapsed=703.7s
+checkpoint=saved path=/Users/aryan/Desktop/golf/runs/bytelevel24k/bytelevel24k_d640_gqa_softcap_cd10_s4800.pt step=401
+```
+
+Early comparison:
+
+- `cd05 s4800` at `step=400`: `1.8951`
+- `cd10 s4800` at `step=400`: `1.8966`
+- difference: `0.0015` bpb worse
+
+Interpretation:
+
+- This is close enough to keep the run alive.
+- The milder cooldown is not winning early, but it is not clearly losing either.
+- The next meaningful comparison point is `step=800`.
