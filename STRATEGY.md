@@ -2956,6 +2956,75 @@ Interpretation:
 - `24k` at `32k` train tokens per step does fit for a smoke step but fails during sustained training.
 - So the current local hardware limit for this branch is still effectively the `16k` train-token regime unless we add gradient accumulation later.
 
+## Experiment 40. Gradient Accumulation for the `24k` Branch
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Recover a larger effective train batch on the promising `24k` exact branch without triggering MPS OOMs.
+
+Key code idea:
+
+```python
+train_microbatch_tokens = cfg.train_microbatch_tokens or cfg.train_batch_tokens
+train_micro_bsz = max(1, train_microbatch_tokens // cfg.seq_len)
+grad_accum_steps = max(1, math.ceil(train_bsz / train_micro_bsz))
+```
+
+```python
+for _ in range(grad_accum_steps):
+    batch = train_batcher.next_batch(train_micro_bsz, device)
+    ...
+    scaled_loss = loss / grad_accum_steps
+    scaled_loss.backward()
+```
+
+Smoke command:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_eff32k_accum_smoke TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=32768 TRAIN_MICROBATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=4 VAL_LOSS_EVERY=0 MAX_STEPS=1 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_eff32k_accum_smoke.json uv run python train_gpt.py
+```
+
+Smoke terminal output:
+
+```text
+train_batch_size_tokens=32768 train_microbatch_size_tokens=16384 grad_accum_steps=2
+=== final_stats ===
+steps=1
+seconds=3.12
+final_val_bpb=3.4068
+```
+
+Pilot command:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_eff32k_accum_s40 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=32768 TRAIN_MICROBATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=20 MAX_STEPS=40 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_eff32k_accum_s40.json uv run python train_gpt.py
+```
+
+Pilot terminal output:
+
+```text
+train_batch_size_tokens=32768 train_microbatch_size_tokens=16384 grad_accum_steps=2
+step=20 train_loss=8.3142 train_bpb=2.8107 val_loss=8.2653 val_bpb=2.8048 muon_lr=2.000e-02 adamw_lr=3.000e-04 elapsed=52.7s
+=== final_stats ===
+steps=40
+seconds=106.50
+final_val_bpb=2.5815
+total_artifact_bytes=23756385
+artifact_budget_ok=False
+```
+
+Interpretation:
+
+- Gradient accumulation works and gives us a stable way to exceed the direct-memory limit of the `24k` branch.
+- The first accumulated `32k` effective-batch result is only a small improvement over the old direct `16k` batch result:
+  - `2.5815` versus `2.5938`
+- But it is an improvement, and it unlocks the next clean experiment:
+  - effective `64k` train tokens per step using four `16k` microbatches
+
 ## Current Working Hypothesis
 
 The best immediate path is now:
@@ -2965,8 +3034,9 @@ The best immediate path is now:
 3. treat sampled exact validation as a proxy only, and do not trust differences below about `0.05` bpb
 4. use `SEQ_LEN=1024` as the new primary local search regime when the token budget is matched fairly
 5. disable QAT during local search and reserve it for final artifact-budget measurement
-6. tune the schedule in the long-context regime before changing architecture again
+6. use gradient accumulation when the promising branch is memory-bound rather than accepting an artificially tiny effective batch
 7. keep batch large enough for throughput, but compare regimes by total training tokens rather than by raw step count
+8. treat the `24k` exact tokenizer path as still alive, but currently optimization-limited rather than architecture-limited
 
 Reasoning:
 
@@ -2975,23 +3045,22 @@ Reasoning:
 - We now have a concrete exact sampled score trajectory, not just infrastructure.
 - The outside review was directionally right that context length needed to be tested much more seriously.
 - The follow-up experiments showed that naive step-count comparisons were misleading because the `1024` path needed a smaller batch locally.
+- The `24k` exact tokenizer path is now real, but it is bottlenecked by batch size and optimization more than by missing infrastructure.
 - The next wins are most likely to come from:
-  - schedule tuning in the `SEQ_LEN=1024`, `32k` batch regime
-  - longer token budgets in that same regime
-  - no-QAT local sweeps
-  - later architecture work only after the long-context regime is established
+  - larger effective batch on the `24k` exact branch using accumulation
+  - longer token budgets in that same branch
+  - only then another architecture or width change if the curve still stalls
 
 ## Next Command To Run
 
 This is the next command to run:
 
 ```bash
-PYTHONUNBUFFERED=1 RUN_ID=torch_sp1024_d512_l4_b32k_s400_seq1024_cd20 TOKENIZER_PATH=/tmp/parameter-golf-official.BbMmsz/data/tokenizers/fineweb_1024_bpe.model DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VAL_DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VOCAB_SIZE=1024 TOKEN_DTYPE=uint16 AVG_BYTES_PER_TOKEN=2.442303811509075 D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=32768 VAL_BATCH_TOKENS=32768 VAL_STEPS=16 VAL_LOSS_EVERY=100 MAX_STEPS=400 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 DEVICE=mps STATS_PATH=runs/official_torch_sp1024/torch_sp1024_d512_l4_b32k_s400_seq1024_cd20.json uv run python train_gpt.py
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_eff64k_accum_s400 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=65536 TRAIN_MICROBATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=100 MAX_STEPS=400 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_eff64k_accum_s400.json uv run python train_gpt.py
 ```
 
 Why this exact command:
 
-- It keeps the newly validated long-context regime fixed and only tunes the schedule.
-- It disables QAT for local search.
-- It tests the remaining cooldown point from the reviewer's suggested local sweep after `0.30` came back slightly worse.
-- It is the cleanest next test for whether `0.25` is actually the local optimum or whether a slightly earlier cooldown works better.
+- It pushes the most promising large-tokenizer branch with the largest effective batch the current machine can likely support via accumulation.
+- It keeps the architecture fixed so we can tell whether the branch was batch-limited.
+- It is the cleanest remaining shot at a meaningful score drop before spending more time on another model-family refactor.

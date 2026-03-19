@@ -81,6 +81,7 @@ class Config:
     n_loops: int
     seq_len: int
     train_batch_tokens: int
+    train_microbatch_tokens: int | None
     val_batch_tokens: int
     val_steps: int
     val_loss_every: int
@@ -120,6 +121,7 @@ class Config:
             n_loops=env_int("N_LOOPS", 4),
             seq_len=env_int("SEQ_LEN", 128),
             train_batch_tokens=env_int("TRAIN_BATCH_TOKENS", 8192),
+            train_microbatch_tokens=env_int_optional("TRAIN_MICROBATCH_TOKENS"),
             val_batch_tokens=env_int("VAL_BATCH_TOKENS", 8192),
             val_steps=env_int("VAL_STEPS", 4),
             val_loss_every=env_int("VAL_LOSS_EVERY", 10),
@@ -834,6 +836,10 @@ def main() -> int:
         torch.cuda.manual_seed_all(cfg.seed)
     device = resolve_device(cfg.device)
     train_bsz = max(1, cfg.train_batch_tokens // cfg.seq_len)
+    train_microbatch_tokens = cfg.train_microbatch_tokens or cfg.train_batch_tokens
+    train_micro_bsz = max(1, train_microbatch_tokens // cfg.seq_len)
+    grad_accum_steps = max(1, math.ceil(train_bsz / train_micro_bsz))
+    effective_train_bsz = train_micro_bsz * grad_accum_steps
     val_bsz = max(1, cfg.val_batch_tokens // cfg.seq_len)
     val_path = cfg.val_data_path or cfg.data_path
     cfg.vocab_size, vocab_size_source = resolve_vocab_size(cfg, val_path)
@@ -854,6 +860,11 @@ def main() -> int:
     print(f"token_dtype={cfg.token_dtype} source={token_dtype_source}")
     print(f"avg_bytes_per_token={avg_bytes_per_token:.4f} source={avg_bytes_source}")
     print(f"bpb_mode={bpb_mode}")
+    print(
+        f"train_batch_size_tokens={effective_train_bsz * cfg.seq_len} "
+        f"train_microbatch_size_tokens={train_micro_bsz * cfg.seq_len} "
+        f"grad_accum_steps={grad_accum_steps}"
+    )
     if cfg.tokenizer_path:
         print(f"tokenizer_path={Path(cfg.tokenizer_path).resolve()}")
     if cfg.tokenizer_prefix:
@@ -910,18 +921,29 @@ def main() -> int:
         for group in adamw_opt.param_groups:
             group["lr"] = adamw_lr
 
-        batch = train_batcher.next_batch(train_bsz, device)
-        inputs = batch[:, :-1].contiguous()
-        targets = batch[:, 1:].contiguous()
-
         muon_opt.zero_grad(set_to_none=True)
         adamw_opt.zero_grad(set_to_none=True)
-        with autocast_context(device.type):
-            logits = model(inputs)
-            loss = F.cross_entropy(logits.reshape(-1, cfg.vocab_size), targets.reshape(-1))
+        train_loss_weighted = 0.0
+        train_token_count = 0
+        last_batch_np = None
+        for _ in range(grad_accum_steps):
+            batch = train_batcher.next_batch(train_micro_bsz, device)
+            inputs = batch[:, :-1].contiguous()
+            targets = batch[:, 1:].contiguous()
+            token_count = int(targets.numel())
+            with autocast_context(device.type):
+                logits = model(inputs)
+                loss = F.cross_entropy(logits.reshape(-1, cfg.vocab_size), targets.reshape(-1))
+                scaled_loss = loss / grad_accum_steps
+            if use_cuda_amp:
+                scaler.scale(scaled_loss).backward()
+            else:
+                scaled_loss.backward()
+            train_loss_weighted += loss.item() * token_count
+            train_token_count += token_count
+            last_batch_np = batch.detach().cpu().numpy()
 
         if use_cuda_amp:
-            scaler.scale(loss).backward()
             scaler.unscale_(muon_opt)
             scaler.unscale_(adamw_opt)
             torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
@@ -929,11 +951,10 @@ def main() -> int:
             scaler.step(adamw_opt)
             scaler.update()
         else:
-            loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
             muon_opt.step()
             adamw_opt.step()
-        last_train_loss = loss.item()
+        last_train_loss = train_loss_weighted / max(1, train_token_count)
 
         if cfg.val_loss_every > 0 and step % cfg.val_loss_every == 0:
             val_loss, val_bpb = run_validation(
@@ -950,17 +971,16 @@ def main() -> int:
             if best_val_loss is None or val_loss < best_val_loss:
                 best_val_loss = val_loss
                 best_val_bpb = val_bpb
-            batch_np = batch.detach().cpu().numpy()
             train_bpb = compute_batch_bpb(
-                loss.item(),
-                batch_np[:, :-1],
-                batch_np[:, 1:],
+                last_train_loss,
+                last_batch_np[:, :-1],
+                last_batch_np[:, 1:],
                 avg_bytes_per_token,
                 bpb_helper,
             )
             print(
                 f"step={step} "
-                f"train_loss={loss.item():.4f} "
+                f"train_loss={last_train_loss:.4f} "
                 f"train_bpb={train_bpb:.4f} "
                 f"val_loss={val_loss:.4f} "
                 f"val_bpb={val_bpb:.4f} "
