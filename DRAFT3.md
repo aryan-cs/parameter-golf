@@ -22,7 +22,7 @@ Current facts that matter most:
   - `step=2400 val_bpb = 1.6675`
 - The active frontier is now:
   - `bytelevel24k_d640_gqa_softcap_s3200`
-  - `step=800 val_bpb = 1.7610`
+  - `step=1600 val_bpb = 1.6102`
 - The `32k` branch is no longer better than `24k`.
   - at `step=800`, `32k` was ahead
   - at `step=1600`, `32k` was behind `24k`
@@ -39,6 +39,7 @@ Main conclusion:
 - The current decision is no longer “wait for `32k` to rescue us.”
 - We promoted `48k`, rejected the full-width local form for memory reasons, and even the healthier accumulated `48k d384` path still lost by `step=1600`.
 - The `relu2` block family underperformed, so the live question is now whether a wider plain `24k` model is the simpler path to lower bpb.
+- The new `step=1600` width checkpoint says “yes, at least locally”: `d640` is now `0.0562` bpb better than the old `d512` curve at matched horizon.
 
 ## 2. Official Score Check
 
@@ -137,7 +138,7 @@ step=1600 ... val_bpb=1.6664
 
 So the resized `48k` branch was still `0.0775` bpb worse, which is well outside the local proxy noise band.
 
-That is why the project stopped denominator scaling as the main hypothesis and moved the active device to the block-variant run on `24k`.
+That is why the project stopped denominator scaling as the main hypothesis and moved back to `24k`-first model search.
 
 ### 3.2 We added a new baseline-inspired model branch
 
@@ -431,34 +432,71 @@ Interpretation:
 - It is safe to launch as soon as the current MPS run frees up.
 - The active `32k` run does not include these changes, because it started before this code landed.
 
+### 3.7 The `d640` continuation became the best live branch by a meaningful margin
+
+The current live command is:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_d640_gqa_softcap_s3200 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=640 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1706 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=800 MAX_STEPS=3200 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_d640_gqa_softcap_s3200.json uv run python train_gpt.py | tee runs/bytelevel24k/bytelevel24k_d640_gqa_softcap_s3200.log
+```
+
+The run already looked encouraging at `step=800`:
+
+```text
+step=800 train_loss=5.0383 train_bpb=1.6703 val_loss=5.1894 val_bpb=1.7610 muon_lr=3.225e-02 adamw_lr=4.838e-04 elapsed=1189.7s
+```
+
+The more important checkpoint has now landed:
+
+```text
+step=1600 train_loss=4.4627 train_bpb=1.5096 val_loss=4.7798 val_bpb=1.6102 muon_lr=1.527e-02 adamw_lr=2.290e-04 elapsed=2379.6s
+```
+
+Why this matters:
+
+- the old plain `24k d512` `3200`-step curve was `1.6664` at `step=1600`
+- the live `d640` continuation is `1.6102` at the same horizon
+- that is a real matched-horizon gain of `0.0562` bpb
+- the gap from the current live checkpoint to the local `1.5` target is now `0.1102` bpb
+
+This changes the recommendation:
+
+- do not cut this run early
+- let it continue through `step=2400` and `step=3200`
+- if it later stalls, width bracketing (`d576` or `d704`) is still the cleanest next move
+- do not fall back to `48k` or `relu2` first, because width is now the first branch that has held its advantage at matched horizon
+
 ## 5. What I Think Now
 
 The search tree is now:
 
-1. Let the live accumulated `48k d384` branch reach at least `step=400`.
-2. If it still trails the `24k` branch badly, switch priority to the new `relu2 + block_scales + resid_mix` model branch.
-3. If the resized accumulated `48k` branch looks close but still short, keep `64k` as the next denominator contingency.
+1. Let the live `bytelevel24k_d640_gqa_softcap_s3200` run continue through `step=2400` and `step=3200`.
+2. If it holds most of its midpoint edge, keep pushing width in this neighborhood rather than jumping tokenizers again.
+3. If it flattens hard from here, bracket the width sweet spot with `d576` and `d704`.
+4. Keep the `relu2 + block_scales + resid_mix` branch as a prepared fallback, not the first next move.
+5. Treat `48k` and `64k` as contingency denominator branches only after the width line stops paying.
 
-Why `48k` and not immediately `64k`:
+Why width is now the lead hypothesis:
 
-- `48k` gives another meaningful bytes/token increase
-- it is less likely than `64k` to collapse optimization by spending too much capacity on the embedding table
-- it is the cleaner next denominator test
+- `d640` is now `0.0562` bpb better than the old plain `d512` curve at matched `step=1600`
+- that is outside the local proxy noise band we have been using
+- the gain survived long enough that it no longer looks like a warmup artifact
+- width is the first recent lever that stayed ahead after a fair matched-horizon check
 
-Why the new block branch matters:
+Why I am not prioritizing `48k` or `relu2` first:
 
-- the `24k` `3200`-step branch only improved `1.6664 -> 1.6238` in its last segment
-- the `32k` branch is not clearly beating it
-- that is the shape of a search frontier that may need another model-side lever, not only another tokenizer rung
+- the healthiest `48k` local branch still lost clearly by `step=1600`
+- the `relu2` family underperformed both in the all-at-once form and in the simpler core-only form
+- the current live `d640` branch is closer to `1.5` than either of those branches ever got at the same maturity
 
 ## 6. Reviewer Questions
 
 These are the questions I would most want external feedback on now:
 
-1. Is `48k` the right next tokenizer rung, or should the project skip directly to `64k` given the remaining `0.1238` gap to `1.5`?
-2. Are the new `relu2 + block_scales + resid_mix` knobs directionally sensible, or is there a better baseline-inspired approximation to try first?
-3. Is the current `d_model=512, n_loops=4, GQA, softcap` recipe already too embedding-heavy for vocabularies above `24k`?
-4. Should the next big push be denominator-first (`48k`) or nats-first (new block branch on `24k`)?
+1. If the live `d640` branch finishes just above `1.5`, is the next best move `d704`, or is that likely to become a memory/optimization regression on this hardware?
+2. Is there a better way to spend extra capacity in the `24k` family than pure width, given that tokenizer scaling beyond `24k` has not yet paid off locally?
+3. Are there baseline-inspired tweaks more promising than the current `relu2 + block_scales + resid_mix` branch, which now looks second-tier?
+4. How much confidence should we place in a `0.0562` bpb matched-horizon gain on this local setup before committing more wall-clock to width bracketing?
 
 ## 7. Current Bottom Line
 
@@ -479,10 +517,10 @@ The active frontier is:
 
 ```text
 bytelevel24k_d640_gqa_softcap_s3200
-step=0 val_bpb=3.4676
+step=1600 val_bpb=1.6102
 ```
 
-The active model-side ablation is:
+The prepared model-side ablation is:
 
 ```text
 MLP_KIND=relu2

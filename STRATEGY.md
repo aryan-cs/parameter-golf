@@ -98,10 +98,10 @@ Most recent stopped frontier checkpoint:
 Current live frontier checkpoint:
 
 - run id: `bytelevel24k_d640_gqa_softcap_s3200`
-- latest checkpoint: `step=800`
-- live `val_bpb`: `1.7610`
-- gap to local `1.5`: `0.2610`
-- status: now active on MPS as the promoted `3200`-step continuation of the width-upscaled plain `24k` GQA/softcap recipe
+- latest checkpoint: `step=1600`
+- live `val_bpb`: `1.6102`
+- gap to local `1.5`: `0.1102`
+- status: still active on MPS and now materially ahead of the old plain `24k` `3200`-step curve at matched horizon (`1.6664 -> 1.6102`), so width remains the strongest active lever
 
 Current prepared next-tokenizer branch:
 
@@ -4027,3 +4027,36 @@ If the current wider `24k` run misses badly, the next command should be:
 ```bash
 PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_d576_gqa_softcap_s1600 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=576 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1536 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=400 MAX_STEPS=1600 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_d576_gqa_softcap_s1600.json uv run python train_gpt.py | tee runs/bytelevel24k/bytelevel24k_d576_gqa_softcap_s1600.log
 ```
+
+## 2026-03-19: `d640` continuation reaches `step=1600` and stays clearly ahead
+
+Context:
+
+- The live branch was already ahead of the older `24k d512` curve at `step=800`, but it still needed a matched-horizon checkpoint before trusting width as the main lever.
+- The decision rule was simple: if `d640` was still ahead at `step=1600`, keep it running toward `2400` and `3200`; if not, cut it and bracket with nearby widths.
+
+Exact command already in flight:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_d640_gqa_softcap_s3200 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=640 N_HEADS=8 NUM_KV_HEADS=4 D_FF=1706 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=800 MAX_STEPS=3200 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 QK_GAIN_INIT=1.5 LOGIT_SOFTCAP=30 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_d640_gqa_softcap_s3200.json uv run python train_gpt.py | tee runs/bytelevel24k/bytelevel24k_d640_gqa_softcap_s3200.log
+```
+
+New terminal output:
+
+```text
+step=1600 train_loss=4.4627 train_bpb=1.5096 val_loss=4.7798 val_bpb=1.6102 muon_lr=1.527e-02 adamw_lr=2.290e-04 elapsed=2379.6s
+```
+
+Comparison points:
+
+- old `24k d512` `3200`-step curve at `step=1600`: `1.6664`
+- current `24k d640` continuation at `step=1600`: `1.6102`
+- matched-horizon improvement from width: `0.0562` bpb
+- gap from this live checkpoint to `1.5`: `0.1102` bpb
+
+Interpretation:
+
+- This is the strongest width confirmation so far.
+- The gain did not wash out by the midpoint of the longer run; it grew into a real matched-horizon advantage.
+- That does not mean the branch will reach `1.5`, but it keeps that goal plausible enough that the right move is to let this run continue instead of thrashing into a new branch early.
+- If the later segments flatten too hard, the next clean follow-up is still nearby width bracketing rather than returning to `48k` or the `relu2` family.
