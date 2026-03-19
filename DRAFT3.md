@@ -33,6 +33,11 @@ Current facts that matter most:
   - `bytelevel24k_d640_gqa_softcap_cd05_b32k_s4800`
   - `bytelevel24k_d576_gqa_softcap_cd05_s4800`
   - launched via `queue_runs.py` and `queues/d640_followups.json`
+- The prepared post-queue knob sweep is now:
+  - `bytelevel24k_d640_gqa_softcap_cd08_w100_s3200`
+  - `bytelevel24k_d640_gqa_qg175_cd05_s1600`
+  - `bytelevel24k_d640_gqa_softcap_nosmear_cd05_s1600`
+  - launched via `queue_runs.py` and `queues/d640_knob_queue.json`
 - The `32k` branch is no longer better than `24k`.
   - at `step=800`, `32k` was ahead
   - at `step=1600`, `32k` was behind `24k`
@@ -980,6 +985,36 @@ The new live branch started cleanly:
 train_batch_size_tokens=32768 train_microbatch_size_tokens=16384 grad_accum_steps=2
 step=0 train_loss=10.1729 train_bpb=3.3852 val_loss=10.1254 val_bpb=3.4671 muon_lr=2.000e-03 adamw_lr=3.000e-05 elapsed=0.0s
 ```
+
+## 4C. I Also Prepared The Next Knob Queue Behind The Width Queue
+
+While the accumulated `d640` branch is running, I encoded the next best local knob tests into:
+
+```text
+queues/d640_knob_queue.json
+```
+
+The queued branches are:
+
+```text
+bytelevel24k_d640_gqa_softcap_cd08_w100_s3200
+bytelevel24k_d640_gqa_qg175_cd05_s1600
+bytelevel24k_d640_gqa_softcap_nosmear_cd05_s1600
+```
+
+That queue dry-runs cleanly:
+
+```text
+[1/3] bytelevel24k_d640_gqa_softcap_cd08_w100_s3200
+[2/3] bytelevel24k_d640_gqa_qg175_cd05_s1600
+[3/3] bytelevel24k_d640_gqa_softcap_nosmear_cd05_s1600
+```
+
+So if the width queue still fails, the next three local levers are already encoded:
+
+- better warmup plus midpoint cooldown
+- higher query gain
+- no-smear ablation
 
 ## 5. What I Think Now
 

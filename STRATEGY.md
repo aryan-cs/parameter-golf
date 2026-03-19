@@ -120,6 +120,15 @@ Current prepared fallback queue:
 - backup queued branch: `bytelevel24k_d576_gqa_softcap_cd05_s4800`
 - purpose: keep the next two highest-value local follow-ups ready so the search can continue without manual command reconstruction once the live `cd10` branch resolves
 
+Current prepared post-queue knob sweep:
+
+- runner: `queue_runs.py`
+- manifest: `queues/d640_knob_queue.json`
+- first queued knob branch: `bytelevel24k_d640_gqa_softcap_cd08_w100_s3200`
+- second queued knob branch: `bytelevel24k_d640_gqa_qg175_cd05_s1600`
+- third queued knob branch: `bytelevel24k_d640_gqa_softcap_nosmear_cd05_s1600`
+- purpose: keep the next clean local `d640` levers encoded after the accumulation queue, without having to rebuild warmup, query-gain, and smear ablation commands by hand
+
 Current prepared next-tokenizer branch:
 
 - tokenizer: `fineweb_32k_sample`
@@ -4654,3 +4663,54 @@ Interpretation:
 - The `cd10` branch stayed alive longer than the weaker `cd05 s4800` retry, but it still did not separate from the best completed `cd05 s3200` line.
 - That makes further schedule-only tuning lower EV than testing a real token-budget change on the same winning recipe.
 - The search is now spending the device on the first accumulated `d640` follow-up instead of another near-tied schedule continuation.
+
+## Experiment 66. Prepare The Next `d640` Knob Queue Behind The Accumulation Branch
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Encode the next most plausible local follow-ups after the accumulation queue so the search can keep moving even if both queued width branches disappoint.
+
+Prepared manifest:
+
+```json
+{
+  "experiments": [
+    {
+      "run_id": "bytelevel24k_d640_gqa_softcap_cd08_w100_s3200"
+    },
+    {
+      "run_id": "bytelevel24k_d640_gqa_qg175_cd05_s1600"
+    },
+    {
+      "run_id": "bytelevel24k_d640_gqa_softcap_nosmear_cd05_s1600"
+    }
+  ]
+}
+```
+
+Validation command:
+
+```bash
+uv run python queue_runs.py --manifest queues/d640_knob_queue.json --output-dir runs/queue_d640_knobs --dry-run
+```
+
+Terminal output:
+
+```text
+[1/3] bytelevel24k_d640_gqa_softcap_cd08_w100_s3200
+[2/3] bytelevel24k_d640_gqa_qg175_cd05_s1600
+[3/3] bytelevel24k_d640_gqa_softcap_nosmear_cd05_s1600
+```
+
+Interpretation:
+
+- This is another operational improvement rather than a score change by itself.
+- The next local levers are now explicit and ordered:
+  - more careful warmup plus midpoint cooldown
+  - higher query gain on the best `cd05` schedule
+  - a clean no-smear ablation on the same winning family
+- If the active accumulation queue fails, the next search steps are already encoded and ready to launch.
