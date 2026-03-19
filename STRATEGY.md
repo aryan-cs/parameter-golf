@@ -99,10 +99,10 @@ Most recent stopped frontier checkpoint:
 Current live frontier checkpoint:
 
 - run id: `bytelevel24k_d640_gqa_softcap_cd05_s4800`
-- latest checkpoint: `step=2000`
-- live `val_bpb`: `1.6054`
-- gap to local `1.5`: `0.1054`
-- status: active longer-horizon retry of the best completed local recipe; still only marginally behind the completed `3200`-step branch at the same horizon (`1.6028 -> 1.6054`), so the late segment remains the real test
+- latest checkpoint: `step=2400`
+- live `val_bpb`: `1.5969`
+- gap to local `1.5`: `0.0969`
+- status: active longer-horizon retry of the best completed local recipe; still effectively tied with the completed `3200`-step branch at the same horizon (`1.5943 -> 1.5969`), so the post-`2400` segment remains the real test
 
 Current prepared next-tokenizer branch:
 
@@ -4191,6 +4191,25 @@ Interpretation:
 - This is still basically a tie.
 - The longer-horizon branch has not yet produced the late-segment gain we want, but it also has not fallen far enough behind to kill.
 - The decisive checkpoint is now `step=2400`, where the shorter branch hit its best sampled score of `1.5943`.
+
+Sixth checkpoint from the new `4800`-step branch:
+
+```text
+step=2400 train_loss=4.2118 train_bpb=1.3609 val_loss=4.6866 val_bpb=1.5969 muon_lr=2.063e-02 adamw_lr=3.095e-04 elapsed=4760.1s
+```
+
+Matched-horizon comparison:
+
+- completed `3200`-step branch at `step=2400`: `1.5943`
+- new `4800`-step branch at `step=2400`: `1.5969`
+- difference: `0.0026` bpb worse
+
+Interpretation:
+
+- This is still inside the “basically tied” band for local search decisions.
+- The longer-horizon branch has not produced a clean late-horizon win yet, but it also has not collapsed.
+- It is still carrying much higher learning rates than the shorter run at the same point, which is the whole reason to keep it alive.
+- The next meaningful segment is `2400 -> 3200`, where the extra horizon can finally show whether this branch deserves to replace the completed `3200`-step recipe.
 
 What this changes:
 
