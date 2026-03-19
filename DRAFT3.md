@@ -25,7 +25,7 @@ Current facts that matter most:
   - `step=2400 val_bpb = 1.6118`
 - The active frontier is now:
   - `bytelevel24k_d640_gqa_softcap_cd05_s3200`
-  - `step=800 val_bpb = 1.7390`
+  - `step=1200 val_bpb = 1.6760`
 - The `32k` branch is no longer better than `24k`.
   - at `step=800`, `32k` was ahead
   - at `step=1600`, `32k` was behind `24k`
@@ -542,6 +542,20 @@ That is a real gain of:
 
 So the later-cooldown retry is no longer just a reasonable restart. It is now a better branch than the original `d640` run at the first matched checkpoint.
 
+The next live checkpoint continues the same direction:
+
+```text
+step=1200 train_loss=4.5453 train_bpb=1.5746 val_loss=4.9039 val_bpb=1.6760 muon_lr=2.806e-02 adamw_lr=4.209e-04 elapsed=1798.5s
+```
+
+That matters because:
+
+- the restarted branch is still improving meaningfully after `step=800`
+- the `800 -> 1200` segment improved by `0.0630` bpb
+- the gap to `1.5` is now `0.1760` bpb
+
+This is not enough to declare success, but it is enough to keep the branch alive until the `step=1600` comparison.
+
 ## 5. What I Think Now
 
 The search tree is now:
@@ -594,7 +608,7 @@ The active frontier is:
 
 ```text
 bytelevel24k_d640_gqa_softcap_cd05_s3200
-step=800 val_bpb=1.7390
+step=1200 val_bpb=1.6760
 ```
 
 The prepared model-side ablation is:

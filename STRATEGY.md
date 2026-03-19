@@ -98,10 +98,10 @@ Most recent stopped frontier checkpoint:
 Current live frontier checkpoint:
 
 - run id: `bytelevel24k_d640_gqa_softcap_cd05_s3200`
-- latest checkpoint: `step=800`
-- live `val_bpb`: `1.7390`
-- gap to local `1.5`: `0.2390`
-- status: active late-cooldown retry of the same `d640` width recipe; now ahead of both the old plain `24k d512` curve at `step=800` (`1.8085 -> 1.7390`) and the original `d640` schedule at `step=800` (`1.7610 -> 1.7390`)
+- latest checkpoint: `step=1200`
+- live `val_bpb`: `1.6760`
+- gap to local `1.5`: `0.1760`
+- status: active late-cooldown retry of the same `d640` width recipe; the branch has now improved cleanly across `400 -> 800 -> 1200` and remains the strongest live line in the repo
 
 Current prepared next-tokenizer branch:
 
@@ -4145,3 +4145,23 @@ Interpretation:
 - The later-cooldown retry is no longer just plausible; it is now measurably better than the original `d640` run at the first apples-to-apples checkpoint.
 - That does not prove it will hold through `step=1600`, but it is strong enough that the correct move is to keep this run alive.
 - The next key comparison is `step=1600`, where the target to beat is the original `d640` schedule's `1.6102`.
+
+Third checkpoint from the restarted branch:
+
+```text
+step=1200 train_loss=4.5453 train_bpb=1.5746 val_loss=4.9039 val_bpb=1.6760 muon_lr=2.806e-02 adamw_lr=4.209e-04 elapsed=1798.5s
+```
+
+Trajectory view:
+
+- `step=400`: `1.8955`
+- `step=800`: `1.7390`
+- `step=1200`: `1.6760`
+- improvement over the last segment: `0.0630` bpb
+- remaining gap to local `1.5`: `0.1760` bpb
+
+Interpretation:
+
+- The later-cooldown retry is still descending at a healthy rate.
+- This is not the kind of flat `1600 -> 2400` behavior that killed the original schedule.
+- The run still needs a strong `1200 -> 1600` segment to make `1.5` plausible, but it has earned the wall-clock to keep going.
