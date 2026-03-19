@@ -21,8 +21,8 @@ Current facts that matter most:
   - `bytelevel32k_d512_gqa_softcap_s3200`
   - `step=2400 val_bpb = 1.6675`
 - The active frontier is now:
-  - `bytelevel24k_d640_gqa_softcap_s1600`
-  - `step=800 val_bpb = 1.7533`
+  - `bytelevel24k_d640_gqa_softcap_s3200`
+  - `step=0 val_bpb = 3.4676`
 - The `32k` branch is no longer better than `24k`.
   - at `step=800`, `32k` was ahead
   - at `step=1600`, `32k` was behind `24k`
@@ -259,7 +259,27 @@ So the wider branch is:
 - `0.0275` bpb better at `step=400`
 - `0.0421` bpb better at `step=800`
 
-This is the first early checkpoint in a while that actually beats the old reference, which makes the width-upscaled plain branch the strongest live hypothesis in the project right now.
+The wider branch then continued to:
+
+```text
+step=1200 train_loss=4.6817 train_bpb=1.6219 val_loss=5.0355 val_bpb=1.7210
+=== final_stats ===
+steps=1600
+final_val_bpb=1.6874
+```
+
+Relative to the older plain `24k d512` reference, that means:
+
+- `0.0275` bpb better at `step=400`
+- `0.0421` bpb better at `step=800`
+- `0.0546` bpb better at `step=1200`
+- `0.0610` bpb better at the completed `1600`-step finish
+
+This is the first branch in a while that clearly beats the old reference over a full local run, which is why the project immediately promoted it to:
+
+```text
+bytelevel24k_d640_gqa_softcap_s3200
+```
 
 ## 4. Exact Commands And Outputs
 
@@ -451,8 +471,8 @@ step=1600 val_bpb=1.7439
 The active frontier is:
 
 ```text
-bytelevel24k_d640_gqa_softcap_s1600
-step=400 val_bpb=1.8951
+bytelevel24k_d640_gqa_softcap_s3200
+step=0 val_bpb=3.4676
 ```
 
 The active model-side ablation is:
