@@ -104,6 +104,14 @@ Current live frontier checkpoint:
 - gap to local `1.5`: `0.1769`
 - status: active schedule-retune of the best local recipe with checkpointing enabled; still effectively tied with the strongest prior `d640` checkpoints at the same horizon, so it stays alive for the later comparisons
 
+Current prepared fallback queue:
+
+- runner: `queue_runs.py`
+- manifest: `queues/d640_followups.json`
+- next queued branch: `bytelevel24k_d640_gqa_softcap_cd05_b32k_s4800`
+- backup queued branch: `bytelevel24k_d576_gqa_softcap_cd05_s4800`
+- purpose: keep the next two highest-value local follow-ups ready so the search can continue without manual command reconstruction once the live `cd10` branch resolves
+
 Current prepared next-tokenizer branch:
 
 - tokenizer: `fineweb_32k_sample`
@@ -4528,3 +4536,65 @@ Interpretation:
 - This is still effectively a tie.
 - `cd10` has not pulled ahead, but it also has not fallen behind enough to stop.
 - The branch remains checkpointed and cheap to continue, so the next meaningful test is `step=1600`.
+
+## Experiment 64. Add A Serial Queue Runner For Long Exact Follow-Ups
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Reduce dead time between long exact local runs by keeping the next fallback branches encoded in a reusable manifest instead of rebuilding commands by hand each time.
+
+Code added:
+
+```python
+def resolve_stats_path(output_dir: Path, experiment: dict) -> Path:
+    if "stats_path" in experiment:
+        return Path(experiment["stats_path"])
+    run_id = experiment["run_id"]
+    return output_dir / f"{run_id}.json"
+
+
+def resolve_log_path(output_dir: Path, experiment: dict) -> Path:
+    if "log_path" in experiment:
+        return Path(experiment["log_path"])
+    run_id = experiment["run_id"]
+    return output_dir / f"{run_id}.log"
+```
+
+Prepared manifest:
+
+```json
+{
+  "experiments": [
+    {
+      "run_id": "bytelevel24k_d640_gqa_softcap_cd05_b32k_s4800"
+    },
+    {
+      "run_id": "bytelevel24k_d576_gqa_softcap_cd05_s4800"
+    }
+  ]
+}
+```
+
+Validation command:
+
+```bash
+uv run python queue_runs.py --manifest queues/d640_followups.json --output-dir runs/queue_d640_followups --dry-run
+python3 -m py_compile queue_runs.py
+```
+
+Terminal output:
+
+```text
+[1/2] bytelevel24k_d640_gqa_softcap_cd05_b32k_s4800
+[2/2] bytelevel24k_d576_gqa_softcap_cd05_s4800
+```
+
+Interpretation:
+
+- This does not change the score directly, but it does remove a real operational bottleneck.
+- The next two local fallback branches are now encoded and ready to launch in order.
+- That makes it easier to keep the single-device search moving continuously once the live `cd10` branch either wins or gets cut.

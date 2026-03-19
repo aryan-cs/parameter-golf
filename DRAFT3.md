@@ -26,6 +26,10 @@ Current facts that matter most:
 - The active frontier is now:
   - `bytelevel24k_d640_gqa_softcap_cd10_s4800`
   - `step=1200 val_bpb = 1.6769`
+- The prepared serial fallback queue is now:
+  - `bytelevel24k_d640_gqa_softcap_cd05_b32k_s4800`
+  - `bytelevel24k_d576_gqa_softcap_cd05_s4800`
+  - launched via `queue_runs.py` and `queues/d640_followups.json`
 - The `32k` branch is no longer better than `24k`.
   - at `step=800`, `32k` was ahead
   - at `step=1600`, `32k` was behind `24k`
@@ -900,14 +904,51 @@ cd10 s4800 at step=1200: 1.6769
 
 So `cd10` is only `0.0013` bpb worse there. That is still close enough to keep alive.
 
+## 4A. I Added A Queue Runner So Follow-Ups Can Start Immediately
+
+While waiting on the live `cd10` branch, I added a small serial runner:
+
+```text
+queue_runs.py
+```
+
+It reads a JSON manifest of experiments and runs them one after another, writing:
+
+- per-run logs
+- per-run stats JSON
+- a small leaderboard JSONL/JSON summary
+
+The first prepared queue is:
+
+```text
+queues/d640_followups.json
+```
+
+with these next branches:
+
+```text
+bytelevel24k_d640_gqa_softcap_cd05_b32k_s4800
+bytelevel24k_d576_gqa_softcap_cd05_s4800
+```
+
+I dry-ran the queue and compiled the file successfully:
+
+```text
+[1/2] bytelevel24k_d640_gqa_softcap_cd05_b32k_s4800
+[2/2] bytelevel24k_d576_gqa_softcap_cd05_s4800
+```
+
+This is not a score improvement by itself, but it makes the next long runs cheaper to keep in motion.
+
 ## 5. What I Think Now
 
 The search tree is now:
 
 1. Let the live `bytelevel24k_d640_gqa_softcap_cd10_s4800` run reach `step=1600`.
 2. If it stays competitive there, keep schedule search as the main line.
-3. If it still underperforms, reconsider batch or denominator before spending more time on horizon alone.
-4. Keep the `relu2 + block_scales + resid_mix` branch as a prepared fallback, not the first next move.
+3. If it underperforms, launch the prepared queue starting with `bytelevel24k_d640_gqa_softcap_cd05_b32k_s4800`.
+4. Use `bytelevel24k_d576_gqa_softcap_cd05_s4800` as the width-bracketing follow-up if the accumulated `d640` branch still stalls.
+5. Keep the `relu2 + block_scales + resid_mix` branch as a prepared fallback, not the first next move.
 5. Treat `48k` and `64k` as contingency denominator branches only after schedule-tuned width stops paying.
 
 Why width is now the lead hypothesis:
