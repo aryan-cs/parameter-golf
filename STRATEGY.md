@@ -89,7 +89,11 @@ Current best exact `24k` ByteLevel result:
 
 Current live frontier checkpoint:
 
-- none; the previous live `3200` run completed
+- run id: `bytelevel32k_d512_gqa_softcap_s3200`
+- latest checkpoint: `step=800`
+- live `val_bpb`: `1.7785`
+- gap to local `1.5`: `0.2785`
+- status: in progress; slower than the `24k` branch, but currently ahead of the `24k` branch at the same checkpoint (`1.8085`)
 
 Current prepared next-tokenizer branch:
 

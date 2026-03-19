@@ -46,6 +46,9 @@ Current best numbers worth knowing:
 - Prepared next tokenizer branch:
   - `fineweb_32k_sample`
   - `train avg_bytes_per_token = 4.4202857706695236`
+- Best live in-progress tokenizer checkpoint:
+  - `bytelevel32k_d512_gqa_softcap_s3200`
+  - `step=800 val_bpb = 1.7785`
 - Prepared contingency tokenizer ladder:
   - `fineweb_48k_sample train avg_bytes_per_token = 4.550211732381878`
   - `fineweb_64k_sample train avg_bytes_per_token = 4.62566836285424`
