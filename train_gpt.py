@@ -88,6 +88,7 @@ class Config:
     max_wallclock_seconds: int
     avg_bytes_per_token: float | None
     tokenizer_path: str
+    tokenizer_prefix: str
     muon_lr: float
     adamw_lr: float
     weight_decay: float
@@ -99,6 +100,8 @@ class Config:
     device: str
     compile_model: bool
     use_smear: bool
+    tied_embeddings: bool
+    share_blocks: bool
     artifact_path: str
     stats_path: str
 
@@ -124,6 +127,7 @@ class Config:
             max_wallclock_seconds=env_int("MAX_WALLCLOCK_SECONDS", 0),
             avg_bytes_per_token=env_float_optional("AVG_BYTES_PER_TOKEN"),
             tokenizer_path=os.environ.get("TOKENIZER_PATH", ""),
+            tokenizer_prefix=os.environ.get("TOKENIZER_PREFIX", ""),
             muon_lr=env_float("MUON_LR", 0.02),
             adamw_lr=env_float("ADAMW_LR", 3e-4),
             weight_decay=env_float("WEIGHT_DECAY", 0.1),
@@ -135,6 +139,8 @@ class Config:
             device=os.environ.get("DEVICE", ""),
             compile_model=env_bool("COMPILE_MODEL", False),
             use_smear=env_bool("USE_SMEAR", True),
+            tied_embeddings=env_bool("TIED_EMBEDDINGS", False),
+            share_blocks=env_bool("SHARE_BLOCKS", True),
             artifact_path=os.environ.get("ARTIFACT_PATH", ""),
             stats_path=os.environ.get("STATS_PATH", ""),
         )
@@ -286,36 +292,56 @@ if torch is not None:
             n_loops: int,
             max_seq_len: int,
             use_smear: bool,
+            tied_embeddings: bool,
+            share_blocks: bool,
         ) -> None:
             super().__init__()
             self.n_loops = n_loops
+            self.tied_embeddings = tied_embeddings
+            self.share_blocks = share_blocks
             self.embed = nn.Embedding(vocab_size, d_model)
             self.smear = SmearBlock(d_model) if use_smear else nn.Identity()
             self.rope = RotaryEmbedding(d_model // n_heads, max_seq_len)
-            self.block = SharedTransformerBlock(d_model, n_heads, d_ff)
-            self.loop_embeddings = nn.Embedding(n_loops, d_model)
+            if self.share_blocks:
+                self.block = SharedTransformerBlock(d_model, n_heads, d_ff)
+                self.blocks = None
+                self.loop_embeddings = nn.Embedding(n_loops, d_model)
+            else:
+                self.block = None
+                self.blocks = nn.ModuleList(SharedTransformerBlock(d_model, n_heads, d_ff) for _ in range(n_loops))
+                self.loop_embeddings = None
             self.final_norm = RMSNorm(d_model)
             self.head = QATLinear(d_model, vocab_size, bias=False)
+            if self.tied_embeddings:
+                self.head.linear.weight = self.embed.weight
             self._init_weights()
 
         def _init_weights(self) -> None:
             nn.init.normal_(self.embed.weight, std=0.02)
-            nn.init.normal_(self.loop_embeddings.weight, std=0.02)
-            nn.init.normal_(self.head.linear.weight, std=0.02)
-            for name, param in self.block.named_parameters():
-                if "weight" in name and param.ndim == 2:
-                    nn.init.normal_(param, std=0.02 / math.sqrt(2 * self.n_loops))
+            if self.loop_embeddings is not None:
+                nn.init.normal_(self.loop_embeddings.weight, std=0.02)
+            if not self.tied_embeddings:
+                nn.init.normal_(self.head.linear.weight, std=0.02)
+            block_modules = [self.block] if self.share_blocks else list(self.blocks)
+            for block in block_modules:
+                for name, param in block.named_parameters():
+                    if "weight" in name and param.ndim == 2:
+                        nn.init.normal_(param, std=0.02 / math.sqrt(2 * self.n_loops))
 
         def forward(self, input_ids):
             _, seq_len = input_ids.shape
             x = self.embed(input_ids)
             x = self.smear(x)
             cos, sin = self.rope(seq_len, x.dtype)
-            loop_ids = torch.arange(self.n_loops, device=input_ids.device)
-            loop_emb = self.loop_embeddings(loop_ids)
-            for loop_idx in range(self.n_loops):
-                x = x + loop_emb[loop_idx].view(1, 1, -1)
-                x = self.block(x, cos, sin)
+            if self.share_blocks:
+                loop_ids = torch.arange(self.n_loops, device=input_ids.device)
+                loop_emb = self.loop_embeddings(loop_ids)
+                for loop_idx in range(self.n_loops):
+                    x = x + loop_emb[loop_idx].view(1, 1, -1)
+                    x = self.block(x, cos, sin)
+            else:
+                for block in self.blocks:
+                    x = block(x, cos, sin)
             x = self.final_norm(x)
             return self.head(x)
 
@@ -416,6 +442,11 @@ class SentencePieceBPBHelper:
         self.base_bytes_lut = base_bytes_lut
         self.has_leading_space_lut = has_leading_space_lut
         self.is_boundary_token_lut = is_boundary_token_lut
+
+
+class ByteLevelBPBHelper:
+    def __init__(self, byte_length_lut) -> None:
+        self.byte_length_lut = byte_length_lut
 
 
 def get_lr(step: int, total_steps: int, max_lr: float, warmup_steps: int, cooldown_fraction: float) -> float:
@@ -579,6 +610,37 @@ def build_sentencepiece_bpb_helper(tokenizer_path: str, vocab_size: int) -> Sent
     return SentencePieceBPBHelper(base_bytes_lut, has_leading_space_lut, is_boundary_token_lut)
 
 
+def gpt2_bytes_to_unicode() -> dict[int, str]:
+    bs = list(range(ord("!"), ord("~") + 1)) + list(range(ord("¡"), ord("¬") + 1)) + list(range(ord("®"), ord("ÿ") + 1))
+    cs = bs[:]
+    extra = 0
+    for byte_value in range(256):
+        if byte_value not in bs:
+            bs.append(byte_value)
+            cs.append(256 + extra)
+            extra += 1
+    return dict(zip(bs, (chr(value) for value in cs)))
+
+
+def build_bytelevel_bpb_helper(tokenizer_prefix: str, vocab_size: int) -> ByteLevelBPBHelper:
+    if np is None:
+        raise RuntimeError("numpy is required for exact tokenizer-aware val_bpb")
+    vocab_path = Path(f"{tokenizer_prefix}-vocab.json")
+    if not vocab_path.exists():
+        raise FileNotFoundError(f"ByteLevel vocab file not found: {vocab_path}")
+    vocab = json.loads(vocab_path.read_text(encoding="utf-8"))
+    table_size = max(vocab_size, max(int(token_id) for token_id in vocab.values()) + 1)
+    byte_length_lut = np.zeros((table_size,), dtype=np.int16)
+    byte_alphabet = set(gpt2_bytes_to_unicode().values())
+    for token, token_id in vocab.items():
+        token_id = int(token_id)
+        if token.startswith("<|") and token.endswith("|>"):
+            continue
+        if all(char in byte_alphabet for char in token):
+            byte_length_lut[token_id] = len(token)
+    return ByteLevelBPBHelper(byte_length_lut)
+
+
 def build_batcher(cfg: Config, data_path: str, seed: int, split: str):
     if not data_path:
         return SyntheticTokenBatcher(cfg.vocab_size, cfg.seq_len, seed), "synthetic", None
@@ -659,15 +721,18 @@ def format_exact_bpb(loss_value: float, total_tokens: int, total_bytes: float) -
     return (loss_value / math.log(2.0)) * (total_tokens / total_bytes)
 
 
-def count_target_bytes(prev_ids, tgt_ids, bpb_helper: SentencePieceBPBHelper) -> float:
+def count_target_bytes(prev_ids, tgt_ids, bpb_helper: SentencePieceBPBHelper | ByteLevelBPBHelper) -> float:
     if np is None:
         raise RuntimeError("numpy is required for exact tokenizer-aware val_bpb")
-    prev_flat = np.asarray(prev_ids, dtype=np.int64).reshape(-1)
     tgt_flat = np.asarray(tgt_ids, dtype=np.int64).reshape(-1)
+    if isinstance(bpb_helper, ByteLevelBPBHelper):
+        return float(bpb_helper.byte_length_lut[tgt_flat].astype(np.float64).sum())
+    prev_flat = np.asarray(prev_ids, dtype=np.int64).reshape(-1)
     bytes_np = bpb_helper.base_bytes_lut[tgt_flat].astype(np.int32, copy=True)
-    bytes_np += (
-        bpb_helper.has_leading_space_lut[tgt_flat] & ~bpb_helper.is_boundary_token_lut[prev_flat]
-    ).astype(np.int32, copy=False)
+    bytes_np += (bpb_helper.has_leading_space_lut[tgt_flat] & ~bpb_helper.is_boundary_token_lut[prev_flat]).astype(
+        np.int32,
+        copy=False,
+    )
     return float(bytes_np.astype(np.float64).sum())
 
 
@@ -676,7 +741,7 @@ def compute_batch_bpb(
     inputs_np,
     targets_np,
     avg_bytes_per_token: float,
-    bpb_helper: SentencePieceBPBHelper | None,
+    bpb_helper: SentencePieceBPBHelper | ByteLevelBPBHelper | None,
 ) -> float:
     if bpb_helper is None:
         return format_bpb(loss_value, avg_bytes_per_token)
@@ -693,7 +758,7 @@ def run_validation(
     device,
     cfg: Config,
     avg_bytes_per_token: float,
-    bpb_helper: SentencePieceBPBHelper | None,
+    bpb_helper: SentencePieceBPBHelper | ByteLevelBPBHelper | None,
 ) -> tuple[float, float]:
     if torch is None:
         raise RuntimeError("torch is required for validation")
@@ -760,6 +825,8 @@ def main() -> int:
     if cfg.tokenizer_path and spm is None:
         print("sentencepiece is required for TOKENIZER_PATH exact val_bpb support. Run: uv sync")
         return 1
+    if cfg.tokenizer_path and cfg.tokenizer_prefix:
+        raise ValueError("Set either TOKENIZER_PATH or TOKENIZER_PREFIX, not both")
 
     random.seed(cfg.seed)
     torch.manual_seed(cfg.seed)
@@ -779,6 +846,9 @@ def main() -> int:
     if cfg.tokenizer_path:
         bpb_helper = build_sentencepiece_bpb_helper(cfg.tokenizer_path, cfg.vocab_size)
         bpb_mode = "sentencepiece_exact"
+    elif cfg.tokenizer_prefix:
+        bpb_helper = build_bytelevel_bpb_helper(cfg.tokenizer_prefix, cfg.vocab_size)
+        bpb_mode = "bytelevel_exact"
     print(f"train_source={train_source} val_source={val_source} device={device}")
     print(f"vocab_size={cfg.vocab_size} source={vocab_size_source}")
     print(f"token_dtype={cfg.token_dtype} source={token_dtype_source}")
@@ -786,6 +856,8 @@ def main() -> int:
     print(f"bpb_mode={bpb_mode}")
     if cfg.tokenizer_path:
         print(f"tokenizer_path={Path(cfg.tokenizer_path).resolve()}")
+    if cfg.tokenizer_prefix:
+        print(f"tokenizer_prefix={Path(cfg.tokenizer_prefix).resolve()}")
 
     model = LoopedTransformer(
         vocab_size=cfg.vocab_size,
@@ -795,6 +867,8 @@ def main() -> int:
         n_loops=cfg.n_loops,
         max_seq_len=cfg.seq_len,
         use_smear=cfg.use_smear,
+        tied_embeddings=cfg.tied_embeddings,
+        share_blocks=cfg.share_blocks,
     ).to(device)
     if cfg.compile_model and hasattr(torch, "compile"):
         model = torch.compile(model)
@@ -927,6 +1001,7 @@ def main() -> int:
         "avg_bytes_per_token": avg_bytes_per_token,
         "bpb_mode": bpb_mode,
         "tokenizer_path": cfg.tokenizer_path or None,
+        "tokenizer_prefix": cfg.tokenizer_prefix or None,
         "parameters": param_count,
         "steps": step,
         "seconds": total_time,

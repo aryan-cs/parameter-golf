@@ -73,11 +73,11 @@ Current best official-tokenizer local exact-bpb result:
 
 Current best long-context (`SEQ_LEN=1024`) official-tokenizer result:
 
-- exact sampled `best_val_bpb`: `2.0147442651306453`
-- short form: `2.0147`
-- run id: `torch_sp1024_d512_l4_b32k_s400_seq1024`
-- artifact: `3,583,138` bytes
-- status: best long-context branch so far; only `0.0192215199973143` bpb worse than the overall sampled best, which is inside the local sampled-eval noise band
+- exact sampled `best_val_bpb`: `2.0050325515775427`
+- short form: `2.0050`
+- run id: `torch_sp1024_d512_l4_b32k_s400_seq1024_cd20`
+- artifact: `3,581,567` bytes
+- status: best long-context branch so far; only `0.009509806444211607` bpb worse than the overall sampled best, which is well inside the local sampled-eval noise band
 
 Gap versus official main-track leader for our best exact sampled official-tokenizer run:
 
@@ -2695,6 +2695,266 @@ Interpretation:
 - The difference is small, but the direction is consistent at intermediate checkpoints too.
 - So the feedback-driven schedule sweep has already ruled out one branch.
 - The next fair comparison is `COOLDOWN_FRACTION=0.20`.
+
+## Experiment 34. `SEQ_LEN=1024` Schedule Tuning: `COOLDOWN_FRACTION=0.20`
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Complete the reviewer-suggested local cooldown sweep and see whether a slightly earlier cooldown beats the `0.25` baseline.
+
+Command:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=torch_sp1024_d512_l4_b32k_s400_seq1024_cd20 TOKENIZER_PATH=/tmp/parameter-golf-official.BbMmsz/data/tokenizers/fineweb_1024_bpe.model DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VAL_DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VOCAB_SIZE=1024 TOKEN_DTYPE=uint16 AVG_BYTES_PER_TOKEN=2.442303811509075 D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=32768 VAL_BATCH_TOKENS=32768 VAL_STEPS=16 VAL_LOSS_EVERY=100 MAX_STEPS=400 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 DEVICE=mps STATS_PATH=runs/official_torch_sp1024/torch_sp1024_d512_l4_b32k_s400_seq1024_cd20.json uv run python train_gpt.py
+```
+
+Terminal output summary:
+
+```text
+final_val_bpb=2.0050
+compressed_model_size_bytes=3541574
+total_artifact_bytes=3581567
+artifact_budget_ok=True
+```
+
+Interpretation:
+
+- `COOLDOWN_FRACTION=0.20` beat both `0.25` and `0.30` in the current long-context regime.
+- The gain over `0.25` is small:
+  - `2.0050` versus `2.0147`
+- But this is now the best long-context result we have, and it leaves the long-context branch effectively tied with the old `1.9955` sampled best.
+
+## Experiment 35. Add Exact ByteLevel BPE `val_bpb`, Tied Embeddings, and Untied-Stack Option
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Re-open the larger-tokenizer path properly after the long-context reset.
+- Support exact byte accounting for our existing ByteLevel BPE tokenizers.
+- Add `TIED_EMBEDDINGS=1` so large-vocab experiments do not waste half their parameters on a duplicate output matrix.
+- Add `SHARE_BLOCKS=0` so we can test a baseline-like untied stack instead of only the shared-loop architecture.
+
+Key code ideas:
+
+```python
+class ByteLevelBPBHelper:
+    def __init__(self, byte_length_lut) -> None:
+        self.byte_length_lut = byte_length_lut
+```
+
+```python
+if self.tied_embeddings:
+    self.head.linear.weight = self.embed.weight
+```
+
+```python
+if self.share_blocks:
+    for loop_idx in range(self.n_loops):
+        x = x + loop_emb[loop_idx].view(1, 1, -1)
+        x = self.block(x, cos, sin)
+else:
+    for block in self.blocks:
+        x = block(x, cos, sin)
+```
+
+Interpretation:
+
+- We now have exact local `val_bpb` for our `16k` and `24k` ByteLevel BPE tokenizers instead of only average-bytes proxies.
+- We can now test:
+  - large vocab + tied embeddings
+  - large vocab + exact byte accounting
+  - shared loops versus a standard untied stack
+
+## Experiment 36. Exact ByteLevel Tokenizer Re-Entry: `24k` and `16k`
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Re-test the larger tokenizer idea after fixing context length and adding exact byte accounting.
+
+`24k` exact `40`-step command:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_d512_tied_s40 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=20 MAX_STEPS=40 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_d512_tied_s40.json uv run python train_gpt.py
+```
+
+`24k` terminal output:
+
+```text
+step=20 train_loss=8.4139 train_bpb=2.8644 val_loss=8.2890 val_bpb=2.8128 muon_lr=2.000e-02 adamw_lr=3.000e-04 elapsed=29.6s
+=== final_stats ===
+steps=40
+seconds=60.43
+final_val_bpb=2.5938
+total_artifact_bytes=23708605
+artifact_budget_ok=False
+```
+
+`24k` exact `400`-step command:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_d512_tied_s400 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=100 MAX_STEPS=400 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_d512_tied_s400.json uv run python train_gpt.py
+```
+
+`24k` terminal output summary:
+
+```text
+step=100 ... val_bpb=2.2806
+step=200 ... val_bpb=2.1238
+step=300 ... val_bpb=2.1126
+=== final_stats ===
+steps=400
+seconds=561.85
+final_val_bpb=2.0819
+total_artifact_bytes=23511822
+artifact_budget_ok=False
+```
+
+`16k` exact `40`-step command:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel16k_d512_tied_s40 TOKENIZER_PREFIX=./data/tokenizers/fineweb_16k_sample DATA_PATH=./data/tokens/fineweb_16k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_16k_sample/val D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=20 MAX_STEPS=40 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 DEVICE=mps STATS_PATH=runs/bytelevel16k/bytelevel16k_d512_tied_s40.json uv run python train_gpt.py
+```
+
+`16k` terminal output:
+
+```text
+step=20 train_loss=8.1166 train_bpb=2.9432 val_loss=8.0460 val_bpb=2.8624 muon_lr=2.000e-02 adamw_lr=3.000e-04 elapsed=26.6s
+=== final_stats ===
+steps=40
+seconds=53.19
+final_val_bpb=2.6767
+total_artifact_bytes=16564231
+artifact_budget_ok=False
+```
+
+Interpretation:
+
+- The larger-tokenizer idea was not a mirage, but it was also not the instant path to `1.5`.
+- `24k` is clearly better than `16k` in this regime:
+  - `2.0819` versus `2.6767`
+- But both large-vocab `d_model=512` tied-embedding models are still over the artifact cap, and the `24k` curve flattened above `2.0`.
+
+## Experiment 37. Baseline-Family Stack Check
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Test a more official-looking untied `9`-layer stack with tied embeddings on `sp1024`.
+
+Command:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=sp1024_stack9_s100 TOKENIZER_PATH=/tmp/parameter-golf-official.BbMmsz/data/tokenizers/fineweb_1024_bpe.model DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VAL_DATA_PATH=/tmp/parameter-golf-official.BbMmsz/data/datasets/fineweb10B_sp1024 VOCAB_SIZE=1024 TOKEN_DTYPE=uint16 AVG_BYTES_PER_TOKEN=2.442303811509075 D_MODEL=512 N_HEADS=8 D_FF=1024 N_LOOPS=9 SHARE_BLOCKS=0 TIED_EMBEDDINGS=1 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=50 MAX_STEPS=100 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 DEVICE=mps STATS_PATH=runs/official_torch_sp1024/sp1024_stack9_s100.json uv run python train_gpt.py
+```
+
+Terminal output:
+
+```text
+step=50 train_loss=4.6067 train_bpb=2.8051 val_loss=4.6022 val_bpb=2.7242 muon_lr=1.100e-02 adamw_lr=1.650e-04 elapsed=99.0s
+=== final_stats ===
+steps=100
+seconds=200.91
+final_val_bpb=2.5413
+total_artifact_bytes=20390813
+artifact_budget_ok=False
+```
+
+Interpretation:
+
+- The baseline-family comparison was useful, but it was not the win.
+- This `9`-layer stack underperformed the best long-context shared-loop branch in our local regime.
+- That means the search should stay on the shared-loop family for now unless we revisit the stack with a very different schedule.
+
+## Experiment 38. Deeper Shared Loops on `24k`
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Re-test loop depth in the corrected long-context regime, since the old short-context sweeps were likely misleading.
+
+Command:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_d512_tied_l8_s100 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=8 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=50 MAX_STEPS=100 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_d512_tied_l8_s100.json uv run python train_gpt.py
+```
+
+Terminal output:
+
+```text
+step=50 train_loss=7.2609 train_bpb=2.4711 val_loss=7.2797 val_bpb=2.4704 muon_lr=1.100e-02 adamw_lr=1.650e-04 elapsed=510.5s
+=== final_stats ===
+steps=100
+seconds=852.14
+final_val_bpb=2.3682
+total_artifact_bytes=23373548
+artifact_budget_ok=False
+```
+
+Interpretation:
+
+- More loops were not the answer here.
+- The `8`-loop run was much slower and still worse than the `4`-loop `24k` branch at comparable training budget.
+- So the old short-context "extra loops are not helping" conclusion still seems directionally true in this family.
+
+## Experiment 39. `24k` Larger Effective Batch Probe
+
+Status:
+
+- Passed with OOM fallback
+
+Purpose:
+
+- Check whether the `24k` exact branch was being unfairly undertrained because it used only `16k` train tokens per step.
+
+`32k` smoke command:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_d512_tied_b32k_smoke TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=32768 VAL_BATCH_TOKENS=32768 VAL_STEPS=4 VAL_LOSS_EVERY=0 MAX_STEPS=1 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_d512_tied_b32k_smoke.json uv run python train_gpt.py
+```
+
+Smoke terminal output:
+
+```text
+=== final_stats ===
+steps=1
+seconds=19.84
+final_val_bpb=3.3783
+```
+
+`32k` `100`-step command:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_d512_tied_b32k_s100 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=32768 VAL_BATCH_TOKENS=32768 VAL_STEPS=16 VAL_LOSS_EVERY=50 MAX_STEPS=100 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_d512_tied_b32k_s100.json uv run python train_gpt.py
+```
+
+Terminal output:
+
+```text
+step=0 train_loss=10.2199 train_bpb=3.3598 val_loss=10.1983 val_bpb=3.4764 muon_lr=1.000e-03 adamw_lr=1.500e-05 elapsed=0.0s
+RuntimeError: MPS backend out of memory (MPS allocated: 24.21 GiB, other allocations: 4.05 GiB, max allowed: 30.19 GiB). Tried to allocate 3.00 GiB on private pool.
+```
+
+Interpretation:
+
+- `24k` at `32k` train tokens per step does fit for a smoke step but fails during sustained training.
+- So the current local hardware limit for this branch is still effectively the `16k` train-token regime unless we add gradient accumulation later.
 
 ## Current Working Hypothesis
 
