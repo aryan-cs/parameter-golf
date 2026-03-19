@@ -79,6 +79,14 @@ Current best long-context (`SEQ_LEN=1024`) official-tokenizer result:
 - artifact: `3,581,567` bytes
 - status: best long-context branch so far; only `0.009509806444211607` bpb worse than the overall sampled best, which is well inside the local sampled-eval noise band
 
+Current best exact `24k` ByteLevel result:
+
+- exact sampled `best_val_bpb`: `2.0389186731250394`
+- short form: `2.0389`
+- run id: `bytelevel24k_d512_tied_lr2x_s400`
+- artifact: `23,422,947` bytes
+- status: best exact large-tokenizer result so far; still far above the artifact cap, but materially better than the earlier `24k` branch before LR retuning
+
 Gap versus official main-track leader for our best exact sampled official-tokenizer run:
 
 - `1.995522745133331 - 1.22436570 = 0.7711570451333312` bpb worse
@@ -3025,6 +3033,156 @@ Interpretation:
 - But it is an improvement, and it unlocks the next clean experiment:
   - effective `64k` train tokens per step using four `16k` microbatches
 
+## Experiment 41. Effective `64k` Batch on `24k`
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Test whether the promising `24k` branch was mostly limited by effective batch size.
+
+Command:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_eff64k_accum_s100 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=65536 TRAIN_MICROBATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=50 MAX_STEPS=100 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_eff64k_accum_s100.json uv run python train_gpt.py
+```
+
+Terminal output:
+
+```text
+step=50 train_loss=7.1961 train_bpb=2.4480 val_loss=7.1237 val_bpb=2.4174 muon_lr=1.100e-02 adamw_lr=1.650e-04 elapsed=242.9s
+=== final_stats ===
+steps=100
+seconds=502.74
+final_val_bpb=2.3007
+total_artifact_bytes=23578062
+artifact_budget_ok=False
+```
+
+Interpretation:
+
+- Bigger effective batch by itself was not enough.
+- At matched training-token budget, this was still worse than the best older `24k` run.
+- That pointed to learning-rate mismatch rather than batch size as the dominant issue.
+
+## Experiment 42. Learning-Rate Retune on `24k`
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Check whether the underwhelming accumulated-batch result was caused by using the old learning rates in a new effective-batch regime.
+
+`2x` LR direct `24k` `40`-step command:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_d512_tied_lr2x_s40 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=20 MAX_STEPS=40 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_d512_tied_lr2x_s40.json uv run python train_gpt.py
+```
+
+`2x` LR terminal output:
+
+```text
+step=20 train_loss=7.8087 train_bpb=2.6583 val_loss=7.7303 val_bpb=2.6233 muon_lr=4.000e-02 adamw_lr=6.000e-04 elapsed=29.4s
+=== final_stats ===
+steps=40
+seconds=58.52
+final_val_bpb=2.4865
+```
+
+`3x` LR direct `24k` `40`-step command:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_d512_tied_lr3x_s40 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=20 MAX_STEPS=40 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.06 ADAMW_LR=0.0009 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_d512_tied_lr3x_s40.json uv run python train_gpt.py
+```
+
+`3x` LR terminal output:
+
+```text
+step=20 train_loss=7.6637 train_bpb=2.6089 val_loss=7.6019 val_bpb=2.5797 muon_lr=6.000e-02 adamw_lr=9.000e-04 elapsed=29.6s
+=== final_stats ===
+steps=40
+seconds=58.65
+final_val_bpb=2.4674
+```
+
+Interpretation:
+
+- Learning-rate retuning mattered more than the raw batch increase.
+- `3x` was slightly better than the old baseline but slightly worse than `2x` at the end of the short pilot.
+- So `2x` became the promoted setting for the best current `24k` branch.
+
+## Experiment 43. Promoted `24k` `2x` LR Run
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Extend the best short `24k` LR-retuned branch into a proper long run.
+
+Command:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_d512_tied_lr2x_s400 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=100 MAX_STEPS=400 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_d512_tied_lr2x_s400.json uv run python train_gpt.py
+```
+
+Terminal output summary:
+
+```text
+step=100 ... val_bpb=2.2428
+step=200 ... val_bpb=2.0878
+step=300 ... val_bpb=2.0704
+=== final_stats ===
+steps=400
+seconds=488.03
+final_val_bpb=2.0389
+total_artifact_bytes=23422947
+artifact_budget_ok=False
+```
+
+Interpretation:
+
+- This is now the best exact `24k` result we have.
+- The LR retune improved the old `24k` `400`-step branch from `2.0819` to `2.0389`.
+- That is a real improvement, but still nowhere near the `1.5` local target.
+
+## Experiment 44. Wider `24k` Check After LR Retuning
+
+Status:
+
+- Passed
+
+Purpose:
+
+- Check whether width still helps once the `24k` branch has a much better learning rate.
+
+Command:
+
+```bash
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_d640_lr2x_s40 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=640 N_HEADS=8 D_FF=1706 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=20 MAX_STEPS=40 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_d640_lr2x_s40.json uv run python train_gpt.py
+```
+
+Terminal output:
+
+```text
+step=20 train_loss=7.7260 train_bpb=2.6302 val_loss=7.6901 val_bpb=2.6096 muon_lr=4.000e-02 adamw_lr=6.000e-04 elapsed=37.2s
+=== final_stats ===
+steps=40
+seconds=75.08
+final_val_bpb=2.4844
+```
+
+Interpretation:
+
+- Width did not buy a meaningful gain here.
+- `d_model=640` was only trivially better than `d_model=512` at the same short-horizon setting.
+- That means the next higher-value move is more optimization on the `d_model=512` branch, not a width jump.
+
 ## Current Working Hypothesis
 
 The best immediate path is now:
@@ -3037,6 +3195,7 @@ The best immediate path is now:
 6. use gradient accumulation when the promising branch is memory-bound rather than accepting an artificially tiny effective batch
 7. keep batch large enough for throughput, but compare regimes by total training tokens rather than by raw step count
 8. treat the `24k` exact tokenizer path as still alive, but currently optimization-limited rather than architecture-limited
+9. learning-rate retuning is currently the strongest lever inside the `24k` branch
 
 Reasoning:
 
@@ -3046,9 +3205,10 @@ Reasoning:
 - The outside review was directionally right that context length needed to be tested much more seriously.
 - The follow-up experiments showed that naive step-count comparisons were misleading because the `1024` path needed a smaller batch locally.
 - The `24k` exact tokenizer path is now real, but it is bottlenecked by batch size and optimization more than by missing infrastructure.
+- Inside that branch, a better LR setting moved the score more than bigger effective batch or extra loops.
 - The next wins are most likely to come from:
-  - larger effective batch on the `24k` exact branch using accumulation
-  - longer token budgets in that same branch
+  - longer training on the promoted `24k` `2x` LR branch
+  - maybe another schedule adjustment around that same branch
   - only then another architecture or width change if the curve still stalls
 
 ## Next Command To Run
@@ -3056,11 +3216,11 @@ Reasoning:
 This is the next command to run:
 
 ```bash
-PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_eff64k_accum_s400 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=65536 TRAIN_MICROBATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=100 MAX_STEPS=400 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_eff64k_accum_s400.json uv run python train_gpt.py
+PYTHONUNBUFFERED=1 RUN_ID=bytelevel24k_d512_tied_lr2x_s800 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample DATA_PATH=./data/tokens/fineweb_24k_sample/train VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val D_MODEL=512 N_HEADS=8 D_FF=1365 N_LOOPS=4 SEQ_LEN=1024 TRAIN_BATCH_TOKENS=16384 VAL_BATCH_TOKENS=16384 VAL_STEPS=16 VAL_LOSS_EVERY=200 MAX_STEPS=800 COOLDOWN_FRACTION=0.20 QAT_START_FRACTION=1.0 TIED_EMBEDDINGS=1 MUON_LR=0.04 ADAMW_LR=0.0006 DEVICE=mps STATS_PATH=runs/bytelevel24k/bytelevel24k_d512_tied_lr2x_s800.json uv run python train_gpt.py
 ```
 
 Why this exact command:
 
-- It pushes the most promising large-tokenizer branch with the largest effective batch the current machine can likely support via accumulation.
-- It keeps the architecture fixed so we can tell whether the branch was batch-limited.
-- It is the cleanest remaining shot at a meaningful score drop before spending more time on another model-family refactor.
+- It extends the best exact `24k` branch we have rather than reopening weaker batch or width variants.
+- It keeps the now-promoted `2x` learning rate fixed.
+- It is the shortest next run that can tell us whether the improved branch keeps descending or has already hit its practical floor.

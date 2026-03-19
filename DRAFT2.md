@@ -38,8 +38,8 @@ Current best numbers worth knowing:
   - `torch_sp1024_d512_l4_b32k_s400_seq1024_cd20`
   - `best_val_bpb = 2.0050325515775427`
 - Best exact `24k` tokenizer result so far:
-  - `bytelevel24k_d512_tied_s400`
-  - `final_val_bpb = 2.0819050756023527`
+  - `bytelevel24k_d512_tied_lr2x_s400`
+  - `final_val_bpb = 2.0389186731250394`
 
 Main conclusion right now:
 
@@ -189,21 +189,28 @@ Interpretation:
 
 Best exact result so far:
 
-- `bytelevel24k_d512_tied_s400`
-  - `final_val_bpb = 2.0819050756023527`
+- `bytelevel24k_d512_tied_lr2x_s400`
+  - `final_val_bpb = 2.0389186731250394`
 
 Supporting results:
 
 - `bytelevel24k_d512_tied_s40`
   - `2.593778352406914`
+- `bytelevel24k_d512_tied_lr2x_s40`
+  - `2.4864508082634324`
+- `bytelevel24k_d512_tied_lr3x_s40`
+  - `2.4673573651098164`
 - `bytelevel24k_d512_tied_l8_s100`
   - `2.3681701384086318`
+- `bytelevel24k_eff64k_accum_s100`
+  - `2.300725775147912`
 
 Interpretation:
 
 - deeper loops did not rescue the `24k` branch
-- the branch improves steadily but flattens too high
-- this suggests we need more effective batch and/or a stronger optimizer/training setup, not just more depth
+- raw bigger batch by itself did not rescue it either
+- the strongest new lever inside this branch has been learning-rate retuning
+- the branch still improves steadily, but still flattens too high
 
 ### 4.3 Exact `16k` tokenizer branch
 
@@ -242,7 +249,8 @@ Interpretation:
 
 - this is only a small improvement over the direct `16k`-batch `24k` run
 - but it proves the code path and removes the hardware blocker
-- the next honest step is effective `64k` through accumulation, not another architecture pivot
+- the larger effective batch alone did not solve the branch
+- the more important discovery was that learning-rate retuning helps this branch more than accumulation by itself
 
 ## 5. Current Best Path Toward `1.5`
 
@@ -253,15 +261,17 @@ It looks like:
 1. Stay in the exact ByteLevel `24k` branch.
 2. Use tied embeddings.
 3. Use `SEQ_LEN=1024`.
-4. Use accumulation to increase effective train batch beyond the direct-memory limit.
-5. Only after that, revisit width or optimizer choices if the score still stalls.
+4. Use the promoted `2x` learning rate.
+5. Extend that branch longer before touching width again.
+6. Use accumulation only when the direct-memory limit blocks a genuinely better regime.
 
 Why this seems best:
 
 - `24k` clearly beat `16k`
 - exact byte accounting is now real
-- the branch already reaches `2.0819`
-- the next missing ingredient is clearly effective batch / optimization, not missing infrastructure
+- the branch now reaches `2.0389`
+- width and deeper loops have not moved it much
+- optimization is still the most responsive lever
 
 ## 6. What Still Looks Wrong or Incomplete
 
@@ -290,7 +300,7 @@ The most obvious next run is:
 
 ```bash
 PYTHONUNBUFFERED=1 \
-RUN_ID=bytelevel24k_eff64k_accum_s400 \
+RUN_ID=bytelevel24k_d512_tied_lr2x_s800 \
 TOKENIZER_PREFIX=./data/tokenizers/fineweb_24k_sample \
 DATA_PATH=./data/tokens/fineweb_24k_sample/train \
 VAL_DATA_PATH=./data/tokens/fineweb_24k_sample/val \
@@ -299,15 +309,16 @@ N_HEADS=8 \
 D_FF=1365 \
 N_LOOPS=4 \
 SEQ_LEN=1024 \
-TRAIN_BATCH_TOKENS=65536 \
-TRAIN_MICROBATCH_TOKENS=16384 \
+TRAIN_BATCH_TOKENS=16384 \
 VAL_BATCH_TOKENS=16384 \
 VAL_STEPS=16 \
-VAL_LOSS_EVERY=100 \
-MAX_STEPS=400 \
+VAL_LOSS_EVERY=200 \
+MAX_STEPS=800 \
 COOLDOWN_FRACTION=0.20 \
 QAT_START_FRACTION=1.0 \
 TIED_EMBEDDINGS=1 \
+MUON_LR=0.04 \
+ADAMW_LR=0.0006 \
 DEVICE=mps \
 uv run python train_gpt.py
 ```
