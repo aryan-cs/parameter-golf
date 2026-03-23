@@ -59,3 +59,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: Root cause identified: the first sync path assumed `rsync` existed on the pod.
 - Decision: Add a `tar`-over-SSH fallback for both sync and fetch so the workflow works on fresh pods without manual package installation.
 - Next step: Re-run the sync command against `root@216.243.220.229:16214`, then continue with bootstrap and the first smoke run.
+
+- Timestamp: 2026-03-23 16:53 America/Chicago
+- Commit: uncommitted
+- Lane: runpod bring-up
+- Objective: Recover from the tar-over-SSH ownership warnings seen on the first fallback sync attempt.
+- Command or config: Updated the tar sync and fetch paths to ignore ownership and permission preservation, and excluded `.env` from transfer.
+- Result: The sync path is now aligned with the pod's container permissions and should stop failing on Mac uid/gid metadata.
+- Decision: Retry sync from this machine, then proceed directly to remote bootstrap from the pod.
+- Next step: Re-run `bash runpod/local_sync_to_pod.sh root@216.243.220.229 /workspace/golf 16214`, then start `TRAIN_SHARDS=10 bash runpod/pod_bootstrap.sh` over SSH.

@@ -24,7 +24,7 @@ if ssh "${SSH_ARGS[@]}" "$REMOTE" "command -v rsync >/dev/null 2>&1"; then
   rsync "${RSYNC_ARGS[@]}" "$REMOTE:$REMOTE_DIR/$SUBPATH/" "$ROOT/$SUBPATH/"
 else
   echo "Remote rsync not found; falling back to tar-over-SSH fetch."
-  ssh "${SSH_ARGS[@]}" "$REMOTE" "tar -C '$REMOTE_DIR' -cf - '$SUBPATH'" | tar -C "$ROOT" -xf -
+  ssh "${SSH_ARGS[@]}" "$REMOTE" "tar -C '$REMOTE_DIR' -cf - '$SUBPATH'" | tar --no-same-owner --no-same-permissions -C "$ROOT" -xf -
 fi
 
 echo "Fetched $SUBPATH from $REMOTE:$REMOTE_DIR"
