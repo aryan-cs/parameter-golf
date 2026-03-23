@@ -44,7 +44,7 @@ export SEED
 export RUN_ID
 export OUT_DIR="$RUN_DIR"
 
-cd "$RUN_DIR"
+cd "$ROOT"
 
 VENV_PYTHON="$VENV_DIR/bin/python"
 if [[ ! -x "$VENV_PYTHON" ]]; then

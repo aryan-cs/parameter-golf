@@ -140,3 +140,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The model now starts successfully on the pod and emits the first dataset/tokenizer log lines under direct Python, so the remaining friction is launcher overhead rather than an immediate model crash.
 - Decision: Make `runpod/pod_run.sh` launch single-GPU smoke runs with direct Python and reserve `torch.distributed.run` for `NPROC_PER_NODE>1`.
 - Next step: Commit and push the launcher change, re-sync the repo, and relaunch the single-H100 smoke run through `pod_run.sh`.
+
+- Timestamp: 2026-03-23 18:06 America/Chicago
+- Commit: uncommitted
+- Lane: runpod bring-up
+- Objective: Clear the next launch failure after switching the smoke path to direct Python.
+- Command or config: Re-ran `bash runpod/pod_run.sh non_ttt_m22_base 1337` on the pod and inspected the resulting traceback from `runs/non_ttt_m22_base/.../train.log`.
+- Result: The launcher now reaches the script, but it was executing from the per-run output directory, so the candidate's relative `./data/tokenizers/...` path resolved incorrectly and the run failed with `OSError: Not found: "./data/tokenizers/fineweb_1024_bpe.model"`.
+- Decision: Keep output artifacts under `runs/...`, but execute training from the repo root so the candidate's relative dataset and tokenizer paths remain valid.
+- Next step: Commit and push the working-directory fix, re-sync the repo, and relaunch the March 22 base smoke run.
