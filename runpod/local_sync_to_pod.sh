@@ -13,21 +13,37 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 SSH_ARGS=()
 RSYNC_ARGS=(-az --delete)
+TAR_EXCLUDES=(
+  --exclude=.git
+  --exclude=.venv
+  --exclude=__pycache__
+  --exclude=.DS_Store
+  --exclude=data/datasets
+  --exclude=data/tokenizers
+  --exclude=logs
+  --exclude=runs
+)
 if [[ -n "$PORT" ]]; then
   SSH_ARGS+=(-p "$PORT")
   RSYNC_ARGS+=(-e "ssh -p $PORT")
 fi
 
 ssh "${SSH_ARGS[@]}" "$REMOTE" "mkdir -p '$REMOTE_DIR'"
-rsync "${RSYNC_ARGS[@]}" \
-  --exclude '.git/' \
-  --exclude '.venv/' \
-  --exclude '__pycache__/' \
-  --exclude '.DS_Store' \
-  --exclude 'data/datasets/' \
-  --exclude 'data/tokenizers/' \
-  --exclude 'logs/' \
-  --exclude 'runs/' \
-  "$ROOT/" "$REMOTE:$REMOTE_DIR/"
+if ssh "${SSH_ARGS[@]}" "$REMOTE" "command -v rsync >/dev/null 2>&1"; then
+  rsync "${RSYNC_ARGS[@]}" \
+    --exclude '.git/' \
+    --exclude '.venv/' \
+    --exclude '__pycache__/' \
+    --exclude '.DS_Store' \
+    --exclude 'data/datasets/' \
+    --exclude 'data/tokenizers/' \
+    --exclude 'logs/' \
+    --exclude 'runs/' \
+    "$ROOT/" "$REMOTE:$REMOTE_DIR/"
+else
+  echo "Remote rsync not found; falling back to tar-over-SSH sync."
+  ssh "${SSH_ARGS[@]}" "$REMOTE" "rm -rf '$REMOTE_DIR' && mkdir -p '$REMOTE_DIR'"
+  tar -C "$ROOT" "${TAR_EXCLUDES[@]}" -cf - . | ssh "${SSH_ARGS[@]}" "$REMOTE" "tar -C '$REMOTE_DIR' -xf -"
+fi
 
 echo "Synced repo to $REMOTE:$REMOTE_DIR"

@@ -50,3 +50,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The repo can now sync to Runpod using the pod's `root@IP` plus exposed port instead of only a plain `user@host` target.
 - Decision: Use the direct TCP SSH target from the pod page for the first bootstrap and run launch.
 - Next step: Give the user the exact `ssh`, sync, bootstrap, and launch commands for pod `216.243.220.229:16214`.
+
+- Timestamp: 2026-03-23 16:47 America/Chicago
+- Commit: uncommitted
+- Lane: runpod bring-up
+- Objective: Recover from the first sync failure against the stock Runpod image.
+- Command or config: Investigated the failed `local_sync_to_pod.sh` attempt and found that the remote image did not include `rsync`.
+- Result: Root cause identified: the first sync path assumed `rsync` existed on the pod.
+- Decision: Add a `tar`-over-SSH fallback for both sync and fetch so the workflow works on fresh pods without manual package installation.
+- Next step: Re-run the sync command against `root@216.243.220.229:16214`, then continue with bootstrap and the first smoke run.
