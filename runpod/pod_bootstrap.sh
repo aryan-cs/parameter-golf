@@ -5,16 +5,21 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 export PATH="$HOME/.local/bin:$PATH"
+export UV_LINK_MODE=copy
+VENV_DIR="${VENV_DIR:-/root/.venvs/golf}"
+export UV_PROJECT_ENVIRONMENT="$VENV_DIR"
 
 if ! command -v uv >/dev/null 2>&1; then
   curl -LsSf https://astral.sh/uv/install.sh | sh
   export PATH="$HOME/.local/bin:$PATH"
 fi
 
+mkdir -p "$(dirname "$VENV_DIR")"
 mkdir -p cache logs runs data/datasets data/tokenizers
 
 {
   echo "repo_root=$ROOT"
+  echo "venv_dir=$VENV_DIR"
   echo "utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo "git_commit=$(git rev-parse HEAD 2>/dev/null || echo unknown)"
   echo "uv=$(uv --version)"

@@ -8,6 +8,7 @@ fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export PATH="$HOME/.local/bin:$PATH"
+VENV_DIR="${VENV_DIR:-/root/.venvs/golf}"
 CANDIDATE="$1"
 SEED="$2"
 CONFIG_PATH="${3:-$ROOT/configs/runpod/${CANDIDATE}.env}"
@@ -45,7 +46,7 @@ export OUT_DIR="$RUN_DIR"
 
 cd "$RUN_DIR"
 
-VENV_PYTHON="$ROOT/.venv/bin/python"
+VENV_PYTHON="$VENV_DIR/bin/python"
 if [[ ! -x "$VENV_PYTHON" ]]; then
   echo "missing virtualenv python at $VENV_PYTHON; run bash runpod/pod_bootstrap.sh first" >&2
   exit 1
