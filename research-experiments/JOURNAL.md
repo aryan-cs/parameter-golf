@@ -182,6 +182,16 @@ This is the append-only project journal for overnight Codex work on the `openai/
 - Verified the LaunchAgent is loaded via `launchctl list` and its stdout log shows `waiting_for_idle`, so after the current smoke process disappears the Mac should promote automatically into the longer `uv`-backed frontier MLX run.
 - Most likely next step: inspect `research-experiments/runs/thwu1_mlx_mac_frontier_20260322_225214_launchd/` and the candidate log tomorrow morning for the overnight frontier result, then decide whether to widen data or retune the local frontier env before promotion to H100s.
 
+## 2026-03-22 23:04 CDT - Two-Hour Frontier Cutover
+
+- Found a major local bottleneck: `VAL_BATCH_SIZE` is divided by `GRAD_ACCUM_STEPS` in the MLX script, so the old smoke run was doing a nearly one-sequence-at-a-time full validation pass and burning too much wallclock.
+- Retuned `mac_smoke_env.json` and `mac_frontier_env.json` for much faster truthful validation by lowering `GRAD_ACCUM_STEPS` to `4` and raising `VAL_BATCH_SIZE` to `1048576`.
+- Tightened the active frontier target to a two-hour-ish local proxy lane: `10` layers, `3x` MLP, `16384` train tokens, `1400` iterations, `VAL_LOSS_EVERY=350`, `MAX_WALLCLOCK_SECONDS=6600`.
+- Expanded the local official cache beyond the original tiny slice; the dataset was widened from `8` train shards and reached at least `17` shards before the cutover.
+- Stopped the old slow smoke runner and let the macOS LaunchAgent promote into `thwu1_mlx_mac_frontier_20260322_225214_launchd`.
+- Verified the new frontier process is live under `uv` from `research-experiments/scripts/run_mlx_proxy_experiment.py` with the launchd run id above.
+- Most likely next step: let this frontier run reach its first validation checkpoint and final quantized roundtrip metric, then compare whether the local exact `val_bpb` is moving into the `1.5x` range.
+
 ## 2026-03-23T03:49:06.412148+00:00 - Manifest Waiting For Runtime: rank1_mixed_qat_warmdown_ramp_seed42_20260323
 
 - Path: /Users/aryan/Desktop/golf/research-experiments/manifests/pending/rank1_mixed_qat_warmdown_ramp_seed42_20260323.json
