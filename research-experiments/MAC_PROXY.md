@@ -40,6 +40,8 @@ bash research-agent/status_loop.sh
 
 This queues the longer MLX proxy run into the existing controller instead of keeping it as a one-off terminal process.
 
+The queued manifest waits for any currently running copy of the same MLX candidate to finish before starting the frontier run, so it is safe to stage while a smoke run is still in progress.
+
 ## Current Proxy Candidate
 
 - `research-experiments/mac_proxy_candidates/2026-03-23_thwu1_mlx_proxy/`

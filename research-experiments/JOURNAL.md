@@ -172,3 +172,31 @@ This is the append-only project journal for overnight Codex work on the `openai/
 - Started `thwu1_mlx_mac_smoke_20260322_223016` on the official data. It is training cleanly on Apple Silicon with MLX at roughly `15k-16k tok/s`; the full validation pass is still running as of this entry.
 - Updated the persistent agent prompt and goal so when CUDA is unavailable on this Mac, the loop can use the `uv`-based MLX proxy lane honestly instead of stalling or pretending record-track progress.
 - Most likely next step: let the smoke finish, inspect the quantized roundtrip `val_bpb`, then queue an overnight frontier proxy run through `scripts/stage_mac_proxy_frontier_manifest.sh`.
+
+## 2026-03-23T03:49:06.412148+00:00 - Manifest Waiting For Runtime: rank1_mixed_qat_warmdown_ramp_seed42_20260323
+
+- Path: /Users/aryan/Desktop/golf/research-experiments/manifests/pending/rank1_mixed_qat_warmdown_ramp_seed42_20260323.json
+- missing python module: torch
+- missing python module: numpy
+- missing python module: sentencepiece
+
+## 2026-03-23T03:49:06.415145+00:00 - Manifest Ingested: thwu1_mlx_mac_frontier_20260322_224850
+
+- From: /Users/aryan/Desktop/golf/research-experiments/manifests/pending/thwu1_mlx_mac_frontier_20260322_224850.json
+- To: /Users/aryan/Desktop/golf/research-agent/loop/runtime/queue/pending/thwu1_mlx_mac_frontier_20260322_224850.json
+
+## 2026-03-23T03:50:12.483875+00:00 - Manifest Ingested: thwu1_mlx_mac_frontier_20260322_224947
+
+- From: /Users/aryan/Desktop/golf/research-experiments/manifests/pending/thwu1_mlx_mac_frontier_20260322_224947.json
+- To: /Users/aryan/Desktop/golf/research-agent/loop/runtime/queue/pending/thwu1_mlx_mac_frontier_20260322_224947.json
+
+## 2026-03-23T03:50:12.488199+00:00 - Controller Job Launched: thwu1_mlx_mac_frontier_20260322_224947
+
+- Description: Mac MLX frontier proxy run for the thwu1-derived candidate
+- Job kind: proxy
+- Command: bash scripts/run_mac_proxy_frontier_when_idle.sh
+- CWD: /Users/aryan/Desktop/golf/research-experiments
+- Manifest: /Users/aryan/Desktop/golf/research-agent/loop/runtime/queue/running/thwu1_mlx_mac_frontier_20260322_224947.json
+- Log: /Users/aryan/Desktop/golf/research-agent/loop/runtime/jobs/thwu1_mlx_mac_frontier_20260322_224947/run.log
+- Timeout seconds: 32400
+- PID: 48879

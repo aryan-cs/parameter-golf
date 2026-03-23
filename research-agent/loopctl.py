@@ -685,19 +685,17 @@ def build_job_script(
     env: dict[str, str],
     command: str,
 ) -> None:
-    exports = "\n".join(f"export {key}={shlex.quote(value)}" for key, value in sorted(env.items()))
-    body = textwrap.dedent(
-        f"""\
-        #!/bin/zsh
-        set +e
-        cd {shlex.quote(str(cwd))}
-        {exports}
-        eval {shlex.quote(command)}
-        ec=$?
-        print -r -- "$ec" > {shlex.quote(str(exit_file))}
-        exit "$ec"
-        """
-    )
+    lines = [
+        "#!/bin/zsh",
+        "set +e",
+        f"cd {shlex.quote(str(cwd))}",
+        *[f"export {key}={shlex.quote(value)}" for key, value in sorted(env.items())],
+        f"eval {shlex.quote(command)}",
+        "ec=$?",
+        f'print -r -- "$ec" > {shlex.quote(str(exit_file))}',
+        'exit "$ec"',
+    ]
+    body = "\n".join(lines) + "\n"
     script_path.write_text(body, encoding="utf-8")
     script_path.chmod(0o755)
 

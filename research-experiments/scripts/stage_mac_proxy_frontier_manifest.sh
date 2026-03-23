@@ -27,7 +27,7 @@ cat >"$MANIFEST_PATH" <<EOF
     "RUN_ID": "$RUN_ID",
     "SEED": "$SEED_VALUE"
   },
-  "command": "bash scripts/run_mac_proxy_frontier.sh",
+  "command": "bash scripts/run_mac_proxy_frontier_when_idle.sh",
   "timeout_seconds": 32400
 }
 EOF
