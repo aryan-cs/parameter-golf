@@ -45,13 +45,19 @@ export OUT_DIR="$RUN_DIR"
 
 cd "$RUN_DIR"
 
-CMD=(uv run python -m torch.distributed.run --standalone --nproc_per_node="${NPROC_PER_NODE:-1}" "$ROOT/$TRAIN_SCRIPT")
+VENV_PYTHON="$ROOT/.venv/bin/python"
+if [[ ! -x "$VENV_PYTHON" ]]; then
+  echo "missing virtualenv python at $VENV_PYTHON; run bash runpod/pod_bootstrap.sh first" >&2
+  exit 1
+fi
+
+CMD=("$VENV_PYTHON" -m torch.distributed.run --standalone --nproc_per_node="${NPROC_PER_NODE:-1}" "$ROOT/$TRAIN_SCRIPT")
 printf 'command=%q ' "${CMD[@]}" | tee "$RUN_DIR/launch.txt"
 printf '\n' | tee -a "$RUN_DIR/launch.txt"
 
 "${CMD[@]}" 2>&1 | tee "$RUN_DIR/train.log"
 
-uv run python "$ROOT/runpod/collect_run_metadata.py" \
+"$VENV_PYTHON" "$ROOT/runpod/collect_run_metadata.py" \
   --run-dir "$RUN_DIR" \
   --candidate "$CANDIDATE" \
   --seed "$SEED" \
