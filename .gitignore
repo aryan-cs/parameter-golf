@@ -1,5 +1,6 @@
 __pycache__/
 *.pyc
+.ipynb_checkpoints/
 
 research-agent/loop/runtime/
 research-experiments/cache/

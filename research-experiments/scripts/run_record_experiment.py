@@ -24,9 +24,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--run-id", required=True, help="Run identifier used for logs and stats")
     parser.add_argument("--seed", type=int, default=42, help="Seed override passed to the train script")
     parser.add_argument("--nproc-per-node", type=int, default=8, help="Number of local torchrun processes to launch")
+    parser.add_argument("--required-cuda-devices", type=int, default=None, help="Override the minimum CUDA devices required for preflight")
     parser.add_argument("--stats-path", required=True, help="Where to write JSON metrics for the controller")
     parser.add_argument("--data-path", default=str(DEFAULT_DATA_PATH), help="Token dataset directory")
     parser.add_argument("--tokenizer-path", default=str(DEFAULT_TOKENIZER_PATH), help="SentencePiece tokenizer model path")
+    parser.add_argument("--set-env", action="append", default=[], help="Extra KEY=VALUE env overrides passed to training")
+    parser.add_argument("--set-env-file", default=None, help="Path to a JSON object of env overrides")
     parser.add_argument("--preflight-only", action="store_true", help="Validate environment without launching training")
     return parser.parse_args()
 
@@ -132,7 +135,11 @@ def build_preflight(args: argparse.Namespace, experiment_dir: Path, config: dict
         if issue not in issues:
             issues.append(issue)
 
-    required_cuda_devices = int(config.get("required_cuda_devices", args.nproc_per_node))
+    required_cuda_devices = int(
+        args.required_cuda_devices
+        if args.required_cuda_devices is not None
+        else config.get("required_cuda_devices", args.nproc_per_node)
+    )
     if cuda_devices < required_cuda_devices:
         issues.append(f"need {required_cuda_devices} CUDA devices, found {cuda_devices}")
 
@@ -157,6 +164,7 @@ def build_preflight(args: argparse.Namespace, experiment_dir: Path, config: dict
         "tokenizer_path": str(tokenizer_path),
         "cuda_device_count": cuda_devices,
         "required_cuda_devices": required_cuda_devices,
+        "env_overrides": load_env_overrides(args),
     }
 
 
@@ -165,10 +173,29 @@ def write_stats(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def build_command(args: argparse.Namespace, experiment_dir: Path, config: dict[str, Any]) -> tuple[list[str], dict[str, str], Path]:
+def load_env_overrides(args: argparse.Namespace) -> dict[str, str]:
+    overrides: dict[str, str] = {}
+    if args.set_env_file:
+        payload = json.loads(resolve_path(str(args.set_env_file), ROOT).read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("--set-env-file must contain a JSON object")
+        for key, value in payload.items():
+            overrides[str(key)] = str(value)
+    for item in args.set_env:
+        if "=" not in item:
+            raise ValueError(f"Expected KEY=VALUE for --set-env, got: {item}")
+        key, value = item.split("=", 1)
+        overrides[key] = value
+    return overrides
+
+
+def build_command(args: argparse.Namespace, experiment_dir: Path, config: dict[str, Any]) -> tuple[list[str], dict[str, str], Path, dict[str, str]]:
     entrypoint = experiment_dir / str(config.get("entrypoint", "train_gpt.py"))
     env = os.environ.copy()
     for key, value in dict(config.get("env", {})).items():
+        env[str(key)] = str(value)
+    env_overrides = load_env_overrides(args)
+    for key, value in env_overrides.items():
         env[str(key)] = str(value)
     env["RUN_ID"] = args.run_id
     env["SEED"] = str(args.seed)
@@ -186,7 +213,7 @@ def build_command(args: argparse.Namespace, experiment_dir: Path, config: dict[s
         ]
     else:
         command = [sys.executable, entrypoint.name]
-    return command, env, entrypoint
+    return command, env, entrypoint, env_overrides
 
 
 def main() -> int:
@@ -208,7 +235,7 @@ def main() -> int:
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0 if args.preflight_only and preflight["ready"] else (2 if not preflight["ready"] else 0)
 
-    command, env, entrypoint = build_command(args, experiment_dir, config)
+    command, env, entrypoint, env_overrides = build_command(args, experiment_dir, config)
     started_at = time.time()
     print(f"launch_command={' '.join(command)}")
     print(f"experiment_dir={experiment_dir}")
@@ -228,6 +255,7 @@ def main() -> int:
         "elapsed_wallclock_seconds": time.time() - started_at,
         "log_path": str(log_path),
         "preflight": preflight,
+        "env_overrides": env_overrides,
         **metrics,
     }
     write_stats(stats_path, payload)

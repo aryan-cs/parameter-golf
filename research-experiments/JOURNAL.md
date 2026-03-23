@@ -71,6 +71,14 @@ This is the append-only project journal for overnight Codex work on the `openai/
 - A real preflight run was executed locally and wrote `runs/preflight_rank1_mixed_qat/stats.json`.
 - The truthful blockers on this machine are: no CUDA devices, no `zstandard` module, and no downloaded challenge dataset/tokenizer yet.
 
+## 2026-03-22 21:51 CDT - Colab VS Code Workflow Added
+
+- Added `COLAB_VSCODE.md` and `colab_vscode_bootstrap.ipynb` so the repo has a notebook-first workflow that matches the official Google Colab VS Code extension.
+- Made `research-agent/start_loop.sh`, `stop_loop.sh`, and `status_loop.sh` portable with `bash` shebangs so they can run inside a Colab Linux runtime.
+- Extended `scripts/run_record_experiment.py` with `--required-cuda-devices`, `--set-env`, and `--set-env-file` so we can run smaller Colab pilot jobs without mutating the record candidate itself.
+- Added `record_candidates/2026-03-23_rank1_mixed_qat/colab_pilot_env.json` with conservative single-GPU pilot overrides for Colab-backed validation runs.
+- Confirmed the new Colab pilot preflight path works and reports truthful blockers for the current local machine rather than pretending the environment is ready.
+
 ## 2026-03-22 21:36 CDT - Rehydrated Rank-1 Script Into A Mixed-QAT Candidate
 
 - Created `record_candidates/2026-03-23_rank1_mixed_qat/` by copying the current official `#1` March 20 script instead of reviving the older local baseline family.
@@ -111,3 +119,12 @@ This is the append-only project journal for overnight Codex work on the `openai/
 - missing path: /Users/aryan/Desktop/golf/research-experiments/cache/openai-parameter-golf/data/datasets/fineweb10B_sp1024
 - missing path: /Users/aryan/Desktop/golf/research-experiments/cache/openai-parameter-golf/data/tokenizers/fineweb_1024_bpe.model
 - missing python module: torch
+
+## 2026-03-23T02:46:53.447367+00:00 - Manifest Waiting For Runtime: rank1_mixed_qat_seed42_20260323
+
+- Path: /Users/aryan/Desktop/golf/research-experiments/manifests/pending/rank1_mixed_qat_seed42_20260323.json
+- missing python module: torch
+- missing python module: numpy
+- missing python module: sentencepiece
+- missing path: /Users/aryan/Desktop/golf/research-experiments/cache/openai-parameter-golf/data/datasets/fineweb10B_sp1024
+- missing path: /Users/aryan/Desktop/golf/research-experiments/cache/openai-parameter-golf/data/tokenizers/fineweb_1024_bpe.model
