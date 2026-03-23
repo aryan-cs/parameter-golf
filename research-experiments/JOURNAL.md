@@ -222,3 +222,13 @@ This is the append-only project journal for overnight Codex work on the `openai/
 - train_time_ms: n/a
 - Manifest: /Users/aryan/Desktop/golf/research-agent/loop/runtime/queue/failed/thwu1_mlx_mac_frontier_20260322_224947.json
 - Log: /Users/aryan/Desktop/golf/research-agent/loop/runtime/jobs/thwu1_mlx_mac_frontier_20260322_224947/run.log
+
+## 2026-03-22 22:57 CDT - Mac Proxy uv Cache Fix And Proxy Restage
+
+- Traced the failed `thwu1_mlx_mac_frontier_20260322_224947` proxy launch to `uv` trying to initialize `~/.cache/uv`, which is not writable in this workspace-controlled loop.
+- Added `scripts/mac_proxy_uv_env.sh` and sourced it from `scripts/setup_mac_proxy_env.sh`, `scripts/prepare_mac_proxy_data.sh`, `scripts/run_mac_proxy_smoke.sh`, and `scripts/run_mac_proxy_frontier.sh` so all Mac proxy helpers now use the repo-local cache at `research-experiments/cache/uv`.
+- Hardened `scripts/run_mac_proxy_frontier_when_idle.sh` so an unavailable `pgrep` process probe logs a one-line notice and launches immediately instead of failing the run wrapper.
+- Updated `MAC_PROXY.md` to document the repo-local `uv` cache behavior and preserved the detached-launch helper that was already in the worktree.
+- Verified the repaired proxy lane with `uv run ... scripts/run_mlx_proxy_experiment.py --preflight-only`; `runs/thwu1_mlx_mac_frontier_preflight_20260323/stats.json` reports `status=ready` against the official tokenizer and cached FineWeb shards.
+- Parked the blocked CUDA-only manifest at `manifests/parked/rank1_mixed_qat_warmdown_ramp_seed42_20260323.json` and staged exactly one runnable Mac proxy manifest at `manifests/pending/thwu1_mlx_mac_frontier_20260323_0001.json` with `job_kind=proxy`.
+- Most likely next step: let the controller ingest `thwu1_mlx_mac_frontier_20260323_0001`, inspect the first successful frontier proxy result, then port the mixed-QAT/export-aware record candidate changes into the MLX proxy lane before re-staging the CUDA experiment on a real multi-GPU runtime.

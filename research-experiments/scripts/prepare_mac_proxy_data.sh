@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 VENV_PYTHON="${REPO_ROOT}/.venv-mac/bin/python"
 TRAIN_SHARDS="${TRAIN_SHARDS:-1}"
+source "$SCRIPT_DIR/mac_proxy_uv_env.sh"
 
 if [[ ! -x "$VENV_PYTHON" ]]; then
   echo "missing mac proxy environment at $VENV_PYTHON"

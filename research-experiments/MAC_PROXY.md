@@ -50,6 +50,8 @@ bash research-experiments/scripts/launch_mac_proxy_frontier_detached.sh
 
 This is the simplest detached path on the Mac. It writes a launcher pid and log under `research-experiments/runs/<run_id>/` and still uses the same `uv`-backed MLX workflow internally.
 
+The helper scripts now pin `uv` to a repo-local cache under `research-experiments/cache/uv`, so controller-launched proxy jobs do not depend on `~/.cache/uv` being writable.
+
 ## Current Proxy Candidate
 
 - `research-experiments/mac_proxy_candidates/2026-03-23_thwu1_mlx_proxy/`
