@@ -38,13 +38,14 @@ cp "$ROOT/$TRAIN_SCRIPT" "$RUN_DIR/train_gpt.snapshot.py"
 env | LC_ALL=C sort > "$RUN_DIR/env.txt"
 
 export PYTHONUNBUFFERED=1
+export UV_LINK_MODE=copy
 export SEED
 export RUN_ID
 export OUT_DIR="$RUN_DIR"
 
 cd "$RUN_DIR"
 
-CMD=(uv run torchrun --standalone --nproc_per_node="${NPROC_PER_NODE:-1}" "$ROOT/$TRAIN_SCRIPT")
+CMD=(uv run python -m torch.distributed.run --standalone --nproc_per_node="${NPROC_PER_NODE:-1}" "$ROOT/$TRAIN_SCRIPT")
 printf 'command=%q ' "${CMD[@]}" | tee "$RUN_DIR/launch.txt"
 printf '\n' | tee -a "$RUN_DIR/launch.txt"
 
