@@ -32,3 +32,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: All checks passed. `uv` resolved both extras cleanly, the shell helpers parsed, MLX standard and sliding eval both returned finite metrics on a toy config, and the Runpod metadata helper wrote the expected JSON summary fields.
 - Decision: The repo is ready for the first real cloud smoke launch from `candidates/non_ttt_m22_base`.
 - Next step: Sync to Runpod, run `bash runpod/pod_bootstrap.sh`, then launch `NPROC_PER_NODE=1 bash runpod/pod_run.sh non_ttt_m22_base 1337`.
+
+- Timestamp: 2026-03-23 16:28 America/Chicago
+- Commit: uncommitted
+- Lane: runpod bring-up
+- Objective: Unblock SSH access for the first Runpod pod launch.
+- Command or config: Checked `~/.ssh` for existing public keys and selected the current `id_ed25519.pub` key for Runpod account settings.
+- Result: A valid SSH public key already exists locally, so no new keypair is needed.
+- Decision: Use the existing `ssh-ed25519` public key in Runpod Settings, then re-enable `SSH terminal access` on the pod deployment form.
+- Next step: Paste the public key into Runpod, deploy the `1x H100 SXM` pod, then send back the SSH command from the pod page.
