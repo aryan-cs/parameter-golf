@@ -1,8 +1,13 @@
 __pycache__/
 *.pyc
 .ipynb_checkpoints/
+.venv/
+.venv-mac/
 
 research-agent/loop/runtime/
 research-experiments/cache/
 research-experiments/workbench/
 research-experiments/runs/
+research-experiments/mac_proxy_candidates/**/logs/
+research-experiments/mac_proxy_candidates/**/*.npz
+research-experiments/mac_proxy_candidates/**/*.ptz

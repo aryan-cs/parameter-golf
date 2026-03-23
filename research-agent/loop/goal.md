@@ -26,6 +26,8 @@ Reality and validity rules:
 - Do not use fabricated metrics, placeholder artifacts, guessed scores, or made-up readiness claims.
 - Only treat results as real progress when they come from actual training or evaluation on the official challenge data and tokenizer, with truthful logs and artifacts.
 - Infrastructure smoke tests, shortened debug runs, single-GPU pilots, or other submission-invalid runs may be used only to validate plumbing. They must be labeled clearly as infrastructure-only and must never be represented as leaderboard progress.
+- Apple Silicon MLX proxy runs on the official challenge data/tokenizer are allowed for local iteration when CUDA/H100 hardware is unavailable. They are useful for architecture validation, stability checks, and relative comparisons, but they must be labeled as proxy/dev runs and must not be counted as leaderboard progress.
+- On this Mac, use `uv` and the scripts under `research-experiments/scripts/` for local Python environments and Mac proxy execution.
 - The real target is a submission that could actually be uploaded and ranked: official byte budget, official train/eval budgets, reproducible artifacts, real challenge data, and honest current-SOTA comparison.
 
 As of the March 22, 2026 snapshot used to seed this repo:

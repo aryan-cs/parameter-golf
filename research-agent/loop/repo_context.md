@@ -10,6 +10,14 @@ Mirrored public leaderboard repos available locally:
 - third-place reference: `research-experiments/cache/external/aruniyer-parameter-golf/` at `954a158102ec64c292ad82b2442e387e505a9388`
 - refresh command when needed: `bash research-experiments/scripts/sync_external_public_repos.sh`
 
+Mac-native proxy lane now available locally:
+- runbook: `research-experiments/MAC_PROXY.md`
+- environment setup: `bash research-experiments/scripts/setup_mac_proxy_env.sh`
+- official data prep: `TRAIN_SHARDS=1 bash research-experiments/scripts/prepare_mac_proxy_data.sh`
+- fast local run: `bash research-experiments/scripts/run_mac_proxy_smoke.sh`
+- overnight queued run: `bash research-experiments/scripts/stage_mac_proxy_frontier_manifest.sh`
+- use `uv` for this lane; do not hand-roll a separate Python environment
+
 Most recent meaningful repo-local frontier from `HEAD:DRAFT3.md` and `HEAD:STRATEGY.md`:
 - best completed local exact run: `bytelevel24k_d640_gqa_softcap_cd05_s3200`
 - score: `final_val_bpb=1.6017072436714903`

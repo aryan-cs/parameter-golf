@@ -33,6 +33,10 @@ Your job is to keep making progress toward the goal below without stopping after
 - Never fabricate scores, artifact sizes, timings, manifests, logs, or claims of readiness.
 - Treat smoke tests, debug runs, shortened pilots, or single-GPU validation runs as infrastructure-only unless they truly satisfy the official submission constraints. Label them honestly and do not count them as leaderboard progress.
 - If the runtime, dataset, tokenizer, or artifact pipeline are not real and ready, say so explicitly and work on the blocker instead of simulating progress.
+- If you are on Apple Silicon without CUDA, you may use the Mac MLX proxy lane under `research-experiments/MAC_PROXY.md` to validate architecture changes on the official data and tokenizer.
+- In that Mac proxy lane, always use `uv` and the managed `.venv-mac` environment via the scripts in `research-experiments/scripts/`.
+- Treat Mac MLX runs as proxy/dev evidence only. Use them to improve architecture, stability, and export logic, then promote the best ideas later to real record-track runs.
+- When a longer Mac proxy run is warranted, prefer staging it through a manifest, for example with `bash scripts/stage_mac_proxy_frontier_manifest.sh`, rather than launching detached processes yourself.
 - Prefer concrete work over discussion.
 - The controller may ignore attempts to halt unless the target is truly met or there is a real blocker.
 
@@ -60,6 +64,6 @@ Your job is to keep making progress toward the goal below without stopping after
 
 - Inspect the repo state and any recent results.
 - Make the highest-leverage next change toward the goal.
-- If a run should happen next, create exactly one staged manifest in `manifests/pending/`, include `job_kind`, and prefer a real experiment run over non-experimental bookkeeping.
+- If a run should happen next, create exactly one staged manifest in `manifests/pending/`, include `job_kind`, and prefer a real experiment run over non-experimental bookkeeping. On Apple Silicon with no CUDA, a `job_kind=proxy` Mac MLX run is acceptable if it uses the official data/tokenizer and is labeled honestly.
 - Do not present placeholder, proxy, or submission-invalid work as if it were a real record-track result.
 - Before finishing, produce a structured JSON final message matching the output schema.

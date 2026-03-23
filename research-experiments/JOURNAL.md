@@ -163,3 +163,12 @@ This is the append-only project journal for overnight Codex work on the `openai/
 
 - Fixed `research-experiments/scripts/prepare_challenge_data.py` so it automatically clones the official `openai/parameter-golf` repo into `research-experiments/cache/openai-parameter-golf/` when that cache is missing on a fresh machine such as Colab.
 - This removes the old failure mode where data prep immediately crashed with `Missing helper script: .../cache/openai-parameter-golf/data/cached_challenge_fineweb.py`.
+
+## 2026-03-22 22:44 CDT - Mac MLX Proxy Lane Using uv
+
+- Added a Mac-native proxy workflow in `research-experiments/MAC_PROXY.md` plus Apple Silicon helper scripts under `research-experiments/scripts/` for `uv` environment setup, official data prep, smoke runs, frontier runs, and queued frontier manifests.
+- Copied the public `thwu1` MLX trainer into `research-experiments/mac_proxy_candidates/2026-03-23_thwu1_mlx_proxy/train_gpt_mlx.py` as the tracked local proxy starting point, with smoke/frontier env presets beside it.
+- Created `.venv-mac` with `uv`, installed MLX and data dependencies, and downloaded the official `sp1024` tokenizer plus `8` local train shards for a stronger Mac proxy signal.
+- Started `thwu1_mlx_mac_smoke_20260322_223016` on the official data. It is training cleanly on Apple Silicon with MLX at roughly `15k-16k tok/s`; the full validation pass is still running as of this entry.
+- Updated the persistent agent prompt and goal so when CUDA is unavailable on this Mac, the loop can use the `uv`-based MLX proxy lane honestly instead of stalling or pretending record-track progress.
+- Most likely next step: let the smoke finish, inspect the quantized roundtrip `val_bpb`, then queue an overnight frontier proxy run through `scripts/stage_mac_proxy_frontier_manifest.sh`.
