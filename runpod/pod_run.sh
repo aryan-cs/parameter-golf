@@ -25,7 +25,13 @@ RUN_ID="${RUN_ID:-${RUN_NAME_PREFIX:-$CANDIDATE}_s${SEED}_${STAMP}}"
 RUN_DIR="$ROOT/runs/$CANDIDATE/seed${SEED}/$STAMP"
 mkdir -p "$RUN_DIR"
 
-git -C "$ROOT" rev-parse HEAD > "$RUN_DIR/commit.txt"
+if git -C "$ROOT" rev-parse HEAD > "$RUN_DIR/commit.txt" 2>/dev/null; then
+  :
+elif [[ -f "$ROOT/.sync_commit" ]]; then
+  cp "$ROOT/.sync_commit" "$RUN_DIR/commit.txt"
+else
+  printf 'unknown\n' > "$RUN_DIR/commit.txt"
+fi
 cp "$CONFIG_PATH" "$RUN_DIR/config.env"
 cp "$ROOT/$TRAIN_SCRIPT" "$RUN_DIR/train_gpt.snapshot.py"
 env | LC_ALL=C sort > "$RUN_DIR/env.txt"

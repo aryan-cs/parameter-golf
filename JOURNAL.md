@@ -68,3 +68,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The sync path is now aligned with the pod's container permissions and should stop failing on Mac uid/gid metadata.
 - Decision: Retry sync from this machine, then proceed directly to remote bootstrap from the pod.
 - Next step: Re-run `bash runpod/local_sync_to_pod.sh root@216.243.220.229 /workspace/golf 16214`, then start `TRAIN_SHARDS=10 bash runpod/pod_bootstrap.sh` over SSH.
+
+- Timestamp: 2026-03-23 17:03 America/Chicago
+- Commit: uncommitted
+- Lane: runpod bring-up
+- Objective: Recover from the first remote launch failure after bootstrap completed.
+- Command or config: Inspected `/workspace/golf/runs/.../commit.txt` and traced the failure to `pod_run.sh` assuming the synced pod copy still had a `.git` directory.
+- Result: Root cause identified: the sync intentionally excluded `.git`, but the run launcher still required `git rev-parse HEAD`.
+- Decision: Stamp the remote sync with a `.sync_commit` file and teach `pod_run.sh` to use it when `.git` is absent.
+- Next step: Push the launcher fix, re-sync the repo to `/workspace/golf`, and relaunch `bash runpod/pod_run.sh non_ttt_m22_base 1337`.
