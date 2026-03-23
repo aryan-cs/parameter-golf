@@ -31,6 +31,14 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def local_now_human() -> str:
+    return datetime.now().astimezone().strftime("%H:%M:%S")
+
+
+def log_event(message: str) -> None:
+    print(f"[{local_now_human()}] {message}", flush=True)
+
+
 def load_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -38,6 +46,15 @@ def load_json(path: Path) -> Any:
 def dump_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def extract_run_id(command: str) -> str | None:
+    match = re.search(r"--run-id\s+([^\s]+)", command)
+    return match.group(1) if match else None
+
+
+def shorten_command(command: str, max_len: int = 120) -> str:
+    return command if len(command) <= max_len else command[: max_len - 3] + "..."
 
 
 def append_markdown(path: Path, content: str) -> None:
@@ -355,7 +372,7 @@ def maybe_checkpoint_repo(cfg: Config, reason: str) -> bool:
         return False
     repo_root = git_repo_root(cfg.workdir)
     if repo_root is None:
-        print("[loop] git checkpoint skipped: no git repo root found")
+        log_event("Git checkpoint skipped because no git repo root was found.")
         return False
 
     status_lines = git_status_porcelain(repo_root)
@@ -373,7 +390,7 @@ def maybe_checkpoint_repo(cfg: Config, reason: str) -> bool:
     if commit.returncode != 0:
         if "nothing to commit" in (commit.stdout + commit.stderr).lower():
             return False
-        print("[loop] git commit failed")
+        log_event("Git commit failed during automatic checkpoint.")
         if commit.stdout.strip():
             print(commit.stdout.strip())
         if commit.stderr.strip():
@@ -387,14 +404,14 @@ def maybe_checkpoint_repo(cfg: Config, reason: str) -> bool:
         capture_output=True,
     )
     if push.returncode != 0:
-        print("[loop] git push failed")
+        log_event("Git push failed during automatic checkpoint.")
         if push.stdout.strip():
             print(push.stdout.strip())
         if push.stderr.strip():
             print(push.stderr.strip())
         return False
 
-    print(f"[loop] git checkpoint pushed: {commit_message}")
+    log_event(f"Git checkpoint pushed: {commit_message}")
     return True
 
 
@@ -529,6 +546,28 @@ def external_proxy_processes(cfg: Config) -> list[tuple[int, str]]:
         if any(pattern in command for pattern in cfg.proxy_external_process_patterns):
             matches.append((pid, command))
     return matches
+
+
+def describe_external_proxy_processes(cfg: Config) -> str | None:
+    matches = external_proxy_processes(cfg)
+    if not matches:
+        return None
+    run_ids = sorted({run_id for _, command in matches if (run_id := extract_run_id(command))})
+    if run_ids:
+        return ", ".join(run_ids)
+    pids = ", ".join(str(pid) for pid, _ in matches[:3])
+    return f"pid(s) {pids}"
+
+
+def running_job_rows(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    return conn.execute(
+        """
+        SELECT job_id, job_kind, description, status, command, log_path, started_at
+        FROM jobs
+        WHERE status = 'running'
+        ORDER BY started_at ASC
+        """
+    ).fetchall()
 
 
 def load_proxy_base_env(cfg: Config) -> dict[str, str]:
@@ -688,6 +727,13 @@ def seed_next_proxy_manifest(cfg: Config, conn: sqlite3.Connection) -> Path | No
                 f"Iterations: {env.get('ITERATIONS')}",
             ],
         )
+        log_event(
+            "Staged next proxy variant "
+            f"{job_id} ({variant_name}): "
+            f"layers={env.get('NUM_LAYERS')} mlp_mult={env.get('MLP_MULT')} "
+            f"train_batch_tokens={env.get('TRAIN_BATCH_TOKENS')} "
+            f"matrix_lr={env.get('MATRIX_LR')} iterations={env.get('ITERATIONS')}"
+        )
         return target
     return None
 
@@ -749,7 +795,7 @@ def refresh_leaderboard_if_needed(cfg: Config, conn: sqlite3.Connection) -> dict
         md = fetch_leaderboard_markdown()
         parsed = parse_leaderboard(md)
     except Exception as exc:
-        print(f"[loop] leaderboard refresh failed: {exc}", file=sys.stderr)
+        print(f"[{local_now_human()}] Leaderboard refresh failed: {exc}", file=sys.stderr)
         row = conn.execute(
             "SELECT * FROM leaderboard_snapshots ORDER BY fetched_at DESC LIMIT 1"
         ).fetchone()
@@ -774,6 +820,10 @@ def refresh_leaderboard_if_needed(cfg: Config, conn: sqlite3.Connection) -> dict
     )
     conn.commit()
     set_state(conn, "last_leaderboard_fetch", str(now))
+    log_event(
+        "Leaderboard refreshed: "
+        f"#1 {parsed['top1_bpb']:.4f}, #2 {parsed['top2_bpb']:.4f}, #3 {parsed['top3_bpb']:.4f}"
+    )
     row = conn.execute(
         "SELECT * FROM leaderboard_snapshots ORDER BY fetched_at DESC LIMIT 1"
     ).fetchone()
@@ -1008,7 +1058,11 @@ def launch_pending_jobs(cfg: Config, conn: sqlite3.Connection) -> int:
             ],
         )
         launched += 1
-        print(f"[loop] launched job {job_id} pid={proc.pid}")
+        log_event(
+            f"Launched job {job_id} [{job_kind}] "
+            f"pid={proc.pid} log={log_path} "
+            f"cmd={shorten_command(command)}"
+        )
     return launched
 
 
@@ -1094,7 +1148,15 @@ def finalize_job(
             f"Log: {log_path}",
         ],
     )
-    print(f"[loop] finalized job {row['job_id']} status={final_status} val_bpb={metrics['val_bpb']}")
+    metric_summary = []
+    if metrics["val_bpb"] is not None:
+        metric_summary.append(f"val_bpb={metrics['val_bpb']:.4f}")
+    if metrics["artifact_bytes"] is not None:
+        metric_summary.append(f"artifact={metrics['artifact_bytes']}")
+    if metrics["train_time_ms"] is not None:
+        metric_summary.append(f"train_time_ms={metrics['train_time_ms']}")
+    metric_text = " ".join(metric_summary) if metric_summary else "no parsed metrics yet"
+    log_event(f"Finished job {row['job_id']} with status={final_status}; {metric_text}")
 
 
 def poll_running_jobs(cfg: Config, conn: sqlite3.Connection) -> int:
@@ -1212,6 +1274,9 @@ def summarize_jobs(cfg: Config, conn: sqlite3.Connection) -> str:
                 f"status={row['status']} val_bpb={score} "
                 f"artifact={row['artifact_bytes']} train_time_ms={row['train_time_ms']}"
             )
+    external_proxy = describe_external_proxy_processes(cfg)
+    if external_proxy is not None:
+        lines.append(f"Active external proxy runs: {external_proxy}")
     return "\n".join(lines)
 
 
@@ -1405,7 +1470,10 @@ def invoke_codex(cfg: Config, conn: sqlite3.Connection, leaderboard_summary: str
             f"Log: {log_path}",
         ],
     )
-    print(f"[loop] codex turn {turn_id} exit={return_code} decision={output.get('decision')}")
+    log_event(
+        f"Codex turn {turn_id} finished with exit={return_code} "
+        f"decision={output.get('decision')} summary={output.get('summary', '')}"
+    )
     return output
 
 
@@ -1427,6 +1495,7 @@ def write_heartbeat(cfg: Config, conn: sqlite3.Connection, note: str) -> None:
 def controller_cycle(cfg: Config, conn: sqlite3.Connection) -> int:
     if clear_stale_active_codex_turn(conn):
         write_heartbeat(cfg, conn, "cleared-stale-codex-turn")
+        log_event("Cleared stale Codex turn metadata from a previous interrupted cycle.")
     leaderboard = refresh_leaderboard_if_needed(cfg, conn)
     leaderboard_summary = summarize_leaderboard(leaderboard, cfg)
     ingest_manifest_inboxes(cfg, conn)
@@ -1434,11 +1503,23 @@ def controller_cycle(cfg: Config, conn: sqlite3.Connection) -> int:
     write_heartbeat(cfg, conn, "post-poll")
 
     if running_job_count(conn) > 0:
+        active_jobs = running_job_rows(conn)
+        if active_jobs:
+            first = active_jobs[0]
+            log_event(
+                f"Waiting on managed job {first['job_id']} [{first['job_kind']}] "
+                f"log={first['log_path']}"
+            )
         maybe_checkpoint_repo(cfg, "job-launch-or-poll")
         return min(cfg.default_sleep_seconds, 30)
 
     external_proxy = external_proxy_processes(cfg)
     if cfg.proxy_autoplan_enabled and external_proxy:
+        log_event(
+            "Detected active external proxy run(s): "
+            f"{describe_external_proxy_processes(cfg)}. "
+            "Waiting before staging another local run."
+        )
         write_heartbeat(cfg, conn, "external-proxy-active")
         return min(cfg.default_sleep_seconds, 30)
 
@@ -1467,14 +1548,19 @@ def controller_cycle(cfg: Config, conn: sqlite3.Connection) -> int:
             and best_proxy is not None
             and float(best_proxy["val_bpb"]) <= cfg.proxy_target_bpb
         ):
+            log_event(
+                f"Proxy target reached: best proxy score {best_proxy['val_bpb']:.4f} <= {cfg.proxy_target_bpb:.4f}. "
+                "Controller will keep polling, but the local proxy target has been met."
+            )
             maybe_checkpoint_repo(cfg, "proxy-target-hit")
             return min(cfg.default_sleep_seconds, 60)
+        log_event("Proxy autoplan is idle: no new proxy variant was staged this cycle.")
         write_heartbeat(cfg, conn, "proxy-autoplan-idle")
         return min(cfg.default_sleep_seconds, 30)
 
     best = best_local_score(conn, "experiment")
     if cfg.stop_when_best_bpb_le is not None and best is not None and float(best["val_bpb"]) <= cfg.stop_when_best_bpb_le:
-        print(f"[loop] stop threshold reached: {best['val_bpb']:.4f} <= {cfg.stop_when_best_bpb_le:.4f}")
+        log_event(f"Stop threshold reached: {best['val_bpb']:.4f} <= {cfg.stop_when_best_bpb_le:.4f}")
         maybe_checkpoint_repo(cfg, "stop-threshold")
         return -1
 
@@ -1532,25 +1618,30 @@ def main() -> None:
 
     if args.command == "once":
         sleep_seconds = controller_cycle(cfg, conn)
-        print(f"[loop] cycle complete; suggested sleep={sleep_seconds}")
+        log_event(f"Cycle complete. Suggested sleep before the next check: {sleep_seconds}s.")
         return
 
     if args.command == "start":
         pid_path = cfg.runtime_dir / "controller.pid"
         pid_path.write_text(str(os.getpid()) + "\n", encoding="utf-8")
-        print(f"[loop] starting controller in {cfg.workdir}")
+        log_event(
+            f"Starting controller in {cfg.workdir}. "
+            f"Proxy autoplan={'on' if cfg.proxy_autoplan_enabled else 'off'}, "
+            f"default sleep={cfg.default_sleep_seconds}s."
+        )
         while True:
             try:
                 sleep_seconds = controller_cycle(cfg, conn)
                 if sleep_seconds < 0:
-                    print("[loop] controller exiting due to stop condition")
+                    log_event("Controller exiting because a configured stop condition was reached.")
                     return
             except KeyboardInterrupt:
-                print("[loop] interrupted")
+                log_event("Controller interrupted by the terminal.")
                 return
             except Exception as exc:
-                print(f"[loop] controller error: {exc}", file=sys.stderr)
+                print(f"[{local_now_human()}] Controller error: {exc}", file=sys.stderr)
                 sleep_seconds = max(cfg.default_sleep_seconds, 60)
+            log_event(f"Sleeping for {sleep_seconds}s before the next controller cycle.")
             time.sleep(sleep_seconds)
 
 
