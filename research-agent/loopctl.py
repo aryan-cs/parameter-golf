@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+import hashlib
 
 
 ROOT = Path(__file__).resolve().parent
@@ -82,6 +83,14 @@ class Config:
     auto_git_push: bool
     git_remote_name: str
     auto_git_commit_prefix: str
+    proxy_autoplan_enabled: bool
+    proxy_candidate_dir: Path | None
+    proxy_python: Path | None
+    proxy_data_path: Path | None
+    proxy_tokenizer_path: Path | None
+    proxy_base_env_file: Path | None
+    proxy_target_bpb: float | None
+    proxy_external_process_patterns: list[str]
 
 
 def load_config(path: Path) -> Config:
@@ -100,6 +109,8 @@ def load_config(path: Path) -> Config:
 
     stop_bpb = raw.get("stop_when_best_bpb_le")
     stop_bpb = float(stop_bpb) if stop_bpb is not None else None
+    proxy_target_bpb = raw.get("proxy_target_bpb")
+    proxy_target_bpb = float(proxy_target_bpb) if proxy_target_bpb is not None else None
     return Config(
         workdir=resolve(raw.get("workdir", str(ROOT))),
         runtime_dir=resolve(raw.get("runtime_dir", "loop/runtime")),
@@ -123,6 +134,14 @@ def load_config(path: Path) -> Config:
         auto_git_push=bool(raw.get("auto_git_push", True)),
         git_remote_name=str(raw.get("git_remote_name", "origin")),
         auto_git_commit_prefix=str(raw.get("auto_git_commit_prefix", "loop checkpoint")),
+        proxy_autoplan_enabled=bool(raw.get("proxy_autoplan_enabled", False)),
+        proxy_candidate_dir=resolve_optional(raw.get("proxy_candidate_dir")),
+        proxy_python=resolve_optional(raw.get("proxy_python")),
+        proxy_data_path=resolve_optional(raw.get("proxy_data_path")),
+        proxy_tokenizer_path=resolve_optional(raw.get("proxy_tokenizer_path")),
+        proxy_base_env_file=resolve_optional(raw.get("proxy_base_env_file")),
+        proxy_target_bpb=proxy_target_bpb,
+        proxy_external_process_patterns=[str(x) for x in raw.get("proxy_external_process_patterns", [])],
     )
 
 
@@ -475,6 +494,202 @@ def ingest_manifest_inboxes(cfg: Config, conn: sqlite3.Connection) -> int:
                 ],
             )
     return imported
+
+
+def list_process_commands() -> list[tuple[int, str]]:
+    result = subprocess.run(
+        ["ps", "-axo", "pid=,command="],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return []
+    rows: list[tuple[int, str]] = []
+    for line in result.stdout.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            pid_text, command = stripped.split(None, 1)
+            rows.append((int(pid_text), command))
+        except ValueError:
+            continue
+    return rows
+
+
+def external_proxy_processes(cfg: Config) -> list[tuple[int, str]]:
+    if not cfg.proxy_external_process_patterns:
+        return []
+    current_pid = os.getpid()
+    matches: list[tuple[int, str]] = []
+    for pid, command in list_process_commands():
+        if pid == current_pid:
+            continue
+        if any(pattern in command for pattern in cfg.proxy_external_process_patterns):
+            matches.append((pid, command))
+    return matches
+
+
+def load_proxy_base_env(cfg: Config) -> dict[str, str]:
+    if cfg.proxy_base_env_file is None or not cfg.proxy_base_env_file.exists():
+        return {}
+    payload = load_json(cfg.proxy_base_env_file)
+    if not isinstance(payload, dict):
+        return {}
+    return {str(k): str(v) for k, v in payload.items()}
+
+
+def proxy_variant_env(index: int, base_env: dict[str, str]) -> tuple[str, dict[str, str]]:
+    layers = [10, 9, 11]
+    mlp_mults = [3, 2]
+    batch_tokens = [16_384, 20_480, 12_288, 24_576]
+    lr_values = [0.028, 0.024, 0.030, 0.026, 0.032, 0.022]
+    momentum_values = [0.99, 0.985, 0.98]
+    iteration_values = [1_400, 1_600, 1_200, 1_800]
+    warmup_values = [5, 3]
+    val_every_values = [350, 250, 450]
+
+    i = index
+    layer = layers[i % len(layers)]
+    i //= len(layers)
+    mlp_mult = mlp_mults[i % len(mlp_mults)]
+    i //= len(mlp_mults)
+    train_batch = batch_tokens[i % len(batch_tokens)]
+    i //= len(batch_tokens)
+    lr = lr_values[i % len(lr_values)]
+    i //= len(lr_values)
+    momentum = momentum_values[i % len(momentum_values)]
+    i //= len(momentum_values)
+    iterations = iteration_values[i % len(iteration_values)]
+    i //= len(iteration_values)
+    warmup = warmup_values[i % len(warmup_values)]
+    i //= len(warmup_values)
+    val_every = val_every_values[i % len(val_every_values)]
+
+    tied_lr = min(lr + 0.012, 0.05)
+    wallclock_seconds = 6_600 if layer <= 10 else 7_200
+    env = dict(base_env)
+    env.update(
+        {
+            "GRAD_ACCUM_STEPS": "4",
+            "NUM_LAYERS": str(layer),
+            "MLP_MULT": str(mlp_mult),
+            "TRAIN_BATCH_TOKENS": str(train_batch),
+            "MATRIX_LR": f"{lr:.3f}",
+            "SCALAR_LR": f"{lr:.3f}",
+            "TIED_EMBED_LR": f"{tied_lr:.3f}",
+            "MUON_MOMENTUM": f"{momentum:.3f}",
+            "ITERATIONS": str(iterations),
+            "WARMUP_STEPS": str(warmup),
+            "VAL_LOSS_EVERY": str(val_every),
+            "VAL_BATCH_SIZE": "1048576",
+            "MAX_WALLCLOCK_SECONDS": str(wallclock_seconds),
+        }
+    )
+    name = f"{layer}l_mlp{mlp_mult}_b{train_batch//1024}k_lr{int(round(lr * 1000)):02d}_i{iterations}"
+    return name, env
+
+
+def proxy_signature(env: dict[str, str]) -> str:
+    payload = json.dumps(env, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha1(payload).hexdigest()[:12]
+
+
+def known_proxy_signatures(cfg: Config) -> set[str]:
+    paths: list[Path] = []
+    for inbox in cfg.manifest_inbox_dirs:
+        paths.extend(sorted(inbox.glob("*.json")))
+    for status in ("pending", "running", "done", "failed", "blocked"):
+        paths.extend(sorted((cfg.runtime_dir / "queue" / status).glob("*.json")))
+    signatures: set[str] = set()
+    for path in paths:
+        try:
+            payload = load_json(path)
+        except Exception:
+            continue
+        if isinstance(payload, dict):
+            sig = payload.get("proxy_signature")
+            if isinstance(sig, str) and sig:
+                signatures.add(sig)
+    return signatures
+
+
+def seed_next_proxy_manifest(cfg: Config, conn: sqlite3.Connection) -> Path | None:
+    if not cfg.proxy_autoplan_enabled:
+        return None
+    if cfg.proxy_candidate_dir is None or cfg.proxy_python is None:
+        return None
+    if cfg.proxy_data_path is None or cfg.proxy_tokenizer_path is None:
+        return None
+
+    base_env = load_proxy_base_env(cfg)
+    signatures = known_proxy_signatures(cfg)
+    for index in range(1, 512):
+        variant_name, env = proxy_variant_env(index, base_env)
+        sig = proxy_signature(env)
+        if sig in signatures:
+            continue
+
+        job_id = f"proxy_auto_{index:04d}_{variant_name}_{sig}"
+        stats_path = f"runs/{job_id}/stats.json"
+        command_parts = [
+            "uv",
+            "run",
+            "--python",
+            shlex.quote(str(cfg.proxy_python)),
+            "python",
+            "scripts/run_mlx_proxy_experiment.py",
+            "--experiment-dir",
+            shlex.quote(str(cfg.proxy_candidate_dir.relative_to(cfg.workdir))),
+            "--run-id",
+            shlex.quote(job_id),
+            "--seed",
+            "42",
+            "--stats-path",
+            shlex.quote(stats_path),
+            "--data-path",
+            shlex.quote(str(cfg.proxy_data_path)),
+            "--tokenizer-path",
+            shlex.quote(str(cfg.proxy_tokenizer_path)),
+        ]
+        for key, value in sorted(env.items()):
+            command_parts.extend(["--set-env", shlex.quote(f"{key}={value}")])
+        manifest = {
+            "id": job_id,
+            "job_kind": "proxy",
+            "description": f"Auto proxy search variant: {variant_name}",
+            "cwd": ".",
+            "stats_path": stats_path,
+            "required_paths": [
+                str(cfg.proxy_data_path.relative_to(cfg.workdir)),
+                str(cfg.proxy_tokenizer_path.relative_to(cfg.workdir)),
+                str(cfg.proxy_python.relative_to(cfg.workdir)),
+            ],
+            "command": " ".join(command_parts),
+            "timeout_seconds": 28800,
+            "proxy_signature": sig,
+            "proxy_variant_name": variant_name,
+            "proxy_env_overrides": env,
+        }
+        target = cfg.manifest_inbox_dirs[0] / f"{job_id}.json"
+        dump_json(target, manifest)
+        append_journal_entry(
+            cfg,
+            f"Auto Proxy Manifest Staged: {job_id}",
+            [
+                f"Variant: {variant_name}",
+                f"Signature: {sig}",
+                f"Manifest: {target}",
+                f"Train batch tokens: {env.get('TRAIN_BATCH_TOKENS')}",
+                f"Layers: {env.get('NUM_LAYERS')}",
+                f"MLP mult: {env.get('MLP_MULT')}",
+                f"Matrix LR: {env.get('MATRIX_LR')}",
+                f"Iterations: {env.get('ITERATIONS')}",
+            ],
+        )
+        return target
+    return None
 
 
 def fetch_leaderboard_markdown() -> str:
@@ -951,6 +1166,9 @@ def summarize_jobs(cfg: Config, conn: sqlite3.Connection) -> str:
     experiment_done = conn.execute(
         "SELECT COUNT(*) AS n FROM jobs WHERE status = 'done' AND COALESCE(job_kind, 'task') = 'experiment'"
     ).fetchone()
+    proxy_done = conn.execute(
+        "SELECT COUNT(*) AS n FROM jobs WHERE status = 'done' AND COALESCE(job_kind, 'task') = 'proxy'"
+    ).fetchone()
     recent = conn.execute(
         """
         SELECT job_id, job_kind, status, val_bpb, artifact_bytes, train_time_ms, finished_at
@@ -964,6 +1182,7 @@ def summarize_jobs(cfg: Config, conn: sqlite3.Connection) -> str:
         f"Completed jobs: {counts['done']}",
         f"Failed jobs: {counts['failed']}",
         f"Completed real experiments: {int(experiment_done['n'])}",
+        f"Completed proxy experiments: {int(proxy_done['n'])}",
     ]
     pending_files = sorted((cfg.runtime_dir / "queue" / "pending").glob("*.json"))
     lines.append(f"Pending manifest files: {len(pending_files)}")
@@ -975,6 +1194,14 @@ def summarize_jobs(cfg: Config, conn: sqlite3.Connection) -> str:
         lines.append(
             f"Best real experiment score: {best['val_bpb']:.4f} "
             f"(job={best['job_id']} artifact={best['artifact_bytes']} train_time_ms={best['train_time_ms']})"
+        )
+    best_proxy = best_local_score(conn, "proxy")
+    if best_proxy is None:
+        lines.append("Best proxy score: none yet")
+    else:
+        lines.append(
+            f"Best proxy score: {best_proxy['val_bpb']:.4f} "
+            f"(job={best_proxy['job_id']} artifact={best_proxy['artifact_bytes']} train_time_ms={best_proxy['train_time_ms']})"
         )
     if recent:
         lines.append("Recent jobs:")
@@ -1211,11 +1438,35 @@ def controller_cycle(cfg: Config, conn: sqlite3.Connection) -> int:
         maybe_checkpoint_repo(cfg, "job-launch-or-poll")
         return min(cfg.default_sleep_seconds, 30)
 
+    external_proxy = external_proxy_processes(cfg)
+    if cfg.proxy_autoplan_enabled and external_proxy:
+        write_heartbeat(cfg, conn, "external-proxy-active")
+        return min(cfg.default_sleep_seconds, 30)
+
     if len(list((cfg.runtime_dir / "queue" / "pending").glob("*.json"))) > 0:
         launch_pending_jobs(cfg, conn)
         if running_job_count(conn) > 0:
             maybe_checkpoint_repo(cfg, "pending-job-launch")
             return min(cfg.default_sleep_seconds, 30)
+
+    if cfg.proxy_autoplan_enabled:
+        staged = seed_next_proxy_manifest(cfg, conn)
+        if staged is not None:
+            ingest_manifest_inboxes(cfg, conn)
+            launch_pending_jobs(cfg, conn)
+            write_heartbeat(cfg, conn, "proxy-manifest-staged")
+            maybe_checkpoint_repo(cfg, "proxy-manifest-staged")
+            return min(cfg.default_sleep_seconds, 15)
+        best_proxy = best_local_score(conn, "proxy")
+        if (
+            cfg.proxy_target_bpb is not None
+            and best_proxy is not None
+            and float(best_proxy["val_bpb"]) <= cfg.proxy_target_bpb
+        ):
+            maybe_checkpoint_repo(cfg, "proxy-target-hit")
+            return min(cfg.default_sleep_seconds, 60)
+        write_heartbeat(cfg, conn, "proxy-autoplan-idle")
+        return min(cfg.default_sleep_seconds, 30)
 
     best = best_local_score(conn, "experiment")
     if cfg.stop_when_best_bpb_le is not None and best is not None and float(best["val_bpb"]) <= cfg.stop_when_best_bpb_le:

@@ -41,7 +41,7 @@ cat > "$PLIST" <<EOF
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>/opt/miniconda3/bin:/Users/aryan/.nvm/versions/node/v24.13.0/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <string>/Users/aryan/.local/bin:/opt/homebrew/bin:/opt/miniconda3/bin:/Users/aryan/.nvm/versions/node/v24.13.0/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
   </dict>
 </dict>
 </plist>

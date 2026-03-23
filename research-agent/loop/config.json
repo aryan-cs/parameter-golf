@@ -26,6 +26,16 @@
   "record_only": true,
   "desired_rank": 3,
   "stop_when_best_bpb_le": null,
+  "proxy_autoplan_enabled": true,
+  "proxy_candidate_dir": "../research-experiments/mac_proxy_candidates/2026-03-23_thwu1_mlx_proxy",
+  "proxy_python": "../.venv-mac/bin/python",
+  "proxy_data_path": "../research-experiments/cache/openai-parameter-golf/data/datasets/fineweb10B_sp1024",
+  "proxy_tokenizer_path": "../research-experiments/cache/openai-parameter-golf/data/tokenizers/fineweb_1024_bpe.model",
+  "proxy_base_env_file": "../research-experiments/mac_proxy_candidates/2026-03-23_thwu1_mlx_proxy/mac_frontier_env.json",
+  "proxy_target_bpb": 1.5,
+  "proxy_external_process_patterns": [
+    "scripts/run_mlx_proxy_experiment.py --experiment-dir mac_proxy_candidates/2026-03-23_thwu1_mlx_proxy"
+  ],
   "auto_git_push": true,
   "git_remote_name": "origin",
   "auto_git_commit_prefix": "research-agent checkpoint"

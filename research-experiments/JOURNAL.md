@@ -242,3 +242,19 @@ This is the append-only project journal for overnight Codex work on the `openai/
 - Verified the repaired proxy lane with `uv run ... scripts/run_mlx_proxy_experiment.py --preflight-only`; `runs/thwu1_mlx_mac_frontier_preflight_20260323/stats.json` reports `status=ready` against the official tokenizer and cached FineWeb shards.
 - Parked the blocked CUDA-only manifest at `manifests/parked/rank1_mixed_qat_warmdown_ramp_seed42_20260323.json` and staged exactly one runnable Mac proxy manifest at `manifests/pending/thwu1_mlx_mac_frontier_20260323_0001.json` with `job_kind=proxy`.
 - Most likely next step: let the controller ingest `thwu1_mlx_mac_frontier_20260323_0001`, inspect the first successful frontier proxy result, then port the mixed-QAT/export-aware record candidate changes into the MLX proxy lane before re-staging the CUDA experiment on a real multi-GPU runtime.
+
+## 2026-03-23T04:07:43.069171+00:00 - Manifest Ingested: thwu1_mlx_mac_frontier_20260323_0001
+
+- From: /Users/aryan/Desktop/golf/research-experiments/manifests/pending/thwu1_mlx_mac_frontier_20260323_0001.json
+- To: /Users/aryan/Desktop/golf/research-agent/loop/runtime/queue/pending/thwu1_mlx_mac_frontier_20260323_0001.json
+
+## 2026-03-23T04:07:43.072409+00:00 - Controller Job Launched: thwu1_mlx_mac_frontier_20260323_0001
+
+- Description: Mac MLX frontier proxy run for the thwu1-derived candidate
+- Job kind: proxy
+- Command: bash scripts/run_mac_proxy_frontier_when_idle.sh
+- CWD: /Users/aryan/Desktop/golf/research-experiments
+- Manifest: /Users/aryan/Desktop/golf/research-agent/loop/runtime/queue/running/thwu1_mlx_mac_frontier_20260323_0001.json
+- Log: /Users/aryan/Desktop/golf/research-agent/loop/runtime/jobs/thwu1_mlx_mac_frontier_20260323_0001/run.log
+- Timeout seconds: 32400
+- PID: 57211
