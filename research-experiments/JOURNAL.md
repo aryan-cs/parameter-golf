@@ -192,6 +192,16 @@ This is the append-only project journal for overnight Codex work on the `openai/
 - Verified the new frontier process is live under `uv` from `research-experiments/scripts/run_mlx_proxy_experiment.py` with the launchd run id above.
 - Most likely next step: let this frontier run reach its first validation checkpoint and final quantized roundtrip metric, then compare whether the local exact `val_bpb` is moving into the `1.5x` range.
 
+## 2026-03-22 23:09 CDT - Fully Autonomous Mac Proxy Controller
+
+- Upgraded `research-agent/loopctl.py` so when `proxy_autoplan_enabled` is on, the controller no longer depends on Codex to choose the next local Mac run.
+- The controller now has a built-in proxy planner: it detects active MLX proxy processes, waits while they are running, and once the machine is idle it stages the next `uv`-backed proxy manifest from a deterministic variant schedule automatically.
+- Added proxy-specific config to `research-agent/loop/config.json`, including the tracked candidate path, `.venv-mac` Python path, official data/tokenizer paths, target `1.5` bpb threshold, and the process signature used to detect active local runs.
+- Updated `research-agent/install_loop_launchd.sh` so the persistent controller service has a PATH that includes `uv`.
+- Reinstalled the persistent `com.parameter-golf.codex-loop` LaunchAgent and verified it is genuinely running with controller PID `57433`.
+- Current live state: the external launchd-started frontier run `thwu1_mlx_mac_frontier_20260322_225214_launchd` is active, and the controller is also active with a waiting proxy job `thwu1_mlx_mac_frontier_20260323_0001` queued behind it. After the current run finishes, the controller should keep progressing on its own.
+- Most likely next step: let the active frontier finish, let the queued proxy run start, and inspect the first completed proxy `val_bpb` for whether we are closing in on `1.5`.
+
 ## 2026-03-23T03:49:06.412148+00:00 - Manifest Waiting For Runtime: rank1_mixed_qat_warmdown_ramp_seed42_20260323
 
 - Path: /Users/aryan/Desktop/golf/research-experiments/manifests/pending/rank1_mixed_qat_warmdown_ramp_seed42_20260323.json
