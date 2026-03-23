@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "summary": {
+      "type": "string"
+    },
+    "decision": {
+      "type": "string",
+      "enum": [
+        "continue",
+        "sleep",
+        "halt_target_reached",
+        "halt_manual",
+        "blocked"
+      ]
+    },
+    "sleep_seconds": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "best_score_bpb": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "best_score_source": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "job_manifest_created": {
+      "type": "boolean"
+    },
+    "job_manifest_path": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "repo_changed": {
+      "type": "boolean"
+    },
+    "needs_human_attention": {
+      "type": "boolean"
+    },
+    "human_message": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "summary",
+    "decision",
+    "sleep_seconds",
+    "best_score_bpb",
+    "best_score_source",
+    "job_manifest_created",
+    "job_manifest_path",
+    "repo_changed",
+    "needs_human_attention",
+    "human_message"
+  ]
+}
+

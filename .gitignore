@@ -1,9 +1,7 @@
 __pycache__/
 *.pyc
-.DS_Store
-.venv/
-data/tokenizers/
-data/tokens/
-runs/
-data/raw/
-logs/
+
+research-agent/loop/runtime/
+research-experiments/cache/
+research-experiments/workbench/
+research-experiments/runs/

@@ -1,0 +1,9 @@
+[project]
+name = "parameter-golf-loop"
+version = "0.1.0"
+description = "Persistent Codex supervisor loop for record-track Parameter Golf work."
+requires-python = ">=3.11"
+
+[tool.uv]
+package = false
+

@@ -1,0 +1,29 @@
+{
+  "workdir": "../research-experiments",
+  "runtime_dir": "loop/runtime",
+  "goal_file": "loop/goal.md",
+  "prompt_template_file": "loop/prompt_template.md",
+  "agent_output_schema_file": "loop/agent_output.schema.json",
+  "journal_file": "../research-experiments/JOURNAL.md",
+  "repo_context_file": "loop/repo_context.md",
+  "codex_model": "gpt-5.4",
+  "codex_args": [
+    "--full-auto",
+    "--ephemeral",
+    "--skip-git-repo-check",
+    "--color",
+    "never"
+  ],
+  "codex_timeout_seconds": 1800,
+  "default_sleep_seconds": 60,
+  "leaderboard_refresh_seconds": 1800,
+  "max_concurrent_jobs": 1,
+  "default_job_timeout_seconds": 28800,
+  "allow_agent_halt": false,
+  "record_only": true,
+  "desired_rank": 3,
+  "stop_when_best_bpb_le": null,
+  "auto_git_push": true,
+  "git_remote_name": "origin",
+  "auto_git_commit_prefix": "research-agent checkpoint"
+}

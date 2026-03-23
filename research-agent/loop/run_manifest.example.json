@@ -1,0 +1,7 @@
+{
+  "id": "example_snapshot_refresh",
+  "description": "Example research job in the research-experiments workspace",
+  "cwd": ".",
+  "command": "python3 scripts/bootstrap_official_top_records.py",
+  "timeout_seconds": 28800
+}
