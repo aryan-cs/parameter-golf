@@ -143,3 +143,11 @@ This is the append-only project journal for overnight Codex work on the `openai/
 - The older sandbox-blocked journal notes were historical from before the controller was updated to ingest staged manifests from `research-experiments/manifests/pending/`.
 - Updated `research-agent/loopctl.py` so the supervisor records the active in-flight Codex turn, includes it in heartbeat data, and surfaces it in `status` output instead of only showing the last completed turn.
 - Updated the loop launch scripts to use unbuffered Python so controller stdout reflects live progress more reliably during long autonomous turns.
+
+## 2026-03-22 22:07 CDT - Colab Terminal Readiness
+
+- Confirmed the Google Colab VS Code extension is installed locally as `google.colab-0.4.1`.
+- Added `.vscode/settings.json` to pre-enable the experimental `colab.serverMounting` and `colab.terminal` features for this workspace.
+- Added `research-experiments/scripts/colab_gpu_smoketest.sh` to verify that a shell is actually attached to the Colab runtime and to run a truthful 1-GPU preflight.
+- Added `research-experiments/scripts/run_colab_pilot.sh` so once the Colab terminal is open we can launch the single-GPU pilot directly.
+- Corrected the helper scripts to run from the `research-experiments/` root so their `stats.json` outputs land in `research-experiments/runs/` instead of a nested duplicate path.
