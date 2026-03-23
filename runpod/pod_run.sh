@@ -52,7 +52,12 @@ if [[ ! -x "$VENV_PYTHON" ]]; then
   exit 1
 fi
 
-CMD=("$VENV_PYTHON" -m torch.distributed.run --standalone --nproc_per_node="${NPROC_PER_NODE:-1}" "$ROOT/$TRAIN_SCRIPT")
+NPROC="${NPROC_PER_NODE:-1}"
+if [[ "$NPROC" == "1" ]]; then
+  CMD=("$VENV_PYTHON" "$ROOT/$TRAIN_SCRIPT")
+else
+  CMD=("$VENV_PYTHON" -m torch.distributed.run --standalone --nproc_per_node="$NPROC" "$ROOT/$TRAIN_SCRIPT")
+fi
 printf 'command=%q ' "${CMD[@]}" | tee "$RUN_DIR/launch.txt"
 printf '\n' | tee -a "$RUN_DIR/launch.txt"
 
