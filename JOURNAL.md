@@ -41,3 +41,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: A valid SSH public key already exists locally, so no new keypair is needed.
 - Decision: Use the existing `ssh-ed25519` public key in Runpod Settings, then re-enable `SSH terminal access` on the pod deployment form.
 - Next step: Paste the public key into Runpod, deploy the `1x H100 SXM` pod, then send back the SSH command from the pod page.
+
+- Timestamp: 2026-03-23 16:39 America/Chicago
+- Commit: uncommitted
+- Lane: runpod bring-up
+- Objective: Prepare the local sync workflow for the newly provisioned Runpod pod.
+- Command or config: Inspected the pod connection panel, selected `SSH over exposed TCP` for direct `rsync` compatibility, and updated the local sync/fetch helpers to accept an optional SSH port.
+- Result: The repo can now sync to Runpod using the pod's `root@IP` plus exposed port instead of only a plain `user@host` target.
+- Decision: Use the direct TCP SSH target from the pod page for the first bootstrap and run launch.
+- Next step: Give the user the exact `ssh`, sync, bootstrap, and launch commands for pod `216.243.220.229:16214`.
