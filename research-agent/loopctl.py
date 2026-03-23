@@ -120,16 +120,17 @@ class Config:
 def load_config(path: Path) -> Config:
     raw = load_json(path)
 
-    def resolve(p: str) -> Path:
+    def resolve(p: str, *, preserve_symlink: bool = False) -> Path:
         candidate = Path(p)
         if candidate.is_absolute():
-            return candidate
-        return (ROOT / candidate).resolve()
+            return candidate if preserve_symlink else candidate.resolve()
+        joined = ROOT / candidate
+        return joined.absolute() if preserve_symlink else joined.resolve()
 
-    def resolve_optional(p: Any) -> Path | None:
+    def resolve_optional(p: Any, *, preserve_symlink: bool = False) -> Path | None:
         if p is None:
             return None
-        return resolve(str(p))
+        return resolve(str(p), preserve_symlink=preserve_symlink)
 
     stop_bpb = raw.get("stop_when_best_bpb_le")
     stop_bpb = float(stop_bpb) if stop_bpb is not None else None
@@ -160,7 +161,7 @@ def load_config(path: Path) -> Config:
         auto_git_commit_prefix=str(raw.get("auto_git_commit_prefix", "loop checkpoint")),
         proxy_autoplan_enabled=bool(raw.get("proxy_autoplan_enabled", False)),
         proxy_candidate_dir=resolve_optional(raw.get("proxy_candidate_dir")),
-        proxy_python=resolve_optional(raw.get("proxy_python")),
+        proxy_python=resolve_optional(raw.get("proxy_python"), preserve_symlink=True),
         proxy_data_path=resolve_optional(raw.get("proxy_data_path")),
         proxy_tokenizer_path=resolve_optional(raw.get("proxy_tokenizer_path")),
         proxy_base_env_file=resolve_optional(raw.get("proxy_base_env_file")),
