@@ -268,3 +268,43 @@ This is the append-only project journal for overnight Codex work on the `openai/
 - Log: /Users/aryan/Desktop/golf/research-agent/loop/runtime/jobs/thwu1_mlx_mac_frontier_20260323_0001/run.log
 - Timeout seconds: 32400
 - PID: 57211
+
+## 2026-03-23T04:23:36.405693+00:00 - Controller Job Result: thwu1_mlx_mac_frontier_20260323_0001
+
+- Status: failed
+- Job kind: proxy
+- Exit code: 1
+- Description: Mac MLX frontier proxy run for the thwu1-derived candidate
+- Command: bash scripts/run_mac_proxy_frontier_when_idle.sh
+- val_bpb: n/a
+- artifact_bytes: n/a
+- train_time_ms: n/a
+- Manifest: /Users/aryan/Desktop/golf/research-agent/loop/runtime/queue/failed/thwu1_mlx_mac_frontier_20260323_0001.json
+- Log: /Users/aryan/Desktop/golf/research-agent/loop/runtime/jobs/thwu1_mlx_mac_frontier_20260323_0001/run.log
+
+## 2026-03-23T14:10:45.637098+00:00 - Auto Proxy Manifest Staged: proxy_auto_0001_9l_mlp3_b16k_lr28_i1400_fedd1a701df3
+
+- Variant: 9l_mlp3_b16k_lr28_i1400
+- Signature: fedd1a701df3
+- Manifest: /Users/aryan/Desktop/golf/research-experiments/manifests/pending/proxy_auto_0001_9l_mlp3_b16k_lr28_i1400_fedd1a701df3.json
+- Train batch tokens: 16384
+- Layers: 9
+- MLP mult: 3
+- Matrix LR: 0.028
+- Iterations: 1400
+
+## 2026-03-23T14:10:45.637760+00:00 - Manifest Ingested: proxy_auto_0001_9l_mlp3_b16k_lr28_i1400_fedd1a701df3
+
+- From: /Users/aryan/Desktop/golf/research-experiments/manifests/pending/proxy_auto_0001_9l_mlp3_b16k_lr28_i1400_fedd1a701df3.json
+- To: /Users/aryan/Desktop/golf/research-agent/loop/runtime/queue/pending/proxy_auto_0001_9l_mlp3_b16k_lr28_i1400_fedd1a701df3.json
+
+## 2026-03-23T14:10:45.640098+00:00 - Controller Job Launched: proxy_auto_0001_9l_mlp3_b16k_lr28_i1400_fedd1a701df3
+
+- Description: Auto proxy search variant: 9l_mlp3_b16k_lr28_i1400
+- Job kind: proxy
+- Command: uv run --python /Users/aryan/.local/share/uv/python/cpython-3.12.12-macos-aarch64-none/bin/python3.12 python scripts/run_mlx_proxy_experiment.py --experiment-dir mac_proxy_candidates/2026-03-23_thwu1_mlx_proxy --run-id proxy_auto_0001_9l_mlp3_b16k_lr28_i1400_fedd1a701df3 --seed 42 --stats-path runs/proxy_auto_0001_9l_mlp3_b16k_lr28_i1400_fedd1a701df3/stats.json --data-path /Users/aryan/Desktop/golf/research-experiments/cache/openai-parameter-golf/data/datasets/fineweb10B_sp1024 --tokenizer-path /Users/aryan/Desktop/golf/research-experiments/cache/openai-parameter-golf/data/tokenizers/fineweb_1024_bpe.model --set-env GRAD_ACCUM_STEPS=4 --set-env ITERATIONS=1400 --set-env MATRIX_LR=0.028 --set-env MAX_WALLCLOCK_SECONDS=6600 --set-env MLP_MULT=3 --set-env MLX_EAGER_EVAL=1 --set-env MLX_MAX_MICROBATCH_TOKENS=4096 --set-env MUON_MOMENTUM=0.990 --set-env MUON_MOMENTUM_WARMUP_START=0.92 --set-env MUON_MOMENTUM_WARMUP_STEPS=1000 --set-env NUM_LAYERS=9 --set-env SCALAR_LR=0.028 --set-env TIED_EMBED_LR=0.040 --set-env TRAIN_BATCH_TOKENS=16384 --set-env TRAIN_LOG_EVERY=50 --set-env VAL_BATCH_SIZE=1048576 --set-env VAL_LOSS_EVERY=350 --set-env WARMUP_STEPS=5
+- CWD: /Users/aryan/Desktop/golf/research-experiments
+- Manifest: /Users/aryan/Desktop/golf/research-agent/loop/runtime/queue/running/proxy_auto_0001_9l_mlp3_b16k_lr28_i1400_fedd1a701df3.json
+- Log: /Users/aryan/Desktop/golf/research-agent/loop/runtime/jobs/proxy_auto_0001_9l_mlp3_b16k_lr28_i1400_fedd1a701df3/run.log
+- Timeout seconds: 28800
+- PID: 8662

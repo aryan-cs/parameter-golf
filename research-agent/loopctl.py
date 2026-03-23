@@ -76,6 +76,13 @@ def append_journal_entry(cfg: "Config", title: str, lines: list[str]) -> None:
     append_markdown(cfg.journal_file, f"## {timestamp} - {title}\n\n{body}\n")
 
 
+def path_for_manifest(path: Path, base: Path) -> str:
+    try:
+        return str(path.relative_to(base))
+    except ValueError:
+        return os.path.relpath(path, base)
+
+
 @dataclass
 class Config:
     workdir: Path
@@ -701,9 +708,9 @@ def seed_next_proxy_manifest(cfg: Config, conn: sqlite3.Connection) -> Path | No
             "cwd": ".",
             "stats_path": stats_path,
             "required_paths": [
-                str(cfg.proxy_data_path.relative_to(cfg.workdir)),
-                str(cfg.proxy_tokenizer_path.relative_to(cfg.workdir)),
-                str(cfg.proxy_python.relative_to(cfg.workdir)),
+                path_for_manifest(cfg.proxy_data_path, cfg.workdir),
+                path_for_manifest(cfg.proxy_tokenizer_path, cfg.workdir),
+                path_for_manifest(cfg.proxy_python, cfg.workdir),
             ],
             "command": " ".join(command_parts),
             "timeout_seconds": 28800,
