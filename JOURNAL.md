@@ -158,3 +158,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The full training path is now proven on Runpod, the current 10-shard smoke recipe trains at about `0.74s/step`, and the main remaining signal from this smoke run is that post-quant export quality is poor (`final_int6_roundtrip_exact val_bpb:2.72145323`) on this setup.
 - Decision: Use the new smoke config for future single-GPU bring-up runs so they complete quickly, and reserve sliding-window final eval for higher-confidence validation runs.
 - Next step: Commit and push the smoke config, sync it to the pod, and run `bash runpod/pod_run.sh non_ttt_m22_base 1337 configs/runpod/non_ttt_m22_base_smoke.env`.
+
+- Timestamp: 2026-03-23 18:30 America/Chicago
+- Commit: uncommitted
+- Lane: runpod smoke
+- Objective: Keep the next smoke run alive without tying it to an interactive SSH session.
+- Command or config: Synced commit `2217c20` to the pod and launched `bash runpod/pod_run.sh non_ttt_m22_base 1337 configs/runpod/non_ttt_m22_base_smoke.env` under `nohup`, with the detached launcher log at `/workspace/golf/logs/non_ttt_m22_smoke_detached_20260323T221010Z.log`.
+- Result: A fresh background run is active on the pod at `runs/non_ttt_m22_base/seed1337/20260323T221010Z`, and it has already emitted the standard startup lines through `seed:1337`.
+- Decision: Let this detached smoke run continue in the background while the local repo remains free for the next code changes and analysis.
+- Next step: Check back on `runs/non_ttt_m22_base/seed1337/20260323T221010Z/train.log` for the completed standard-eval result, then decide whether to move to full-shard repro or a VRL/GPTQ lane.
