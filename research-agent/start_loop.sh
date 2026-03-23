@@ -15,7 +15,7 @@ if [[ -f loop/runtime/controller.pid ]]; then
   fi
 fi
 
-nohup python3 "$AGENT_ROOT/loopctl.py" start --config "$AGENT_ROOT/loop/config.json" > loop/runtime/logs/controller.stdout.log 2>&1 &
+nohup python3 -u "$AGENT_ROOT/loopctl.py" start --config "$AGENT_ROOT/loop/config.json" > loop/runtime/logs/controller.stdout.log 2>&1 &
 pid=$!
 printf '%s\n' "$pid" > loop/runtime/controller.pid
 echo "started loop with pid $pid"

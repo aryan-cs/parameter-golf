@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/usr/bin/env bash
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -20,6 +20,7 @@ cat > "$PLIST" <<EOF
   <key>ProgramArguments</key>
   <array>
     <string>$PYTHON</string>
+    <string>-u</string>
     <string>$AGENT_ROOT/loopctl.py</string>
     <string>start</string>
     <string>--config</string>

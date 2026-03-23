@@ -239,6 +239,74 @@ def set_state(conn: sqlite3.Connection, key: str, value: str) -> None:
     conn.commit()
 
 
+def delete_state(conn: sqlite3.Connection, key: str) -> None:
+    conn.execute("DELETE FROM controller_state WHERE key = ?", (key,))
+    conn.commit()
+
+
+def get_active_codex_turn(conn: sqlite3.Connection) -> dict[str, Any] | None:
+    raw = get_state(conn, "active_codex_turn")
+    if raw is None:
+        return None
+    try:
+        value = json.loads(raw)
+    except Exception:
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def set_active_codex_turn(
+    conn: sqlite3.Connection,
+    *,
+    turn_id: str,
+    started_at: str,
+    prompt_path: Path,
+    output_path: Path,
+    log_path: Path,
+    pid: int | None,
+) -> None:
+    set_state(
+        conn,
+        "active_codex_turn",
+        json.dumps(
+            {
+                "turn_id": turn_id,
+                "started_at": started_at,
+                "prompt_path": str(prompt_path),
+                "output_path": str(output_path),
+                "log_path": str(log_path),
+                "pid": pid,
+            },
+            sort_keys=True,
+        ),
+    )
+
+
+def clear_active_codex_turn(conn: sqlite3.Connection) -> None:
+    delete_state(conn, "active_codex_turn")
+
+
+def active_codex_turn_alive(active_turn: dict[str, Any] | None) -> bool:
+    if active_turn is None:
+        return False
+    pid = active_turn.get("pid")
+    if not isinstance(pid, int):
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except Exception:
+        return False
+
+
+def clear_stale_active_codex_turn(conn: sqlite3.Connection) -> bool:
+    active_turn = get_active_codex_turn(conn)
+    if active_turn is None or active_codex_turn_alive(active_turn):
+        return False
+    clear_active_codex_turn(conn)
+    return True
+
+
 def git_repo_root(start: Path) -> Path | None:
     result = subprocess.run(
         ["git", "rev-parse", "--show-toplevel"],
@@ -943,6 +1011,17 @@ def build_state_summary(cfg: Config, conn: sqlite3.Connection) -> str:
         f"Failed manifests: {queue_failed}",
         summarize_jobs(cfg, conn),
     ]
+    active_turn = get_active_codex_turn(conn)
+    if active_turn is not None:
+        pid = active_turn.get("pid")
+        alive = active_codex_turn_alive(active_turn)
+        lines.append(
+            f"Active Codex turn: {active_turn.get('turn_id')} "
+            f"started_at={active_turn.get('started_at')} "
+            f"pid={pid} status={'running' if alive else 'stale'}"
+        )
+        lines.append(f"Active Codex log: {active_turn.get('log_path')}")
+        lines.append(f"Active Codex output target: {active_turn.get('output_path')}")
     if turn is None:
         lines.append("Last Codex turn: none yet")
     else:
@@ -995,20 +1074,39 @@ def invoke_codex(cfg: Config, conn: sqlite3.Connection, leaderboard_summary: str
     started_at = utc_now()
     try:
         with log_path.open("w", encoding="utf-8") as logf:
-            proc = subprocess.run(
+            proc = subprocess.Popen(
                 cmd,
-                input=prompt,
-                text=True,
+                stdin=subprocess.PIPE,
                 stdout=logf,
                 stderr=subprocess.STDOUT,
                 cwd=cfg.workdir,
-                timeout=cfg.codex_timeout_seconds,
+                text=True,
             )
-        return_code = proc.returncode
-        timed_out = False
+            set_active_codex_turn(
+                conn,
+                turn_id=turn_id,
+                started_at=started_at,
+                prompt_path=prompt_path,
+                output_path=output_path,
+                log_path=log_path,
+                pid=proc.pid,
+            )
+            write_heartbeat(cfg, conn, f"codex-running:{turn_id}")
+            try:
+                proc.communicate(prompt, timeout=cfg.codex_timeout_seconds)
+                return_code = int(proc.returncode or 0)
+                timed_out = False
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.communicate()
+                timed_out = True
+                return_code = 124
+            finally:
+                clear_active_codex_turn(conn)
     except subprocess.TimeoutExpired:
         timed_out = True
         return_code = 124
+        clear_active_codex_turn(conn)
     finished_at = utc_now()
 
     if output_path.exists():
@@ -1088,17 +1186,22 @@ def invoke_codex(cfg: Config, conn: sqlite3.Connection, leaderboard_summary: str
 
 def write_heartbeat(cfg: Config, conn: sqlite3.Connection, note: str) -> None:
     best = best_local_score(conn, "experiment")
+    active_turn = get_active_codex_turn(conn)
     payload = {
         "timestamp": utc_now(),
         "note": note,
         "best_local_score_bpb": None if best is None else best["val_bpb"],
         "running_jobs": running_job_count(conn),
         "pending_manifests": len(list((cfg.runtime_dir / "queue" / "pending").glob("*.json"))),
+        "staged_manifests": staged_manifest_count(cfg),
+        "active_codex_turn": active_turn,
     }
     dump_json(cfg.runtime_dir / "heartbeat.json", payload)
 
 
 def controller_cycle(cfg: Config, conn: sqlite3.Connection) -> int:
+    if clear_stale_active_codex_turn(conn):
+        write_heartbeat(cfg, conn, "cleared-stale-codex-turn")
     leaderboard = refresh_leaderboard_if_needed(cfg, conn)
     leaderboard_summary = summarize_leaderboard(leaderboard, cfg)
     ingest_manifest_inboxes(cfg, conn)

@@ -137,3 +137,9 @@ This is the append-only project journal for overnight Codex work on the `openai/
 - missing python module: sentencepiece
 - missing path: /Users/aryan/Desktop/golf/research-experiments/cache/openai-parameter-golf/data/datasets/fineweb10B_sp1024
 - missing path: /Users/aryan/Desktop/golf/research-experiments/cache/openai-parameter-golf/data/tokenizers/fineweb_1024_bpe.model
+
+## 2026-03-22 21:58 CDT - Controller Observability Fix
+
+- The older sandbox-blocked journal notes were historical from before the controller was updated to ingest staged manifests from `research-experiments/manifests/pending/`.
+- Updated `research-agent/loopctl.py` so the supervisor records the active in-flight Codex turn, includes it in heartbeat data, and surfaces it in `status` output instead of only showing the last completed turn.
+- Updated the loop launch scripts to use unbuffered Python so controller stdout reflects live progress more reliably during long autonomous turns.
