@@ -104,3 +104,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: Root cause identified: the run launcher should not rely on `uv run` after bootstrap, because the correct CUDA environment already exists at `/workspace/golf/.venv`.
 - Decision: Launch training and metadata collection with the bootstrapped `.venv/bin/python` directly.
 - Next step: Push the launcher fix, re-sync the repo, and relaunch `bash runpod/pod_run.sh non_ttt_m22_base 1337`.
+
+- Timestamp: 2026-03-23 17:28 America/Chicago
+- Commit: uncommitted
+- Lane: runpod bring-up
+- Objective: Recover from the launch failure that still reported `torch` missing even after switching to the bootstrapped `.venv`.
+- Command or config: Traced the behavior across successive syncs and found that the tar fallback path was deleting `/workspace/golf` before extraction, which erased the pod-side `.venv` and downloaded dataset on every re-sync.
+- Result: Root cause identified: the sync helper itself was wiping the environment we were trying to launch from.
+- Decision: Stop deleting the remote repo root in the tar fallback path so future syncs preserve `.venv`, data, and runs.
+- Next step: Push the sync fix, re-bootstrap the pod once to restore `.venv` and the 10-shard dataset, then relaunch `bash runpod/pod_run.sh non_ttt_m22_base 1337`.

@@ -45,7 +45,7 @@ if ssh "${SSH_ARGS[@]}" "$REMOTE" "command -v rsync >/dev/null 2>&1"; then
     "$ROOT/" "$REMOTE:$REMOTE_DIR/"
 else
   echo "Remote rsync not found; falling back to tar-over-SSH sync."
-  ssh "${SSH_ARGS[@]}" "$REMOTE" "rm -rf '$REMOTE_DIR' && mkdir -p '$REMOTE_DIR'"
+  ssh "${SSH_ARGS[@]}" "$REMOTE" "mkdir -p '$REMOTE_DIR'"
   COPYFILE_DISABLE=1 tar -C "$ROOT" "${TAR_EXCLUDES[@]}" -cf - . | ssh "${SSH_ARGS[@]}" "$REMOTE" "tar --no-same-owner --no-same-permissions -C '$REMOTE_DIR' -xf -"
 fi
 ssh "${SSH_ARGS[@]}" "$REMOTE" "printf '%s\n' '$SYNC_COMMIT' > '$REMOTE_DIR/.sync_commit'"
