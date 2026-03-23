@@ -1,0 +1,7 @@
+{
+  "id": "rank1_mixed_qat_seed42_20260323",
+  "description": "Run a record-track variant of the current #1 official script with mixed int5/int6 QAT enabled on exported matrices.",
+  "cwd": ".",
+  "command": "PYTHONDONTWRITEBYTECODE=1 RUN_ID=rank1_mixed_qat_seed42_20260323 SEED=42 QAT_ENABLED=1 torchrun --standalone --nproc_per_node=8 record_candidates/2026-03-23_rank1_mixed_qat/train_gpt.py",
+  "timeout_seconds": 3600
+}
