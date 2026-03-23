@@ -1431,7 +1431,6 @@ def controller_cycle(cfg: Config, conn: sqlite3.Connection) -> int:
     leaderboard_summary = summarize_leaderboard(leaderboard, cfg)
     ingest_manifest_inboxes(cfg, conn)
     poll_running_jobs(cfg, conn)
-    launch_pending_jobs(cfg, conn)
     write_heartbeat(cfg, conn, "post-poll")
 
     if running_job_count(conn) > 0:
@@ -1441,6 +1440,11 @@ def controller_cycle(cfg: Config, conn: sqlite3.Connection) -> int:
     external_proxy = external_proxy_processes(cfg)
     if cfg.proxy_autoplan_enabled and external_proxy:
         write_heartbeat(cfg, conn, "external-proxy-active")
+        return min(cfg.default_sleep_seconds, 30)
+
+    launch_pending_jobs(cfg, conn)
+    if running_job_count(conn) > 0:
+        maybe_checkpoint_repo(cfg, "job-launch-or-poll")
         return min(cfg.default_sleep_seconds, 30)
 
     if len(list((cfg.runtime_dir / "queue" / "pending").glob("*.json"))) > 0:
