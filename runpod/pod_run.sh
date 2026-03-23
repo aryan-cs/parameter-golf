@@ -7,6 +7,7 @@ if [[ $# -lt 2 || $# -gt 3 ]]; then
 fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export PATH="$HOME/.local/bin:$PATH"
 CANDIDATE="$1"
 SEED="$2"
 CONFIG_PATH="${3:-$ROOT/configs/runpod/${CANDIDATE}.env}"

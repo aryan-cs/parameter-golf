@@ -77,3 +77,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: Root cause identified: the sync intentionally excluded `.git`, but the run launcher still required `git rev-parse HEAD`.
 - Decision: Stamp the remote sync with a `.sync_commit` file and teach `pod_run.sh` to use it when `.git` is absent.
 - Next step: Push the launcher fix, re-sync the repo to `/workspace/golf`, and relaunch `bash runpod/pod_run.sh non_ttt_m22_base 1337`.
+
+- Timestamp: 2026-03-23 17:08 America/Chicago
+- Commit: uncommitted
+- Lane: runpod bring-up
+- Objective: Recover from the second remote launch failure after the commit stamping fix landed.
+- Command or config: Inspected the failed launcher output and found that `uv` was installed under `/root/.local/bin`, but `pod_run.sh` was executing without that directory on `PATH`.
+- Result: Root cause identified: non-login SSH shells on the pod do not automatically inherit the `uv` install path.
+- Decision: Export `$HOME/.local/bin` in both `pod_bootstrap.sh` and `pod_run.sh` so the workflow is self-contained.
+- Next step: Push the path fix, re-sync the repo to `/workspace/golf`, and relaunch `bash runpod/pod_run.sh non_ttt_m22_base 1337`.
