@@ -158,3 +158,8 @@ This is the append-only project journal for overnight Codex work on the `openai/
 - Mirrored `https://github.com/thwu1/parameter-golf.git` into `research-experiments/cache/external/thwu1-parameter-golf/` at `45bbccff356439d2f0b0dbae06cc3fa58b9576ed` and marked it as the default record-track starting point.
 - Mirrored `https://github.com/aruniyer/parameter-golf.git` into `research-experiments/cache/external/aruniyer-parameter-golf/` at `954a158102ec64c292ad82b2442e387e505a9388` as a third-place reference implementation.
 - Added `research-experiments/scripts/sync_external_public_repos.sh` so fresh machines and Colab runtimes can recreate those mirrors even though `cache/` is gitignored.
+
+## 2026-03-22 22:15 CDT - Fresh Clone Data Bootstrap Fix
+
+- Fixed `research-experiments/scripts/prepare_challenge_data.py` so it automatically clones the official `openai/parameter-golf` repo into `research-experiments/cache/openai-parameter-golf/` when that cache is missing on a fresh machine such as Colab.
+- This removes the old failure mode where data prep immediately crashed with `Missing helper script: .../cache/openai-parameter-golf/data/cached_challenge_fineweb.py`.
