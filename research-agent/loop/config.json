@@ -26,7 +26,7 @@
   "record_only": true,
   "desired_rank": 3,
   "stop_when_best_bpb_le": null,
-  "proxy_autoplan_enabled": true,
+  "proxy_autoplan_enabled": false,
   "proxy_candidate_dir": "../research-experiments/mac_proxy_candidates/2026-03-23_thwu1_mlx_proxy",
   "proxy_python": "../.venv-mac/bin/python",
   "proxy_data_path": "../research-experiments/cache/openai-parameter-golf/data/datasets/fineweb10B_sp1024",

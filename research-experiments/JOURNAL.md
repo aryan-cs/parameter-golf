@@ -348,3 +348,16 @@ This is the append-only project journal for overnight Codex work on the `openai/
 - Log: /Users/aryan/Desktop/golf/research-agent/loop/runtime/jobs/proxy_auto_0002_11l_mlp3_b16k_lr28_i1400_0d90da9bfa7c/run.log
 - Timeout seconds: 28800
 - PID: 8780
+
+## 2026-03-23T16:12:19.942023+00:00 - Controller Job Result: proxy_auto_0002_11l_mlp3_b16k_lr28_i1400_0d90da9bfa7c
+
+- Status: done
+- Job kind: proxy
+- Exit code: 0
+- Description: Auto proxy search variant: 11l_mlp3_b16k_lr28_i1400
+- Command: uv run --python /Users/aryan/Desktop/golf/research-agent/../.venv-mac/bin/python python scripts/run_mlx_proxy_experiment.py --experiment-dir mac_proxy_candidates/2026-03-23_thwu1_mlx_proxy --run-id proxy_auto_0002_11l_mlp3_b16k_lr28_i1400_0d90da9bfa7c --seed 42 --stats-path runs/proxy_auto_0002_11l_mlp3_b16k_lr28_i1400_0d90da9bfa7c/stats.json --data-path /Users/aryan/Desktop/golf/research-experiments/cache/openai-parameter-golf/data/datasets/fineweb10B_sp1024 --tokenizer-path /Users/aryan/Desktop/golf/research-experiments/cache/openai-parameter-golf/data/tokenizers/fineweb_1024_bpe.model --set-env GRAD_ACCUM_STEPS=4 --set-env ITERATIONS=1400 --set-env MATRIX_LR=0.028 --set-env MAX_WALLCLOCK_SECONDS=7200 --set-env MLP_MULT=3 --set-env MLX_EAGER_EVAL=1 --set-env MLX_MAX_MICROBATCH_TOKENS=4096 --set-env MUON_MOMENTUM=0.990 --set-env MUON_MOMENTUM_WARMUP_START=0.92 --set-env MUON_MOMENTUM_WARMUP_STEPS=1000 --set-env NUM_LAYERS=11 --set-env SCALAR_LR=0.028 --set-env TIED_EMBED_LR=0.040 --set-env TRAIN_BATCH_TOKENS=16384 --set-env TRAIN_LOG_EVERY=50 --set-env VAL_BATCH_SIZE=1048576 --set-env VAL_LOSS_EVERY=350 --set-env WARMUP_STEPS=5
+- val_bpb: 1.7268491
+- artifact_bytes: 23129490
+- train_time_ms: 1640508
+- Manifest: /Users/aryan/Desktop/golf/research-agent/loop/runtime/queue/done/proxy_auto_0002_11l_mlp3_b16k_lr28_i1400_0d90da9bfa7c.json
+- Log: /Users/aryan/Desktop/golf/research-agent/loop/runtime/jobs/proxy_auto_0002_11l_mlp3_b16k_lr28_i1400_0d90da9bfa7c/run.log
