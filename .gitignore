@@ -3,11 +3,20 @@ __pycache__/
 .ipynb_checkpoints/
 .venv/
 .venv-mac/
+.mypy_cache/
+.pytest_cache/
+.DS_Store
+*.egg-info/
 
-research-agent/loop/runtime/
-research-experiments/cache/
-research-experiments/workbench/
-research-experiments/runs/
-research-experiments/mac_proxy_candidates/**/logs/
-research-experiments/mac_proxy_candidates/**/*.npz
-research-experiments/mac_proxy_candidates/**/*.ptz
+data/tokenizers/
+data/datasets/
+data/manifest.json
+data/docs_selected.jsonl
+
+logs/
+cache/
+workbench/
+runs/
+mac_proxy_candidates/**/logs/
+mac_proxy_candidates/**/*.npz
+mac_proxy_candidates/**/*.ptz

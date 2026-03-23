@@ -1,0 +1,28 @@
+[project]
+name = "parameter-golf-workbench"
+version = "0.1.0"
+description = "Local and Runpod workflows for the OpenAI Parameter Golf challenge."
+requires-python = ">=3.12"
+dependencies = [
+  "datasets",
+  "huggingface-hub",
+  "numpy",
+  "sentencepiece",
+  "setuptools",
+  "tiktoken",
+  "tqdm",
+  "typing-extensions==4.15.0",
+  "zstandard",
+]
+
+[project.optional-dependencies]
+mlx = [
+  "mlx",
+]
+cuda = [
+  "kernels; platform_system == 'Linux'",
+  "torch; platform_system == 'Linux'",
+]
+
+[tool.uv]
+package = false

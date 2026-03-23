@@ -45,6 +45,21 @@ The official repo gives participants a starter kit:
 
 The starter scripts are described as launch points, not SOTA recipes. The best ideas are expected to live in `records/`, not in the root baseline script.
 
+## Local Workflow In This Repo
+
+This fork is normalized around `uv`.
+
+- Mac / Apple Silicon:
+  - `uv sync --extra mlx`
+  - `uv run python data/cached_challenge_fineweb.py --variant sp1024 --train-shards 10`
+  - `uv run python train_gpt_mlx.py`
+- Runpod / CUDA:
+  - sync the repo with `runpod/local_sync_to_pod.sh`
+  - bootstrap the pod with `bash runpod/pod_bootstrap.sh`
+  - launch a candidate with `bash runpod/pod_run.sh <candidate> <seed>`
+
+The active cloud lane configs live in `configs/runpod/`, the active model lanes live in `candidates/`, and the lab notebook lives in `JOURNAL.md`.
+
 ## Official Objective And Metric
 
 The official score is based on compression performance on the FineWeb validation set:

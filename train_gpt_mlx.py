@@ -52,6 +52,9 @@ class Hyperparameters:
     val_loss_every: int = int(os.environ.get("VAL_LOSS_EVERY", 0))
     # Validation always uses the full fineweb_val split.
     val_batch_size: int = int(os.environ.get("VAL_BATCH_SIZE", 524_288))
+    eval_stride: int = int(os.environ.get("EVAL_STRIDE", 0))
+    eval_batch_seqs: int = int(os.environ.get("EVAL_BATCH_SEQS", 32))
+    log_final_standard_eval: bool = bool(int(os.environ.get("LOG_FINAL_STANDARD_EVAL", "0")))
     train_log_every: int = int(os.environ.get("TRAIN_LOG_EVERY", 200))
     train_batch_tokens: int = int(os.environ.get("TRAIN_BATCH_TOKENS", 524_288))
     grad_accum_steps: int = int(os.environ.get("GRAD_ACCUM_STEPS", 8))
@@ -451,6 +454,11 @@ class GPT(nn.Module):
             loss_sum = loss_sum + nn.losses.cross_entropy(logits.astype(mx.float32), y[s:e], reduction="sum")
         return loss_sum / float(n)
 
+    def forward_logits(self, input_ids: mx.array) -> mx.array:
+        x = self(input_ids)
+        logits_proj = x @ self.tok_emb.weight.astype(x.dtype).T
+        return self.softcap(logits_proj)
+
 # ==============================================================================
 # OPTIMIZERS (MUON + ADAM SPLIT)
 # ==============================================================================
@@ -813,6 +821,85 @@ def eval_val(
     val_bpb = bits_per_token * (total_tokens / total_bytes)
     return val_loss, val_bpb
 
+
+def eval_val_sliding(
+    args: Hyperparameters,
+    compiled_forward_logits,
+    val_tokens: np.ndarray,
+    base_bytes_lut: np.ndarray,
+    has_leading_space_lut: np.ndarray,
+    is_boundary_token_lut: np.ndarray,
+    log_fn: Callable[[str], None] | None = None,
+) -> tuple[float, float]:
+    stride = args.eval_stride
+    seq_len = args.train_seq_len
+    if stride <= 0 or stride >= seq_len:
+        raise ValueError(f"Sliding eval requires 0 < EVAL_STRIDE < TRAIN_SEQ_LEN, got {stride=} {seq_len=}")
+
+    total_tokens = val_tokens.size - 1
+    window_starts = [ws for ws in range(0, total_tokens, stride) if min(ws + seq_len, total_tokens) - ws >= 1]
+    total_windows = len(window_starts)
+    batch_seqs = max(args.eval_batch_seqs, 1)
+    total_loss_sum = 0.0
+    total_token_count = 0.0
+    total_byte_count = 0.0
+
+    for batch_idx, batch_start in enumerate(range(0, total_windows, batch_seqs), start=1):
+        batch_ws = window_starts[batch_start : batch_start + batch_seqs]
+        bsz = len(batch_ws)
+        x_batch = np.zeros((bsz, seq_len), dtype=np.int32)
+        y_batch = np.zeros((bsz, seq_len), dtype=np.int32)
+        window_lengths: list[int] = []
+
+        for i, ws in enumerate(batch_ws):
+            end = min(ws + seq_len, total_tokens)
+            wlen = end - ws
+            window_lengths.append(wlen)
+            chunk = val_tokens[ws : end + 1]
+            x_batch[i, :wlen] = chunk[:-1]
+            y_batch[i, :wlen] = chunk[1:]
+
+        x = mx.array(x_batch, dtype=mx.int32)
+        y = mx.array(y_batch, dtype=mx.int32)
+        nll = nn.losses.cross_entropy(
+            compiled_forward_logits(x).astype(mx.float32),
+            y,
+            reduction="none",
+        ).astype(mx.float32)
+        mx.eval(nll)
+        nll_np = np.array(nll, dtype=np.float32, copy=False)
+
+        for i, ws in enumerate(batch_ws):
+            wlen = window_lengths[i]
+            score_start = 0 if ws == 0 else max(wlen - stride, 0)
+            total_loss_sum += float(nll_np[i, score_start:wlen].sum(dtype=np.float64))
+            scored_tokens = wlen - score_start
+            total_token_count += float(scored_tokens)
+            tgt_ids = y_batch[i, score_start:wlen]
+            prev_ids = x_batch[i, score_start:wlen]
+            bytes_np = base_bytes_lut[tgt_ids].astype(np.int16, copy=True)
+            bytes_np += (
+                has_leading_space_lut[tgt_ids] & ~is_boundary_token_lut[prev_ids]
+            ).astype(np.int16, copy=False)
+            total_byte_count += float(bytes_np.astype(np.float64).sum())
+
+        if log_fn is not None and total_windows > 1 and (
+            batch_idx == 1
+            or batch_idx * batch_seqs >= total_windows
+            or batch_idx % 25 == 0
+        ):
+            running_bpb = 0.0
+            if total_token_count > 0.0 and total_byte_count > 0.0:
+                running_loss = total_loss_sum / total_token_count
+                running_bpb = (running_loss / math.log(2.0)) * (total_token_count / total_byte_count)
+            done = min(batch_idx * batch_seqs, total_windows)
+            log_fn(f"sliding_val_progress:{done}/{total_windows} running_bpb:{running_bpb:.6f}")
+
+    val_loss = total_loss_sum / total_token_count
+    bits_per_token = val_loss / math.log(2.0)
+    val_bpb = bits_per_token * (total_token_count / total_byte_count)
+    return val_loss, val_bpb
+
 # -----------------------------
 # TRAINING
 # -----------------------------
@@ -908,6 +995,7 @@ def main() -> None:
     # Compiling the model-bound functions and capturing the full model state fixes that while still
     # returning gradients only for trainable parameters via nn.value_and_grad(...).
     compiled_loss = mx.compile(lambda x, y: model.loss(x, y), inputs=model.state, outputs=model.state)
+    compiled_forward_logits = mx.compile(lambda x: model.forward_logits(x), inputs=model.state, outputs=model.state)
     compiled_loss_and_grad = mx.compile(
         nn.value_and_grad(model, lambda x, y: model.loss(x, y)),
         inputs=model.state,
@@ -941,6 +1029,11 @@ def main() -> None:
         f"microbatch_tokens:{args.microbatch_tokens} microbatch_batch_size:{args.microbatch_tokens // args.train_seq_len} "
         f"val_batch_size:{args.val_batch_size} "
         f"warmup_steps:{args.warmup_steps} max_wallclock_seconds:{args.max_wallclock_seconds:.3f}"
+    )
+    log(
+        f"eval_mode:{'sliding' if 0 < args.eval_stride < args.train_seq_len else 'standard'} "
+        f"eval_stride:{args.eval_stride} eval_batch_seqs:{args.eval_batch_seqs} "
+        f"log_final_standard_eval:{args.log_final_standard_eval}"
     )
     log(f"mlx_max_microbatch_tokens:{args.mlx_max_microbatch_tokens}")
     log(
@@ -990,7 +1083,8 @@ def main() -> None:
         x_val = mx.array(warm_chunk[:-1].reshape(-1, args.train_seq_len), dtype=mx.int32)
         y_val = mx.array(warm_chunk[1:].reshape(-1, args.train_seq_len), dtype=mx.int32)
         warm_val_loss = compiled_loss(x_val, y_val)
-        mx.eval(warm_val_loss)
+        warm_logits = compiled_forward_logits(x_val[:1])
+        mx.eval(warm_val_loss, warm_logits)
         mx.synchronize()
 
         train_loader = TokenLoader(args.train_files, log_fn=log, dataset_name=dataset_name)
@@ -1000,20 +1094,32 @@ def main() -> None:
     stop_after_step: int | None = None
     t0 = time.perf_counter()
     step = 0
+    use_sliding_eval = 0 < args.eval_stride < args.train_seq_len
     while True:
         last_step = step == args.iterations or (stop_after_step is not None and step >= stop_after_step)
         if last_step or (args.val_loss_every > 0 and step % args.val_loss_every == 0):
             train_time_ms += 1000.0 * (time.perf_counter() - t0)
             # Validation always scans the same fixed full validation split.
-            val_loss, val_bpb = eval_val(
-                args,
-                compiled_loss,
-                val_tokens,
-                base_bytes_lut,
-                has_leading_space_lut,
-                is_boundary_token_lut,
-                log_fn=log,
-            )
+            if use_sliding_eval:
+                val_loss, val_bpb = eval_val_sliding(
+                    args,
+                    compiled_forward_logits,
+                    val_tokens,
+                    base_bytes_lut,
+                    has_leading_space_lut,
+                    is_boundary_token_lut,
+                    log_fn=log,
+                )
+            else:
+                val_loss, val_bpb = eval_val(
+                    args,
+                    compiled_loss,
+                    val_tokens,
+                    base_bytes_lut,
+                    has_leading_space_lut,
+                    is_boundary_token_lut,
+                    log_fn=log,
+                )
             if step % 25 == 0 or last_step:
                 log(
                     f"step:{step}/{args.iterations} val_loss:{val_loss:.4f} val_bpb:{val_bpb:.4f} "
@@ -1086,18 +1192,52 @@ def main() -> None:
     quant_flat = dequantize_state_dict_int8(pickle.loads(zlib.decompress(quant_blob_disk)))
     model.update(tree_unflatten(list(quant_flat.items())))
     q_t0 = time.perf_counter()
-    q_val_loss, q_val_bpb = eval_val(
-        args,
-        compiled_loss,
-        val_tokens,
-        base_bytes_lut,
-        has_leading_space_lut,
-        is_boundary_token_lut,
-        log_fn=log,
-    )
+    if use_sliding_eval:
+        log(f"final_eval_mode:sliding_window stride:{args.eval_stride} batch_seqs:{args.eval_batch_seqs}")
+        q_val_loss, q_val_bpb = eval_val_sliding(
+            args,
+            compiled_forward_logits,
+            val_tokens,
+            base_bytes_lut,
+            has_leading_space_lut,
+            is_boundary_token_lut,
+            log_fn=log,
+        )
+    else:
+        log("final_eval_mode:standard")
+        q_val_loss, q_val_bpb = eval_val(
+            args,
+            compiled_loss,
+            val_tokens,
+            base_bytes_lut,
+            has_leading_space_lut,
+            is_boundary_token_lut,
+            log_fn=log,
+        )
     q_eval_ms = 1000.0 * (time.perf_counter() - q_t0)
     log(f"final_int8_zlib_roundtrip val_loss:{q_val_loss:.4f} val_bpb:{q_val_bpb:.4f} eval_time:{q_eval_ms:.0f}ms")
     log(f"final_int8_zlib_roundtrip_exact val_loss:{q_val_loss:.8f} val_bpb:{q_val_bpb:.8f}")
+
+    if use_sliding_eval and args.log_final_standard_eval:
+        std_t0 = time.perf_counter()
+        std_val_loss, std_val_bpb = eval_val(
+            args,
+            compiled_loss,
+            val_tokens,
+            base_bytes_lut,
+            has_leading_space_lut,
+            is_boundary_token_lut,
+            log_fn=log,
+        )
+        std_eval_ms = 1000.0 * (time.perf_counter() - std_t0)
+        log(
+            f"final_int8_zlib_roundtrip_standard val_loss:{std_val_loss:.4f} "
+            f"val_bpb:{std_val_bpb:.4f} eval_time:{std_eval_ms:.0f}ms"
+        )
+        log(
+            f"final_int8_zlib_roundtrip_standard_exact val_loss:{std_val_loss:.8f} "
+            f"val_bpb:{std_val_bpb:.8f}"
+        )
 
 
 if __name__ == "__main__":
