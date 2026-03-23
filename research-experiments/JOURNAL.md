@@ -173,6 +173,15 @@ This is the append-only project journal for overnight Codex work on the `openai/
 - Updated the persistent agent prompt and goal so when CUDA is unavailable on this Mac, the loop can use the `uv`-based MLX proxy lane honestly instead of stalling or pretending record-track progress.
 - Most likely next step: let the smoke finish, inspect the quantized roundtrip `val_bpb`, then queue an overnight frontier proxy run through `scripts/stage_mac_proxy_frontier_manifest.sh`.
 
+## 2026-03-22 22:55 CDT - Durable Overnight Handoff On macOS
+
+- Found and fixed a real controller bug in `research-agent/loopctl.py`: generated `job.sh` wrappers had leading spaces before the shebang, which caused `Exec format error` on manifest launches.
+- Tightened the Mac frontier idle wrapper so it waits on the active `run_mlx_proxy_experiment.py` command line instead of a too-specific `train_gpt_mlx.py` path match.
+- Added a direct detached launcher path plus a macOS LaunchAgent installer/status/uninstall set under `research-agent/` for the Mac frontier run.
+- Installed the one-shot LaunchAgent `com.parameter-golf.mac-proxy-frontier` with `RUN_ID=thwu1_mlx_mac_frontier_20260322_225214_launchd`.
+- Verified the LaunchAgent is loaded via `launchctl list` and its stdout log shows `waiting_for_idle`, so after the current smoke process disappears the Mac should promote automatically into the longer `uv`-backed frontier MLX run.
+- Most likely next step: inspect `research-experiments/runs/thwu1_mlx_mac_frontier_20260322_225214_launchd/` and the candidate log tomorrow morning for the overnight frontier result, then decide whether to widen data or retune the local frontier env before promotion to H100s.
+
 ## 2026-03-23T03:49:06.412148+00:00 - Manifest Waiting For Runtime: rank1_mixed_qat_warmdown_ramp_seed42_20260323
 
 - Path: /Users/aryan/Desktop/golf/research-experiments/manifests/pending/rank1_mixed_qat_warmdown_ramp_seed42_20260323.json
@@ -200,3 +209,16 @@ This is the append-only project journal for overnight Codex work on the `openai/
 - Log: /Users/aryan/Desktop/golf/research-agent/loop/runtime/jobs/thwu1_mlx_mac_frontier_20260322_224947/run.log
 - Timeout seconds: 32400
 - PID: 48879
+
+## 2026-03-23T03:52:13.583509+00:00 - Controller Job Result: thwu1_mlx_mac_frontier_20260322_224947
+
+- Status: failed
+- Job kind: proxy
+- Exit code: 1
+- Description: Mac MLX frontier proxy run for the thwu1-derived candidate
+- Command: bash scripts/run_mac_proxy_frontier_when_idle.sh
+- val_bpb: n/a
+- artifact_bytes: n/a
+- train_time_ms: n/a
+- Manifest: /Users/aryan/Desktop/golf/research-agent/loop/runtime/queue/failed/thwu1_mlx_mac_frontier_20260322_224947.json
+- Log: /Users/aryan/Desktop/golf/research-agent/loop/runtime/jobs/thwu1_mlx_mac_frontier_20260322_224947/run.log

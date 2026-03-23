@@ -42,6 +42,14 @@ This queues the longer MLX proxy run into the existing controller instead of kee
 
 The queued manifest waits for any currently running copy of the same MLX candidate to finish before starting the frontier run, so it is safe to stage while a smoke run is still in progress.
 
+## Launch An Overnight Proxy Run Directly
+
+```bash
+bash research-experiments/scripts/launch_mac_proxy_frontier_detached.sh
+```
+
+This is the simplest detached path on the Mac. It writes a launcher pid and log under `research-experiments/runs/<run_id>/` and still uses the same `uv`-backed MLX workflow internally.
+
 ## Current Proxy Candidate
 
 - `research-experiments/mac_proxy_candidates/2026-03-23_thwu1_mlx_proxy/`
