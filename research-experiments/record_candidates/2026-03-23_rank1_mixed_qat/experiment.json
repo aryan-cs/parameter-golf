@@ -1,5 +1,5 @@
 {
-  "name": "2026-03-23_rank1_mixed_qat",
+  "name": "2026-03-23_rank1_mixed_qat_warmdown_ramp",
   "job_kind": "experiment",
   "entrypoint": "train_gpt.py",
   "recommended_nproc_per_node": 8,
@@ -11,7 +11,9 @@
   ],
   "required_cuda_devices": 8,
   "env": {
-    "QAT_ENABLED": "1"
+    "QAT_ENABLED": "1",
+    "QAT_WARMDOWN_START": "0.8",
+    "QAT_WARMDOWN_END": "0.4"
   },
   "base_snapshot": "../../workbench/official_top_records/rank_01_2026-03-20_10L_Int5MLP_MuonWD04_SWA50"
 }

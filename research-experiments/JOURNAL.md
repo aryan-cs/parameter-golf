@@ -128,3 +128,12 @@ This is the append-only project journal for overnight Codex work on the `openai/
 - missing python module: sentencepiece
 - missing path: /Users/aryan/Desktop/golf/research-experiments/cache/openai-parameter-golf/data/datasets/fineweb10B_sp1024
 - missing path: /Users/aryan/Desktop/golf/research-experiments/cache/openai-parameter-golf/data/tokenizers/fineweb_1024_bpe.model
+
+## 2026-03-23T02:52:23.620679+00:00 - Manifest Waiting For Runtime: rank1_mixed_qat_warmdown_ramp_seed42_20260323
+
+- Path: /Users/aryan/Desktop/golf/research-experiments/manifests/pending/rank1_mixed_qat_warmdown_ramp_seed42_20260323.json
+- missing python module: torch
+- missing python module: numpy
+- missing python module: sentencepiece
+- missing path: /Users/aryan/Desktop/golf/research-experiments/cache/openai-parameter-golf/data/datasets/fineweb10B_sp1024
+- missing path: /Users/aryan/Desktop/golf/research-experiments/cache/openai-parameter-golf/data/tokenizers/fineweb_1024_bpe.model

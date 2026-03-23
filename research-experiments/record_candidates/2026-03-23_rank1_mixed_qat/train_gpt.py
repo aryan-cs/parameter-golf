@@ -93,6 +93,8 @@ class Hyperparameters:
     swa_start_frac = float(os.environ.get("SWA_START_FRAC", 0.4))
     swa_every = int(os.environ.get("SWA_EVERY", 50))
     qat_enabled = bool(int(os.environ.get("QAT_ENABLED", "0")))
+    qat_warmdown_start = float(os.environ.get("QAT_WARMDOWN_START", 0.8))
+    qat_warmdown_end = float(os.environ.get("QAT_WARMDOWN_END", 0.4))
 
 # -----------------------------
 # MUON OPTIMIZER
@@ -346,7 +348,7 @@ def quantize_intN_per_row(t: Tensor, clip_range: int = 31) -> tuple[Tensor, Tens
     return q, scale
 
 
-def fake_quantize_ste_per_row(t: Tensor, clip_range: int) -> Tensor:
+def fake_quantize_ste_per_row(t: Tensor, clip_range: int, strength: float | Tensor = 1.0) -> Tensor:
     t32 = t.float()
     if t32.ndim == 2:
         row_max = t32.abs().amax(dim=1, keepdim=True).clamp_min(1e-12)
@@ -355,7 +357,8 @@ def fake_quantize_ste_per_row(t: Tensor, clip_range: int) -> Tensor:
         scale = t32.abs().amax().clamp_min(1e-12) / clip_range
     q = torch.clamp(torch.round(t32 / scale), -(clip_range + 1), clip_range)
     qdq = (q * scale).to(dtype=t.dtype)
-    return t + (qdq - t).detach()
+    blend = torch.clamp(torch.as_tensor(strength, device=t.device, dtype=t.dtype), 0.0, 1.0)
+    return t + ((qdq - t) * blend).detach()
 
 def mixed_quantize_int6(state_dict: dict[str, Tensor], int6_cats: set[str]):
     result: dict[str, Tensor] = {}
@@ -489,12 +492,15 @@ class RMSNorm(nn.Module):
 
 
 class CastedLinear(nn.Linear):
-    _qat_clip_range: int = 0
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._qat_clip_range = 0
+        self.register_buffer("_qat_strength", torch.tensor(0.0, dtype=torch.float32), persistent=False)
 
     def forward(self, x: Tensor) -> Tensor:
         w = self.weight
         if self.training and self._qat_clip_range > 0 and w.ndim == 2:
-            w = fake_quantize_ste_per_row(w, self._qat_clip_range)
+            w = fake_quantize_ste_per_row(w, self._qat_clip_range, strength=self._qat_strength)
         w = w.to(x.dtype)
         bias = self.bias.to(x.dtype) if self.bias is not None else None
         return F.linear(x, w, bias)
@@ -769,6 +775,25 @@ def enable_mixed_qat(base_model: GPT) -> dict[str, int]:
     return counts
 
 
+def set_mixed_qat_strength(base_model: GPT, strength: float) -> None:
+    clamped = max(0.0, min(float(strength), 1.0))
+    for module in base_model.modules():
+        if isinstance(module, CastedLinear) and module._qat_clip_range > 0:
+            module._qat_strength.fill_(clamped)
+
+
+def mixed_qat_strength_from_scale(args: Hyperparameters, lr_scale: float) -> float:
+    start = max(0.0, min(float(args.qat_warmdown_start), 1.0))
+    end = max(0.0, min(float(args.qat_warmdown_end), 1.0))
+    if start <= end:
+        return 1.0 if lr_scale <= start else 0.0
+    if lr_scale >= start:
+        return 0.0
+    if lr_scale <= end:
+        return 1.0
+    return (start - lr_scale) / max(start - end, 1e-9)
+
+
 def eval_val_sliding(
     args: Hyperparameters,
     base_model: nn.Module,
@@ -955,8 +980,12 @@ def main() -> None:
             module.float()
     restore_low_dim_params_to_fp32(base_model)
     qat_counts = {"attn": 0, "mlp": 0, "bigram": 0}
+    qat_strength = 0.0
+    qat_stage = 0
     if args.qat_enabled:
         qat_counts = enable_mixed_qat(base_model)
+        qat_strength = mixed_qat_strength_from_scale(args, 1.0)
+        set_mixed_qat_strength(base_model, qat_strength)
     compiled_model = torch.compile(base_model, dynamic=False, fullgraph=True)
     model: nn.Module = DDP(compiled_model, device_ids=[local_rank], broadcast_buffers=False) if distributed else compiled_model
 
@@ -1032,6 +1061,10 @@ def main() -> None:
         log0(
             f"qat:enabled attn_int6:{qat_counts['attn']} mlp_int5:{qat_counts['mlp']} "
             f"bigram_proj_int6:{qat_counts['bigram']}"
+        )
+        log0(
+            f"qat_schedule:warmdown_scale_start:{args.qat_warmdown_start:.2f} "
+            f"warmdown_scale_end:{args.qat_warmdown_end:.2f} initial_strength:{qat_strength:.2f}"
         )
     log0(f"seed:{args.seed}")
 
@@ -1118,6 +1151,13 @@ def main() -> None:
 
         elapsed_ms = training_time_ms + 1000.0 * (time.perf_counter() - t0)
         scale = lr_mul(step, elapsed_ms)
+        if args.qat_enabled:
+            qat_strength = mixed_qat_strength_from_scale(args, scale)
+            set_mixed_qat_strength(base_model, qat_strength)
+            new_qat_stage = 0 if qat_strength <= 0.0 else (1 if qat_strength < 1.0 else 2)
+            if new_qat_stage != qat_stage:
+                qat_stage = new_qat_stage
+                log0(f"qat_strength:{qat_strength:.2f} lr_scale:{scale:.3f} step:{step}")
         zero_grad_all()
         train_loss = torch.zeros((), device=device)
         for micro_step in range(grad_accum_steps):

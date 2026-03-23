@@ -3,6 +3,7 @@
 This repo now has a real record-track candidate and a real training wrapper. The current lead candidate is:
 
 - `record_candidates/2026-03-23_rank1_mixed_qat/`
+- staged as `manifests/pending/rank1_mixed_qat_warmdown_ramp_seed42_20260323.json`
 
 Important runtime note:
 
@@ -29,10 +30,10 @@ Run preflight on the current candidate:
 ```bash
 python3 research-experiments/scripts/run_record_experiment.py \
   --experiment-dir research-experiments/record_candidates/2026-03-23_rank1_mixed_qat \
-  --run-id rank1_mixed_qat_seed42_20260323 \
+  --run-id rank1_mixed_qat_warmdown_ramp_seed42_20260323 \
   --seed 42 \
   --nproc-per-node 8 \
-  --stats-path research-experiments/runs/rank1_mixed_qat_seed42_20260323/stats.json \
+  --stats-path research-experiments/runs/rank1_mixed_qat_warmdown_ramp_seed42_20260323/stats.json \
   --preflight-only
 ```
 
@@ -67,4 +68,4 @@ research-experiments/manifests/pending/
 
 The current staged real manifest is:
 
-- `research-experiments/manifests/pending/rank1_mixed_qat_seed42_20260323.json`
+- `research-experiments/manifests/pending/rank1_mixed_qat_warmdown_ramp_seed42_20260323.json`
