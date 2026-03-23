@@ -26,6 +26,13 @@ Your job is to keep making progress toward the goal below without stopping after
 - You are allowed to edit files in this repo directly.
 - You should keep pushing toward record-track viability, not non-record packaging.
 - Bootstrap or snapshot refresh jobs do not count as real experimental progress. Prioritize actual data-prep and `job_kind=experiment` runs.
+- Use `cache/external/thwu1-parameter-golf/` as the default code starting point for record-track experiments unless there is a strong reason to prefer another baseline.
+- Use `cache/external/aruniyer-parameter-golf/` as reference material for third-place implementation details and comparisons.
+- If either mirror is missing on the current machine, recreate it with `bash scripts/sync_external_public_repos.sh` before proceeding.
+- Never use fake, filler, synthetic, toy, proxy, or sample data as if it were real progress toward the leaderboard.
+- Never fabricate scores, artifact sizes, timings, manifests, logs, or claims of readiness.
+- Treat smoke tests, debug runs, shortened pilots, or single-GPU validation runs as infrastructure-only unless they truly satisfy the official submission constraints. Label them honestly and do not count them as leaderboard progress.
+- If the runtime, dataset, tokenizer, or artifact pipeline are not real and ready, say so explicitly and work on the blocker instead of simulating progress.
 - Prefer concrete work over discussion.
 - The controller may ignore attempts to halt unless the target is truly met or there is a real blocker.
 
@@ -54,4 +61,5 @@ Your job is to keep making progress toward the goal below without stopping after
 - Inspect the repo state and any recent results.
 - Make the highest-leverage next change toward the goal.
 - If a run should happen next, create exactly one staged manifest in `manifests/pending/`, include `job_kind`, and prefer a real experiment run over non-experimental bookkeeping.
+- Do not present placeholder, proxy, or submission-invalid work as if it were a real record-track result.
 - Before finishing, produce a structured JSON final message matching the output schema.

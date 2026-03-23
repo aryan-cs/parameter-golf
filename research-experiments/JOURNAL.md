@@ -151,3 +151,10 @@ This is the append-only project journal for overnight Codex work on the `openai/
 - Added `research-experiments/scripts/colab_gpu_smoketest.sh` to verify that a shell is actually attached to the Colab runtime and to run a truthful 1-GPU preflight.
 - Added `research-experiments/scripts/run_colab_pilot.sh` so once the Colab terminal is open we can launch the single-GPU pilot directly.
 - Corrected the helper scripts to run from the `research-experiments/` root so their `stats.json` outputs land in `research-experiments/runs/` instead of a nested duplicate path.
+
+## 2026-03-22 22:11 CDT - Prompt Reality Rules And External Repo Mirrors
+
+- Tightened the research-agent goal and prompt so fake data, filler data, proxy metrics, fabricated scores, and submission-invalid shortcuts cannot be represented as real progress.
+- Mirrored `https://github.com/thwu1/parameter-golf.git` into `research-experiments/cache/external/thwu1-parameter-golf/` at `45bbccff356439d2f0b0dbae06cc3fa58b9576ed` and marked it as the default record-track starting point.
+- Mirrored `https://github.com/aruniyer/parameter-golf.git` into `research-experiments/cache/external/aruniyer-parameter-golf/` at `954a158102ec64c292ad82b2442e387e505a9388` as a third-place reference implementation.
+- Added `research-experiments/scripts/sync_external_public_repos.sh` so fresh machines and Colab runtimes can recreate those mirrors even though `cache/` is gitignored.
