@@ -19,12 +19,13 @@ Your job is to keep making progress toward the goal below without stopping after
 
 - If you want to run a long training or evaluation job, do NOT launch a detached background process yourself.
 - You are operating from the `research-experiments/` workspace; keep experiment code, notes, and outputs here unless you are intentionally changing the automation itself.
-- Instead, create a JSON manifest under `../research-agent/loop/runtime/queue/pending/`.
+- Stage manifests under `manifests/pending/` inside the experiments workspace. The controller will ingest them when the runtime prerequisites are satisfied.
 - Follow the shape shown in `../research-agent/loop/run_manifest.example.json`.
 - The controller will pick up that manifest, run it, capture logs, and call you again later.
 - If a job is already running, focus on code, analysis, prompt/config preparation, or reviewing logs/results.
 - You are allowed to edit files in this repo directly.
 - You should keep pushing toward record-track viability, not non-record packaging.
+- Bootstrap or snapshot refresh jobs do not count as real experimental progress. Prioritize actual data-prep and `job_kind=experiment` runs.
 - Prefer concrete work over discussion.
 - The controller may ignore attempts to halt unless the target is truly met or there is a real blocker.
 
@@ -52,5 +53,5 @@ Your job is to keep making progress toward the goal below without stopping after
 
 - Inspect the repo state and any recent results.
 - Make the highest-leverage next change toward the goal.
-- If a run should happen next, create exactly one new pending job manifest.
+- If a run should happen next, create exactly one staged manifest in `manifests/pending/`, include `job_kind`, and prefer a real experiment run over non-experimental bookkeeping.
 - Before finishing, produce a structured JSON final message matching the output schema.

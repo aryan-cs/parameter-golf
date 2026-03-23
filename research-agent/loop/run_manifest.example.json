@@ -1,7 +1,19 @@
 {
   "id": "example_snapshot_refresh",
-  "description": "Example research job in the research-experiments workspace",
+  "job_kind": "experiment",
+  "description": "Example real experiment in the research-experiments workspace",
   "cwd": ".",
-  "command": "python3 scripts/bootstrap_official_top_records.py",
-  "timeout_seconds": 28800
+  "stats_path": "runs/example_run/stats.json",
+  "required_python_modules": [
+    "torch",
+    "numpy",
+    "sentencepiece"
+  ],
+  "required_cuda_devices": 8,
+  "required_paths": [
+    "cache/openai-parameter-golf/data/datasets/fineweb10B_sp1024",
+    "cache/openai-parameter-golf/data/tokenizers/fineweb_1024_bpe.model"
+  ],
+  "command": "python3 scripts/run_record_experiment.py --experiment-dir record_candidates/2026-03-23_rank1_mixed_qat --run-id example_run --seed 42 --nproc-per-node 8 --stats-path runs/example_run/stats.json",
+  "timeout_seconds": 5400
 }

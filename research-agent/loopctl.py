@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import re
@@ -61,6 +62,7 @@ def append_journal_entry(cfg: "Config", title: str, lines: list[str]) -> None:
 class Config:
     workdir: Path
     runtime_dir: Path
+    manifest_inbox_dirs: list[Path]
     goal_file: Path
     prompt_template_file: Path
     agent_output_schema_file: Path
@@ -101,6 +103,7 @@ def load_config(path: Path) -> Config:
     return Config(
         workdir=resolve(raw.get("workdir", str(ROOT))),
         runtime_dir=resolve(raw.get("runtime_dir", "loop/runtime")),
+        manifest_inbox_dirs=[resolve(str(p)) for p in raw.get("manifest_inbox_dirs", ["../research-experiments/manifests/pending"])],
         goal_file=resolve(raw.get("goal_file", "loop/goal.md")),
         prompt_template_file=resolve(raw.get("prompt_template_file", "loop/prompt_template.md")),
         agent_output_schema_file=resolve(raw.get("agent_output_schema_file", "loop/agent_output.schema.json")),
@@ -132,6 +135,7 @@ def ensure_runtime_layout(runtime_dir: Path) -> None:
         "queue/running",
         "queue/done",
         "queue/failed",
+        "queue/blocked",
     ):
         (runtime_dir / rel).mkdir(parents=True, exist_ok=True)
 
@@ -184,6 +188,7 @@ def open_db(runtime_dir: Path) -> sqlite3.Connection:
         """
         CREATE TABLE IF NOT EXISTS jobs (
             job_id TEXT PRIMARY KEY,
+            job_kind TEXT NOT NULL DEFAULT 'task',
             description TEXT,
             status TEXT NOT NULL,
             command TEXT NOT NULL,
@@ -205,8 +210,17 @@ def open_db(runtime_dir: Path) -> sqlite3.Connection:
         )
         """
     )
+    ensure_table_column(conn, "jobs", "job_kind", "TEXT NOT NULL DEFAULT 'task'")
     conn.commit()
     return conn
+
+
+def ensure_table_column(conn: sqlite3.Connection, table: str, column: str, ddl: str) -> None:
+    columns = {str(row["name"]) for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    if column in columns:
+        return
+    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+    conn.commit()
 
 
 def get_state(conn: sqlite3.Connection, key: str) -> str | None:
@@ -295,6 +309,104 @@ def maybe_checkpoint_repo(cfg: Config, reason: str) -> bool:
 
     print(f"[loop] git checkpoint pushed: {commit_message}")
     return True
+
+
+def ensure_manifest_inboxes(cfg: Config) -> None:
+    for inbox in cfg.manifest_inbox_dirs:
+        inbox.mkdir(parents=True, exist_ok=True)
+
+
+def staged_manifest_count(cfg: Config) -> int:
+    return sum(len(list(inbox.glob("*.json"))) for inbox in cfg.manifest_inbox_dirs)
+
+
+def manifest_known_to_runtime(cfg: Config, name: str) -> bool:
+    for status in ("pending", "running", "done", "failed", "blocked"):
+        if (cfg.runtime_dir / "queue" / status / name).exists():
+            return True
+    return False
+
+
+def manifest_preflight_issues(cfg: Config, manifest: dict[str, Any]) -> list[str]:
+    issues: list[str] = []
+    for module_name in manifest.get("required_python_modules", []):
+        if importlib.util.find_spec(str(module_name)) is None:
+            issues.append(f"missing python module: {module_name}")
+
+    required_paths = manifest.get("required_paths", [])
+    if isinstance(required_paths, list):
+        for raw_path in required_paths:
+            path = Path(str(raw_path))
+            if not path.is_absolute():
+                path = (cfg.workdir / path).resolve()
+            if not path.exists():
+                issues.append(f"missing path: {path}")
+
+    required_cuda_devices = manifest.get("required_cuda_devices")
+    if required_cuda_devices is not None:
+        try:
+            import torch  # type: ignore
+        except Exception:
+            issues.append("missing python module: torch")
+        else:
+            if not torch.cuda.is_available():
+                issues.append("CUDA unavailable")
+            elif torch.cuda.device_count() < int(required_cuda_devices):
+                issues.append(
+                    f"need {int(required_cuda_devices)} CUDA devices, found {torch.cuda.device_count()}"
+                )
+    deduped: list[str] = []
+    for issue in issues:
+        if issue not in deduped:
+            deduped.append(issue)
+    return deduped
+
+
+def ingest_manifest_inboxes(cfg: Config, conn: sqlite3.Connection) -> int:
+    pending_dir = cfg.runtime_dir / "queue" / "pending"
+    imported = 0
+    for inbox in cfg.manifest_inbox_dirs:
+        for manifest_path in sorted(inbox.glob("*.json")):
+            if manifest_known_to_runtime(cfg, manifest_path.name):
+                continue
+            try:
+                manifest = load_json(manifest_path)
+            except Exception as exc:
+                key = f"manifest_error::{manifest_path}"
+                msg = f"invalid manifest JSON: {exc}"
+                if get_state(conn, key) != msg:
+                    append_journal_entry(
+                        cfg,
+                        f"Manifest Invalid: {manifest_path.stem}",
+                        [f"Path: {manifest_path}", msg],
+                    )
+                    set_state(conn, key, msg)
+                continue
+
+            issues = manifest_preflight_issues(cfg, manifest if isinstance(manifest, dict) else {})
+            if issues:
+                key = f"manifest_wait::{manifest_path}"
+                issue_text = " | ".join(issues)
+                if get_state(conn, key) != issue_text:
+                    append_journal_entry(
+                        cfg,
+                        f"Manifest Waiting For Runtime: {manifest_path.stem}",
+                        [f"Path: {manifest_path}", *issues],
+                    )
+                    set_state(conn, key, issue_text)
+                continue
+
+            shutil.move(str(manifest_path), pending_dir / manifest_path.name)
+            imported += 1
+            append_journal_entry(
+                cfg,
+                f"Manifest Ingested: {manifest_path.stem}",
+                [
+                    f"From: {manifest_path}",
+                    f"To: {pending_dir / manifest_path.name}",
+                ],
+            )
+    return imported
 
 
 def fetch_leaderboard_markdown() -> str:
@@ -550,6 +662,7 @@ def launch_pending_jobs(cfg: Config, conn: sqlite3.Connection) -> int:
             continue
 
         job_id = str(manifest.get("id") or manifest_path.stem)
+        job_kind = str(manifest.get("job_kind") or "task")
         job_dir = cfg.runtime_dir / "jobs" / job_id
         job_dir.mkdir(parents=True, exist_ok=True)
         log_path = job_dir / "run.log"
@@ -578,12 +691,13 @@ def launch_pending_jobs(cfg: Config, conn: sqlite3.Connection) -> int:
         conn.execute(
             """
             INSERT OR REPLACE INTO jobs(
-                job_id, description, status, command, cwd, manifest_path, log_path, script_path,
+                job_id, job_kind, description, status, command, cwd, manifest_path, log_path, script_path,
                 exit_file, pid, created_at, started_at, timeout_seconds
-            ) VALUES (?, ?, 'running', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, 'running', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 job_id,
+                job_kind,
                 description,
                 command,
                 str(cwd),
@@ -603,6 +717,7 @@ def launch_pending_jobs(cfg: Config, conn: sqlite3.Connection) -> int:
             f"Controller Job Launched: {job_id}",
             [
                 f"Description: {description}",
+                f"Job kind: {job_kind}",
                 f"Command: {command}",
                 f"CWD: {cwd}",
                 f"Manifest: {running_manifest_path}",
@@ -673,6 +788,7 @@ def finalize_job(
     conn.commit()
     summary = {
         "job_id": row["job_id"],
+        "job_kind": row["job_kind"] if "job_kind" in row.keys() else "task",
         "status": final_status,
         "exit_code": exit_code,
         "val_bpb": metrics["val_bpb"],
@@ -686,6 +802,7 @@ def finalize_job(
         f"Controller Job Result: {row['job_id']}",
         [
             f"Status: {final_status}",
+            f"Job kind: {row['job_kind'] if 'job_kind' in row.keys() else 'task'}",
             f"Exit code: {exit_code}",
             f"Description: {row['description']}",
             f"Command: {row['command']}",
@@ -734,15 +851,26 @@ def poll_running_jobs(cfg: Config, conn: sqlite3.Connection) -> int:
     return finished
 
 
-def best_local_score(conn: sqlite3.Connection) -> sqlite3.Row | None:
+def best_local_score(conn: sqlite3.Connection, job_kind: str | None = None) -> sqlite3.Row | None:
+    if job_kind is None:
+        return conn.execute(
+            """
+            SELECT job_id, job_kind, val_bpb, artifact_bytes, train_time_ms, finished_at
+            FROM jobs
+            WHERE status = 'done' AND val_bpb IS NOT NULL
+            ORDER BY val_bpb ASC, finished_at DESC
+            LIMIT 1
+            """
+        ).fetchone()
     return conn.execute(
         """
-        SELECT job_id, val_bpb, artifact_bytes, train_time_ms, finished_at
+        SELECT job_id, job_kind, val_bpb, artifact_bytes, train_time_ms, finished_at
         FROM jobs
-        WHERE status = 'done' AND val_bpb IS NOT NULL
+        WHERE status = 'done' AND val_bpb IS NOT NULL AND COALESCE(job_kind, 'task') = ?
         ORDER BY val_bpb ASC, finished_at DESC
         LIMIT 1
-        """
+        """,
+        (job_kind,),
     ).fetchone()
 
 
@@ -754,9 +882,12 @@ def summarize_jobs(cfg: Config, conn: sqlite3.Connection) -> str:
         else:
             row = conn.execute("SELECT COUNT(*) AS n FROM jobs WHERE status = ?", (status,)).fetchone()
             counts[status] = int(row["n"])
+    experiment_done = conn.execute(
+        "SELECT COUNT(*) AS n FROM jobs WHERE status = 'done' AND COALESCE(job_kind, 'task') = 'experiment'"
+    ).fetchone()
     recent = conn.execute(
         """
-        SELECT job_id, status, val_bpb, artifact_bytes, train_time_ms, finished_at
+        SELECT job_id, job_kind, status, val_bpb, artifact_bytes, train_time_ms, finished_at
         FROM jobs
         ORDER BY COALESCE(finished_at, started_at, created_at) DESC
         LIMIT 5
@@ -766,15 +897,17 @@ def summarize_jobs(cfg: Config, conn: sqlite3.Connection) -> str:
         f"Running jobs in DB: {counts['running']}",
         f"Completed jobs: {counts['done']}",
         f"Failed jobs: {counts['failed']}",
+        f"Completed real experiments: {int(experiment_done['n'])}",
     ]
     pending_files = sorted((cfg.runtime_dir / "queue" / "pending").glob("*.json"))
     lines.append(f"Pending manifest files: {len(pending_files)}")
-    best = best_local_score(conn)
+    lines.append(f"Staged manifest files: {staged_manifest_count(cfg)}")
+    best = best_local_score(conn, "experiment")
     if best is None:
-        lines.append("Best local successful score: none yet")
+        lines.append("Best real experiment score: none yet")
     else:
         lines.append(
-            f"Best local successful score: {best['val_bpb']:.4f} "
+            f"Best real experiment score: {best['val_bpb']:.4f} "
             f"(job={best['job_id']} artifact={best['artifact_bytes']} train_time_ms={best['train_time_ms']})"
         )
     if recent:
@@ -782,7 +915,8 @@ def summarize_jobs(cfg: Config, conn: sqlite3.Connection) -> str:
         for row in recent:
             score = "n/a" if row["val_bpb"] is None else f"{row['val_bpb']:.4f}"
             lines.append(
-                f"- {row['job_id']} status={row['status']} val_bpb={score} "
+                f"- {row['job_id']} kind={row['job_kind'] if row['job_kind'] is not None else 'task'} "
+                f"status={row['status']} val_bpb={score} "
                 f"artifact={row['artifact_bytes']} train_time_ms={row['train_time_ms']}"
             )
     return "\n".join(lines)
@@ -802,6 +936,7 @@ def build_state_summary(cfg: Config, conn: sqlite3.Connection) -> str:
     lines = [
         f"Workspace root: {cfg.workdir}",
         f"Journal file: {cfg.journal_file}",
+        f"Manifest inbox dirs: {', '.join(str(p) for p in cfg.manifest_inbox_dirs)}",
         f"Pending manifests: {queue_pending}",
         f"Running manifests: {queue_running}",
         f"Done manifests: {queue_done}",
@@ -952,7 +1087,7 @@ def invoke_codex(cfg: Config, conn: sqlite3.Connection, leaderboard_summary: str
 
 
 def write_heartbeat(cfg: Config, conn: sqlite3.Connection, note: str) -> None:
-    best = best_local_score(conn)
+    best = best_local_score(conn, "experiment")
     payload = {
         "timestamp": utc_now(),
         "note": note,
@@ -966,6 +1101,7 @@ def write_heartbeat(cfg: Config, conn: sqlite3.Connection, note: str) -> None:
 def controller_cycle(cfg: Config, conn: sqlite3.Connection) -> int:
     leaderboard = refresh_leaderboard_if_needed(cfg, conn)
     leaderboard_summary = summarize_leaderboard(leaderboard, cfg)
+    ingest_manifest_inboxes(cfg, conn)
     poll_running_jobs(cfg, conn)
     launch_pending_jobs(cfg, conn)
     write_heartbeat(cfg, conn, "post-poll")
@@ -980,7 +1116,7 @@ def controller_cycle(cfg: Config, conn: sqlite3.Connection) -> int:
             maybe_checkpoint_repo(cfg, "pending-job-launch")
             return min(cfg.default_sleep_seconds, 30)
 
-    best = best_local_score(conn)
+    best = best_local_score(conn, "experiment")
     if cfg.stop_when_best_bpb_le is not None and best is not None and float(best["val_bpb"]) <= cfg.stop_when_best_bpb_le:
         print(f"[loop] stop threshold reached: {best['val_bpb']:.4f} <= {cfg.stop_when_best_bpb_le:.4f}")
         maybe_checkpoint_repo(cfg, "stop-threshold")
@@ -1031,6 +1167,7 @@ def main() -> None:
 
     cfg = load_config(Path(args.config).resolve())
     ensure_runtime_layout(cfg.runtime_dir)
+    ensure_manifest_inboxes(cfg)
     conn = open_db(cfg.runtime_dir)
 
     if args.command == "status":

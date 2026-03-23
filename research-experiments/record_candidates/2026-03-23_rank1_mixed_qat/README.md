@@ -16,8 +16,10 @@ The goal is to reduce the post-export roundtrip penalty on the current best offi
 ## Run
 
 ```bash
-RUN_ID=rank1_mixed_qat_seed42 \
-SEED=42 \
-QAT_ENABLED=1 \
-torchrun --standalone --nproc_per_node=8 record_candidates/2026-03-23_rank1_mixed_qat/train_gpt.py
+python3 scripts/run_record_experiment.py \
+  --experiment-dir record_candidates/2026-03-23_rank1_mixed_qat \
+  --run-id rank1_mixed_qat_seed42_20260323 \
+  --seed 42 \
+  --nproc-per-node 8 \
+  --stats-path runs/rank1_mixed_qat_seed42_20260323/stats.json
 ```

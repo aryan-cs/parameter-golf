@@ -61,6 +61,16 @@ This is the append-only project journal for overnight Codex work on the `openai/
 - The configured remote remains `origin`, which points at `https://github.com/aryan-cs/parameter-golf.git`.
 - This should make the GitHub repo reflect ongoing research progress more reliably during unattended runs.
 
+## 2026-03-22 21:43 CDT - Real Experiment Path Replaced The Fake Bootstrap Path
+
+- The controller now distinguishes support jobs from real `job_kind=experiment` runs, so bootstrap snapshots no longer masquerade as a best score.
+- Added a real runner at `scripts/run_record_experiment.py` that performs preflight checks, launches a candidate with `torch.distributed.run`, and writes `stats.json` for the controller.
+- Added a data wrapper at `scripts/prepare_challenge_data.py` for downloading the official published FineWeb challenge shards into the cached official repo clone.
+- The current lead candidate remains `record_candidates/2026-03-23_rank1_mixed_qat/`, which is derived from the official March 20 `#1` script and adds mixed STE fake-quant during training.
+- Staged a real experiment manifest in `manifests/pending/rank1_mixed_qat_seed42_20260323.json`; the controller will ingest it only when runtime prerequisites are satisfied.
+- A real preflight run was executed locally and wrote `runs/preflight_rank1_mixed_qat/stats.json`.
+- The truthful blockers on this machine are: no CUDA devices, no `zstandard` module, and no downloaded challenge dataset/tokenizer yet.
+
 ## 2026-03-22 21:36 CDT - Rehydrated Rank-1 Script Into A Mixed-QAT Candidate
 
 - Created `record_candidates/2026-03-23_rank1_mixed_qat/` by copying the current official `#1` March 20 script instead of reviving the older local baseline family.
@@ -91,3 +101,13 @@ This is the append-only project journal for overnight Codex work on the `openai/
 - Human message: Sandbox policy blocked writes to `/Users/aryan/Desktop/golf/research-agent/loop/runtime/queue/pending/`, so I could not place the staged manifest into the live controller queue. It also blocked writes to `/Users/aryan/Desktop/golf/.git`, so manual `git add`/`git commit` failed with `.git/index.lock: Operation not permitted`. Please either widen writable access for those paths or make the external controller ingest manifests from `/Users/aryan/Desktop/golf/research-experiments/manifests/pending/`.
 - Prompt: /Users/aryan/Desktop/golf/research-agent/loop/runtime/reports/turn_20260323T023255Z.prompt.md
 - Log: /Users/aryan/Desktop/golf/research-agent/loop/runtime/logs/turn_20260323T023255Z.codex.log
+
+## 2026-03-23T02:46:05.318883+00:00 - Manifest Waiting For Runtime: rank1_mixed_qat_seed42_20260323
+
+- Path: /Users/aryan/Desktop/golf/research-experiments/manifests/pending/rank1_mixed_qat_seed42_20260323.json
+- missing python module: torch
+- missing python module: numpy
+- missing python module: sentencepiece
+- missing path: /Users/aryan/Desktop/golf/research-experiments/cache/openai-parameter-golf/data/datasets/fineweb10B_sp1024
+- missing path: /Users/aryan/Desktop/golf/research-experiments/cache/openai-parameter-golf/data/tokenizers/fineweb_1024_bpe.model
+- missing python module: torch

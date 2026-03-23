@@ -9,7 +9,8 @@ Operational rules for the loop:
 - Work only on ideas that plausibly fit the official record track.
 - Prefer modifying or borrowing from actual top record scripts, not the generic root baseline.
 - Keep new experiment code, analysis, helper scripts, and outputs inside `research-experiments/` unless you are intentionally changing the automation itself.
-- If a training or evaluation run is needed, create a run manifest in `../research-agent/loop/runtime/queue/pending/`.
+- Bootstrap, snapshot, and analysis jobs do not count as leaderboard progress. Only real `job_kind=experiment` runs count.
+- If a training or evaluation run is needed, stage a run manifest in `manifests/pending/` with an explicit `job_kind`.
 - Do not ask the human to continue the loop unless there is a real blocker.
 - Do not treat "good enough for top 3" as success if record-only rules still require beating the current SOTA.
 - Keep going by default. The external controller will call Codex again after each turn.

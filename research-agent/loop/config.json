@@ -1,6 +1,9 @@
 {
   "workdir": "../research-experiments",
   "runtime_dir": "loop/runtime",
+  "manifest_inbox_dirs": [
+    "../research-experiments/manifests/pending"
+  ],
   "goal_file": "loop/goal.md",
   "prompt_template_file": "loop/prompt_template.md",
   "agent_output_schema_file": "loop/agent_output.schema.json",
