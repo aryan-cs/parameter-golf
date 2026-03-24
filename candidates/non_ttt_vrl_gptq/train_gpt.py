@@ -540,8 +540,8 @@ class DTL:
         return x.to(self.dv, non_blocking=NB), y.to(self.dv, non_blocking=NB)
 
 class RN(M):
-    def __init__(self, eps=None): super().__init__(); self.eps = eps
-    def forward(self, x): return RM(x, (x.size(-1),), eps=self.eps)
+    def __init__(self, eps=None): super().__init__(); self.e = eps
+    def forward(self, x): return RM(x, (x.size(-1),), eps=self.e)
 
 class CL(nn.Linear):
     _qat_enabled: bool = False
@@ -566,19 +566,19 @@ def rf32(module):
 class RY(M):
     def __init__(self, dim, base=10000.0, tsl=1024, rd=0):
         super().__init__()
-        self.dim = dim; self.base = base; self.tsl = tsl
-        self.rope_dims = rd if rd > 0 else dim
-        inv_freq = 1.0 / (base ** (AR(0, self.rope_dims, 2, dtype=F32) / self.rope_dims))
-        self.register_buffer("inv_freq", inv_freq, persistent=False)
+        self.d = dim; self.b = base; self.t = tsl
+        self.rd = rd if rd > 0 else dim
+        inv_freq = 1.0 / (base ** (AR(0, self.rd, 2, dtype=F32) / self.rd))
+        self.register_buffer("ifq", inv_freq, persistent=False)
         self.slc = 0; self.cc = self.sc = None
     def forward(self, sl, dv, dtype):
         if self.cc is None or self.slc != sl or self.cc.device != dv:
-            rd = self.rope_dims
-            if sl > self.tsl:
-                scale = sl / self.tsl
-                new_base = self.base * (scale ** (rd / (rd - 2)))
+            rd = self.rd
+            if sl > self.t:
+                scale = sl / self.t
+                new_base = self.b * (scale ** (rd / (rd - 2)))
                 inv_freq = 1.0 / (new_base ** (AR(0, rd, 2, dtype=F32, device=dv) / rd))
-            else: inv_freq = self.inv_freq.to(dv)
+            else: inv_freq = self.ifq.to(dv)
             freqs = th.outer(AR(sl, device=dv, dtype=inv_freq.dtype), inv_freq)
             self.cc = freqs.cos()[None, :, None, :]; self.sc = freqs.sin()[None, :, None, :]
             self.slc = sl
@@ -604,7 +604,7 @@ class CSA(M):
         self.c_v = CL(dim, kv_dim, bias=False); self.proj = CL(dim, dim, bias=False)
         self.proj._zero_init = True
         self.q_gain = P(FUL((nh,), qgi, dtype=F32))
-        self.rope_dims = 0
+        self.rd = 0
         self.rotary = RY(self.hd, base=rb, tsl=1024)
         self.ux = False
     def xe(self, y, v):
@@ -623,8 +623,8 @@ class CSA(M):
         v = v.reshape(bsz, seqlen, self.nkh, self.hd)
         q, k = RM(q, (q.size(-1),)), RM(k, (k.size(-1),))
         cos, sin = self.rotary(seqlen, x.device, q.dtype)
-        q = are(q, cos, sin, self.rope_dims)
-        k = are(k, cos, sin, self.rope_dims)
+        q = are(q, cos, sin, self.rd)
+        k = are(k, cos, sin, self.rd)
         q = q * self.q_gain.to(dtype=q.dtype)[None, None, :, None]
         if HAS_FA3:
             y = _fa3_func(q, k, v, causal=True)
@@ -656,14 +656,14 @@ class SGT(M):
 class BHE(M):
     def __init__(self, bgvs, bgd, dm):
         super().__init__()
-        self.bgvs = bgvs
+        self.bv = bgvs
         self.embed = nn.Embedding(bgvs, bgd)
         NI.zeros_(self.embed.weight)
         self.proj = CL(bgd, dm, bias=False) if bgd != dm else None
         if self.proj is not None: NI.zeros_(self.proj.weight)
         self.scale = P(TT(0.05, dtype=F32))
     def bh(self, tokens):
-        t = tokens.to(th.int32); mod = self.bgvs - 1
+        t = tokens.to(th.int32); mod = self.bv - 1
         out = EL(t); out[..., 0] = mod
         out[..., 1:] = th.bitwise_xor(36313 * t[..., 1:], 27191 * t[..., :-1]) % mod
         return out.long()
@@ -711,8 +711,8 @@ class GPT(M):
                  rd=0, ln_scale=False,
                  vee=False, ved=128, vel="9,10"):
         super().__init__()
-        self.te, self.teis = te, teis
-        self.lsc = lsc
+        self.te, self.ti = te, teis
+        self.ls = lsc
         self.se, self.be, self.num_layers = se, be, nl
         self.tok_emb = nn.Embedding(vs, dm)
         self.bigram = BHE(bgvs, bgd, dm) if bgvs > 0 else None
@@ -730,7 +730,7 @@ class GPT(M):
         if rd > 0:
             hd = dm // nh
             for block in self.blocks:
-                block.attn.rope_dims = rd
+                block.attn.rd = rd
                 block.attn.rotary = RY(hd, base=rb, tsl=1024, rd=rd)
         if xsn > 0:
             for i in range(max(0, nl - xsn), nl):
@@ -755,7 +755,7 @@ class GPT(M):
         self.iw()
     def iw(self):
         if self.te:
-            NI.normal_(self.tok_emb.weight, mean=0.0, std=self.teis)
+            NI.normal_(self.tok_emb.weight, mean=0.0, std=self.ti)
         nl = len(self.blocks)
         for name, module in self.named_modules():
             if isinstance(module, nn.Linear):
@@ -817,12 +817,12 @@ class GPT(M):
         x0 = self.eb(ids); x = self.rl(x0, x0, ids)
         x_flat = self.final_norm(x).reshape(-1, x.size(-1)); targets = tgt.reshape(-1)
         logits_proj = LI(x_flat, self.tok_emb.weight) if self.te else self.lm_head(x_flat)
-        logits = self.lsc * th.tanh(logits_proj / self.lsc)
+        logits = self.ls * th.tanh(logits_proj / self.ls)
         return F.cross_entropy(logits.float(), targets, reduction="mean")
     def fwl(self, ids):
         x0 = self.eb(ids); x = self.final_norm(self.rl(x0, x0, ids))
         logits = LI(x, self.tok_emb.weight.to(x.dtype)) if self.te else self.lm_head(x)
-        return self.lsc * th.tanh(logits / self.lsc)
+        return self.ls * th.tanh(logits / self.ls)
 
 def ch(bm, tl, args, dv, gas, nbc=256):
     hh = {}
@@ -916,7 +916,7 @@ def ree(a, bm, rank, ws, dv, dd, m0,
                     code, vt, bb, hs, ib, log0):
     cl = DTL(a.tf, rank, ws, dv)
     hh = ch(bm, cl, a, dv, 8 // ws,
-                                num_batches=a.gcb)
+                                nbc=a.gcb)
     hm = {}
     for name, module in bm.named_modules():
         if isinstance(module, CL):
