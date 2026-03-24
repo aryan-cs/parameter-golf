@@ -16,6 +16,7 @@ P=nn.Parameter; PL=nn.ParameterList; M=nn.Module; ML=nn.ModuleList; NI=nn.init; 
 IA=dist.is_available; II=dist.is_initialized; BR=dist.barrier; GWS=dist.get_world_size; GRK=dist.get_rank; IGP=dist.init_process_group; DGP=dist.destroy_process_group; ARD=dist.all_reduce; ROP=dist.ReduceOp
 ZL=th.zeros_like; EL=th.empty_like; AR=th.arange; SG=th.sigmoid; CAT=th.cat; ON=th.ones; FUL=th.full; EYE=th.eye
 N8=np.uint8; N6=np.int16; N1=np.int8; N4=np.uint32; NB=1
+U="utf-8"; FM="final_model.int6.ptz"; MS="model_state"; MB="momentum_buffer"; TD="TORCH_COMPILE_DISABLE"
 try:
     from flash_attn_interface import flash_attn_func as _fa3_func
     HAS_FA3 = True
@@ -70,8 +71,8 @@ class MU(th.optim.Optimizer):
             for i, p in enumerate(params):
                 if i % ws == rk and p.grad is not None:
                     g = p.grad; state = self.state[p]
-                    if "momentum_buffer" not in state: state["momentum_buffer"] = ZL(g)
-                    buf = state["momentum_buffer"]; buf.mul_(momentum).add_(g)
+                    if MB not in state: state[MB] = ZL(g)
+                    buf = state[MB]; buf.mul_(momentum).add_(g)
                     if nesterov: g = g.add(buf, alpha=momentum)
                     g = z5(g, steps=ns_steps)
                     g *= max(1, g.size(0) / g.size(1)) ** 0.5
@@ -96,7 +97,7 @@ def bsl(sp, vs, dv):
         if sp.is_byte(tid): bbn[tid] = 1; continue
         piece = sp.id_to_piece(tid)
         if piece.startswith("\u2581"): hln[tid] = True; piece = piece[1:]
-        bbn[tid] = len(piece.encode("utf-8"))
+        bbn[tid] = len(piece.encode(U))
     return (TT(bbn, dtype=I16, device=dv),
             TT(hln, dtype=BO, device=dv),
             TT(ibn, dtype=BO, device=dv))
@@ -200,7 +201,7 @@ def eqm(meta: dict[str, object]) -> tuple[bytes, list[str]]:
             if kind_name == "6": kind_code = 2
             elif kind_name == "8": kind_code = 3
             else: raise ER(f"bad meta {name}:{kind!r}")
-        name_bytes = name.encode("utf-8")
+        name_bytes = name.encode(U)
         parts.append(PK("<HB", len(name_bytes), kind_code))
         parts.append(name_bytes)
     return b"".join(parts), names
@@ -218,11 +219,11 @@ def dqm(blob: bytes) -> tuple[dict[str, object], list[str], bool]:
         meta, names = {}, []
         for _ in range(entry_count):
             name_len, kind_code = UF("<HB", blob, o); o += 3
-            name = blob[o:o+name_len].decode("utf-8"); o += name_len
+            name = blob[o:o+name_len].decode(U); o += name_len
             meta[name] = kind_map[kind_code]
             names.append(name)
         return meta, names, True
-    return json.loads(blob.decode("utf-8")), [], False
+    return json.loads(blob.decode(U)), [], False
 
 def etr(tname: str, nti: dict[str, int]) -> tuple[int, int]:
     if tname in nti:
@@ -905,7 +906,7 @@ def mspc(path_spec: str, sd: dict[str, th.Tensor], log0):
     ckpt_path = rcp(path_spec)
     if not ckpt_path:
         return ""
-    ckpt = {"model_state": {k: DC(v) for k, v in sd.items()}}
+    ckpt = {MS: {k: DC(v) for k, v in sd.items()}}
     path = PT(ckpt_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.with_suffix(path.suffix + ".tmp")
@@ -926,7 +927,7 @@ def ree(a, bm, rank, ws, dv, dd, m0,
             if h_name in hh:
                 hm[sd_name] = hh[h_name]
     sd_cpu = {k: DC(v) for k, v in bm.state_dict().items()}
-    cb = len(code.encode("utf-8")); sl = 16_000_000
+    cb = len(code.encode(U)); sl = 16_000_000
     qr, qm = qsd(sd_cpu, hh=hm)
     if a.pp > 0:
         ai6 = []
@@ -1000,9 +1001,9 @@ def ree(a, bm, rank, ws, dv, dd, m0,
     if ts > sl: log0(f"warn:size {ts}+{ts - sl}")
     else: log0(f"size_ok:{ts/1e6:.2f} MB")
     if m0:
-        with open("final_model.int6.ptz", "wb") as f: f.write(model_blob)
+        with open(FM, "wb") as f: f.write(model_blob)
     if dd: BR()
-    with open("final_model.int6.ptz", "rb") as f: model_blob_loaded = f.read()
+    with open(FM, "rb") as f: model_blob_loaded = f.read()
     rd, _ = dmb(model_blob_loaded)
     o = 0
     meta_len = UF("<I", rd, o)[0]; o += 4
@@ -1015,7 +1016,7 @@ def ree(a, bm, rank, ws, dv, dd, m0,
             tname = dtr(name_idx, suffix, meta_names)
         else:
             name_len = UF("<H", rd, o)[0]; o += 2
-            tname = rd[o:o+name_len].decode("utf-8"); o += name_len
+            tname = rd[o:o+name_len].decode(U); o += name_len
             dt, ndim = UF("<BB", rd, o); o += 2
         shape = []
         for _ in range(ndim):
@@ -1045,7 +1046,7 @@ def ree(a, bm, rank, ws, dv, dd, m0,
     bm.load_state_dict(deq_state, 1)
     eval_sl = a.esl if a.esl > 0 else a.tsl
     vte = lvt(a.val_files, eval_sl) if eval_sl != a.tsl else vt
-    rlf = CMP(bm.forward_logits, dynamic=False) if not GB("TORCH_COMPILE_DISABLE") else bm.forward_logits
+    rlf = CMP(bm.forward_logits, dynamic=False) if not GB(TD) else bm.forward_logits
     warmup_x = Z(a.ebs, eval_sl, dtype=I64, device=dv)
     bm.eval()
     with IM(), AU(): _ = rlf(warmup_x)
@@ -1060,7 +1061,7 @@ def ree(a, bm, rank, ws, dv, dd, m0,
 
 def main():
     global z5
-    code = PT(__file__).read_text(encoding="utf-8"); a = H()
+    code = PT(__file__).read_text(encoding=U); a = H()
     z5 = CMP(z5)
     dd = "RANK" in os.environ and "WORLD_SIZE" in os.environ
     rank = GI("RANK"); ws = GI("WORLD_SIZE", 1)
@@ -1081,7 +1082,7 @@ def main():
         if not m0: return
         if console: print(msg)
         if lf:
-            with open(lf, "a", encoding="utf-8") as f: print(msg, file=f)
+            with open(lf, "a", encoding=U) as f: print(msg, file=f)
     random.seed(a.sd); np.random.seed(a.sd); th.manual_seed(a.sd); th.cuda.manual_seed_all(a.sd)
     sp = spm.SentencePieceProcessor(model_file=a.tp)
     vt = lvt(a.vf, a.tsl)
@@ -1102,12 +1103,12 @@ def main():
         if isinstance(m, CL): m.float()
     rf32(bm)
     gs = bm.state_dict; ls = bm.load_state_dict
-    cm = CMP(bm, dynamic=False, fullgraph=True) if not GB("TORCH_COMPILE_DISABLE") else bm
+    cm = CMP(bm, dynamic=False, fullgraph=True) if not GB(TD) else bm
     model = DDP(cm, device_ids=[lrk], broadcast_buffers=False) if dd else cm
     eoc = rcp(a.eoc)
     if eoc:
         ckpt = th.load(eoc, map_location="cpu")
-        ms = ckpt["model_state"] if isinstance(ckpt, dict) and "model_state" in ckpt else ckpt
+        ms = ckpt[MS] if isinstance(ckpt, dict) and MS in ckpt else ckpt
         ls(ms, 1)
         ree(a, bm, rank, ws, dv, dd, m0,
                         code, vt, bb, hs, ib, log0)
