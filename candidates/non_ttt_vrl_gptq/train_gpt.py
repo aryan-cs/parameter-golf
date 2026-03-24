@@ -598,7 +598,7 @@ def are(x, cos, sin, rd=0):
 class CSA(M):
     def __init__(self, dim, nh, nkh, rb, qgi):
         super().__init__()
-        self.num_heads, self.num_kv_heads = nh, nkh; self.head_dim = dim // nh
+        self.num_heads, self.nkh = nh, nkh; self.head_dim = dim // nh
         kv_dim = nkh * self.head_dim
         self.c_q = CL(dim, dim, bias=False); self.c_k = CL(dim, kv_dim, bias=False)
         self.c_v = CL(dim, kv_dim, bias=False); self.proj = CL(dim, dim, bias=False)
@@ -616,11 +616,11 @@ class CSA(M):
     def forward(self, x, v_embed=None, v_residual=None):
         bsz, seqlen, dim = x.shape
         q = self.c_q(x).reshape(bsz, seqlen, self.num_heads, self.head_dim)
-        k = self.c_k(x).reshape(bsz, seqlen, self.num_kv_heads, self.head_dim)
+        k = self.c_k(x).reshape(bsz, seqlen, self.nkh, self.head_dim)
         v = self.c_v(x)
         if v_embed is not None: v = v + v_embed
         if v_residual is not None: v = v + v_residual
-        v = v.reshape(bsz, seqlen, self.num_kv_heads, self.head_dim)
+        v = v.reshape(bsz, seqlen, self.nkh, self.head_dim)
         q, k = RM(q, (q.size(-1),)), RM(k, (k.size(-1),))
         cos, sin = self.rotary(seqlen, x.device, q.dtype)
         q = are(q, cos, sin, self.rope_dims)
@@ -632,7 +632,7 @@ class CSA(M):
         else:
             qt, kt, vt = q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)
             y = F.scaled_dot_product_attention(qt, kt, vt, attn_mask=None, is_causal=True,
-                                               enable_gqa=(self.num_kv_heads != self.num_heads)).transpose(1, 2)
+                                               enable_gqa=(self.nkh != self.num_heads)).transpose(1, 2)
         if self.use_xsa: y = self._xsa_efficient(y, v)
         return self.proj(y.reshape(bsz, seqlen, dim))
 
@@ -694,13 +694,13 @@ class BL(M):
         self.attn_scale = P(ON(dim, dtype=F32))
         self.mlp_scale = P(ON(dim, dtype=F32))
         self.resid_mix = P(SK((ON(dim), Z(dim))).float())
-        self.ln_scale_factor = 1.0 / math.sqrt(layer_idx + 1) if ln_scale else 1.0
+        self.lsf = 1.0 / math.sqrt(layer_idx + 1) if ln_scale else 1.0
     def forward(self, x, x0, v_embed=None, v_residual=None):
         mix = self.resid_mix.to(dtype=x.dtype)
         x_in = mix[0][None, None, :] * x + mix[1][None, None, :] * x0
-        attn_out = self.attn(self.attn_norm(x_in) * self.ln_scale_factor, v_embed=v_embed, v_residual=v_residual)
+        attn_out = self.attn(self.attn_norm(x_in) * self.lsf, v_embed=v_embed, v_residual=v_residual)
         x_out = x_in + self.attn_scale.to(dtype=x_in.dtype)[None, None, :] * attn_out
-        x_out = x_out + self.mlp_scale.to(dtype=x_out.dtype)[None, None, :] * self.mlp(self.mlp_norm(x_out) * self.ln_scale_factor)
+        x_out = x_out + self.mlp_scale.to(dtype=x_out.dtype)[None, None, :] * self.mlp(self.mlp_norm(x_out) * self.lsf)
         return x_out
 
 class GPT(M):
@@ -718,10 +718,10 @@ class GPT(M):
         self.bigram = BHE(bgvs, bgd, dm) if bgvs > 0 else None
         self.smear = SGT(dm) if se else None
         self.backout_lambda = P(backout_init * ON(1)) if be else None
-        self.num_encoder_layers = nl // 2
-        self.num_decoder_layers = nl - self.num_encoder_layers
-        self.num_skip_weights = min(self.num_encoder_layers, self.num_decoder_layers)
-        self.skip_weights = P(ON(self.num_skip_weights, dm, dtype=F32))
+        self.nel = nl // 2
+        self.ndl = nl - self.nel
+        self.nsw = min(self.nel, self.ndl)
+        self.skip_weights = P(ON(self.nsw, dm, dtype=F32))
         self.blocks = ML([
             BL(dm, nh, nkh, mm, rb, qgi,
                   layer_idx=i, ln_scale=ln_scale)
@@ -736,15 +736,15 @@ class GPT(M):
             for i in range(max(0, nl - xsn), nl):
                 self.blocks[i].attn.use_xsa = True
         kv_dim = nkh * (dm // nh)
-        self.ve_layer_indices = [int(x) for x in vel.split(",") if x.strip()] if vee else []
-        if self.ve_layer_indices:
+        self.vli = [int(x) for x in vel.split(",") if x.strip()] if vee else []
+        if self.vli:
             self.ve_shared = VE(vs, ved, kv_dim)
-            self.ve_layer_scales = PL([P(ON(1, dtype=F32)) for _ in self.ve_layer_indices])
+            self.ve_layer_scales = PL([P(ON(1, dtype=F32)) for _ in self.vli])
         else:
             self.ve_shared = None; self.ve_layer_scales = PL()
         self.final_norm = RN()
-        self.vrl_enabled = nl > 1
-        if self.vrl_enabled:
+        self.vre = nl > 1
+        if self.vre:
             self.vrl_alphas = PL([
                 P(TT(0.0, dtype=F32)) for _ in range(nl - 1)
             ])
@@ -770,21 +770,21 @@ class GPT(M):
                 block.resid_mix.data[0] = phase * ON(block.resid_mix.shape[1])
                 block.resid_mix.data[1] = (1-phase) * ON(block.resid_mix.shape[1])
     def _get_ve(self, layer_idx, ids, ve_cache):
-        if self.ve_shared is None or layer_idx not in self.ve_layer_indices: return None
+        if self.ve_shared is None or layer_idx not in self.vli: return None
         if 've' not in ve_cache: ve_cache['ve'] = self.ve_shared(ids)
-        ve_idx = self.ve_layer_indices.index(layer_idx)
+        ve_idx = self.vli.index(layer_idx)
         return ve_cache['ve'] * self.ve_layer_scales[ve_idx].to(dtype=ve_cache['ve'].dtype)
     def _run_layers(self, x, x0, ids):
         skips, backout_layer, x_backout = [], self.num_layers // 2, None
         ve_cache = {}
         v0_raw = None
-        if self.vrl_enabled:
+        if self.vre:
             blk0 = self.blocks[0]
             mix0 = blk0.resid_mix.to(dtype=x0.dtype)
             x_in0 = mix0[0][None, None, :] * x0 + mix0[1][None, None, :] * x0
-            v0_raw = blk0.attn.c_v(blk0.attn_norm(x_in0) * blk0.ln_scale_factor)
+            v0_raw = blk0.attn.c_v(blk0.attn_norm(x_in0) * blk0.lsf)
         vrl_idx = 0
-        for i in range(self.num_encoder_layers):
+        for i in range(self.nel):
             ve = self._get_ve(i, ids, ve_cache)
             v_res = None
             if i > 0 and v0_raw is not None:
@@ -793,8 +793,8 @@ class GPT(M):
                 vrl_idx += 1
             x = self.blocks[i](x, x0, v_embed=ve, v_residual=v_res); skips.append(x)
             if i == backout_layer: x_backout = x
-        for i in range(self.num_decoder_layers):
-            li = self.num_encoder_layers + i
+        for i in range(self.ndl):
+            li = self.nel + i
             if skips: x = x + self.skip_weights[i].to(dtype=x.dtype)[None, None, :] * skips.pop()
             ve = self._get_ve(li, ids, ve_cache)
             v_res = None
@@ -1123,7 +1123,7 @@ def main():
     if bm.ve_shared is not None:
         spa.append(bm.ve_shared.scale)
         for s in bm.ve_layer_scales: spa.append(s)
-    if bm.vrl_enabled:
+    if bm.vre:
         for alpha in bm.vrl_alphas: spa.append(alpha)
     tlr = a.telr if a.te else a.elr
     tpg = [{PA: [bm.tok_emb.weight], "lr": tlr, BL: tlr}]
