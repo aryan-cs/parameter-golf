@@ -356,3 +356,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: We now have a replacement follow-up that targets the actual problem. The baseline is about `333,801` bytes over the limit, and the previous queued no-prune follow-up would almost certainly have made the artifact larger, not smaller.
 - Decision: Replace the queued no-prune follow-up on the pod with the new `prune11` follow-up so the next run spends GPU time on a byte-cap-compliant direction.
 - Next step: Sync the new configs, swap the waiting pod script to launch `non_ttt_vrl_gptq_1gpu_long_prune11.env`, and then keep monitoring the current baseline for its final post-quant metric.
+
+- Timestamp: 2026-03-24 00:17 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL export monitoring
+- Objective: Decide whether the over-cap baseline is still doing useful work or should be terminated in favor of the queued prune-focused follow-up.
+- Command or config: Checked the live pod state with `ps`, `nvidia-smi`, remote file mtimes, and the local code path around the export tail in `candidates/non_ttt_vrl_gptq/train_gpt.py`.
+- Result: The baseline process is still alive as PID `129473`, using `100%` GPU and about `33 GiB` of memory, while the log has not advanced past `WARNING: Total size 16333801 exceeds 16MB limit by 333801 bytes!`. The code confirms that this warning is printed before the final `final_int6_zstd_roundtrip` evaluation, so the silent tail is still the quantized round-trip eval path rather than a cleanly completed run.
+- Decision: Do not kill the baseline yet; let it continue until it either prints the final quantized metric or exits, because that metric is still the most valuable missing datapoint for calibrating the queued prune11 follow-up.
+- Next step: Keep monitoring the active baseline for the final quantized metric while leaving the queued `prune11` watcher in place to take over the GPU automatically when this run exits.
