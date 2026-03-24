@@ -12,7 +12,7 @@ Carried from v41:
   - QAT-export alignment: -0.0005 BPB.
 """
 from __future__ import annotations
-import copy, glob, io, json, math, os, random, struct, subprocess, sys, time, uuid, zlib
+import copy, glob, io, json, lzma, math, os, random, struct, subprocess, sys, time, uuid, zlib
 try:
     import zstandard as zstd; HAS_ZSTD = True
 except ImportError: HAS_ZSTD = False
@@ -208,6 +208,10 @@ META_PASSTHROUGH_CTRL = "c"
 META_INT6 = 6
 META_INT8 = 8
 META_BLOB_MAGIC = b"QMB1"
+MODEL_BLOB_MAGIC = b"QCB1"
+MODEL_CODEC_ZSTD = 1
+MODEL_CODEC_ZLIB = 2
+MODEL_CODEC_LZMA = 3
 
 def _classify_param(name):
     if "tok_emb" in name or "lm_head" in name: return "embed"
@@ -525,6 +529,45 @@ def unpack_int6_tensor(raw: bytes | memoryview, shape: list[int]) -> torch.Tenso
         u |= (bits.astype(np.uint8, copy=False) << bit)
     arr = _zigzag_decode_int6(u[:numel])
     return torch.from_numpy(arr.astype(np.int8, copy=False).reshape(shape))
+
+def _model_codec_name(codec_id: int) -> str:
+    if codec_id == MODEL_CODEC_ZSTD:
+        return "zstd19"
+    if codec_id == MODEL_CODEC_ZLIB:
+        return "zlib9"
+    if codec_id == MODEL_CODEC_LZMA:
+        return "lzma9e"
+    return f"unknown({codec_id})"
+
+def compress_model_blob(raw: bytes) -> tuple[bytes, int]:
+    candidates = [
+        (MODEL_CODEC_LZMA, lzma.compress(raw, preset=9 | lzma.PRESET_EXTREME)),
+        (MODEL_CODEC_ZLIB, zlib.compress(raw, level=9)),
+    ]
+    if HAS_ZSTD:
+        candidates.append((MODEL_CODEC_ZSTD, zstd.ZstdCompressor(level=19).compress(raw)))
+    codec_id, payload = min(candidates, key=lambda item: len(item[1]))
+    return MODEL_BLOB_MAGIC + bytes([codec_id]) + payload, codec_id
+
+def decompress_model_blob(blob: bytes) -> tuple[bytes, str]:
+    if blob.startswith(MODEL_BLOB_MAGIC):
+        codec_id = blob[len(MODEL_BLOB_MAGIC)]
+        payload = blob[len(MODEL_BLOB_MAGIC) + 1:]
+        if codec_id == MODEL_CODEC_ZSTD:
+            if not HAS_ZSTD:
+                raise RuntimeError("artifact uses zstd codec but zstandard is unavailable")
+            return zstd.ZstdDecompressor().decompress(payload), _model_codec_name(codec_id)
+        if codec_id == MODEL_CODEC_ZLIB:
+            return zlib.decompress(payload), _model_codec_name(codec_id)
+        if codec_id == MODEL_CODEC_LZMA:
+            return lzma.decompress(payload), _model_codec_name(codec_id)
+        raise ValueError(f"unknown model codec id: {codec_id}")
+    if HAS_ZSTD:
+        try:
+            return zstd.ZstdDecompressor().decompress(blob), "legacy_zstd22"
+        except Exception:
+            pass
+    return zlib.decompress(blob), "legacy_zlib9"
 
 # ── DATA LOADING ──
 def load_data_shard(file):
@@ -1022,10 +1065,7 @@ def run_export_eval(args, base_model, rank, world_size, device, distributed, mas
         else:
             other_payload_bytes += len(raw)
     quant_raw = b"".join(parts)
-    if HAS_ZSTD:
-        model_blob = zstd.ZstdCompressor(level=22).compress(quant_raw)
-    else:
-        model_blob = zlib.compress(quant_raw, level=9)
+    model_blob, model_codec_id = compress_model_blob(quant_raw)
     model_bytes = len(model_blob); total_size = code_bytes + model_bytes
     log0(
         "artifact_breakdown:"
@@ -1035,6 +1075,7 @@ def run_export_eval(args, base_model, rank, world_size, device, distributed, mas
         f" other_payload={other_payload_bytes}"
         f" raw_total={len(quant_raw)}"
         f" compressed_model={model_bytes}"
+        f" codec={_model_codec_name(model_codec_id)}"
         f" int6_tensors={packed_int6_tensors}"
     )
     log0(f"model:{model_bytes} code:{code_bytes} total:{total_size} ({total_size/1e6:.2f} MB)")
@@ -1044,8 +1085,8 @@ def run_export_eval(args, base_model, rank, world_size, device, distributed, mas
         with open("final_model.int6.ptz", "wb") as f: f.write(model_blob)
     if distributed: dist.barrier()
     with open("final_model.int6.ptz", "rb") as f: model_blob_loaded = f.read()
-    if HAS_ZSTD: raw_data = zstd.ZstdDecompressor().decompress(model_blob_loaded)
-    else: raw_data = zlib.decompress(model_blob_loaded)
+    raw_data, loaded_codec_name = decompress_model_blob(model_blob_loaded)
+    log0(f"artifact_codec_loaded:{loaded_codec_name}")
     offset = 0
     meta_len = struct.unpack_from("<I", raw_data, offset)[0]; offset += 4
     loaded_meta, meta_names, compact_tensor_refs = decode_quant_meta(raw_data[offset:offset+meta_len]); offset += meta_len
