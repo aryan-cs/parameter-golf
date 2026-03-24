@@ -986,3 +986,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The candidate file shrank from `59,146` bytes to `58,400` bytes, another `746` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 58,400`, which is `-16,531` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
 - Decision: Keep the config-field shortening pass in the main lane. It is a high-confidence counted-size win because the external env var interface stayed intact and the exporter validation remained unchanged.
 - Next step: Push the config-field shortening pass so the next live export rerun uses the smallest counted candidate source we have so far together with the stronger bitplane + raw-LZMA exporter path.
+
+- Timestamp: 2026-03-24 03:57 America/Chicago
+- Commit: `935e026`
+- Lane: non-ttt VRL code-size hygiene
+- Objective: Reclaim another moderate block of counted source bytes by shortening long internal helper/function symbols that never leave the candidate file and do not affect env vars, artifact fields, or ladder markers.
+- Command or config: Renamed several internal helper symbols in `candidates/non_ttt_vrl_gptq/train_gpt.py` (including the sentencepiece/validation/data-load helpers, a few quantization helpers, the low-dim restore helper, the rotary helper, and the meta-kind/classifier helpers), updated all in-file call sites, then reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, reran `python3 runpod/check_ready.py`, and reran the offline codec round-trip validator on the fixed-seed quantized VRL model skeleton.
+- Result: The candidate file shrank from `58,400` bytes to `57,955` bytes, another `445` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 57,955`, which is `-16,976` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
+- Decision: Keep the helper-symbol shortening pass in the main lane. It is another safe counted-size win with no observed exporter regression.
+- Next step: Push the helper-symbol shortening pass so the next live export rerun uses the smallest counted candidate source we have so far together with the stronger bitplane + raw-LZMA exporter path.
