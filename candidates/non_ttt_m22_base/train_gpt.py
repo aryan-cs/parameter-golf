@@ -70,6 +70,7 @@ class Hyperparameters:
     adam_eps = float(os.environ.get("ADAM_EPS", 1e-8))
     grad_clip_norm = float(os.environ.get("GRAD_CLIP_NORM", 0.3))
     eval_stride = int(os.environ.get("EVAL_STRIDE", 64))
+    extra_stride64_final_eval = bool(int(os.environ.get("EXTRA_STRIDE64_FINAL_EVAL", "1")))
     mtp_num_heads = int(os.environ.get("MTP_NUM_HEADS", 0))
     mtp_loss_weight = float(os.environ.get("MTP_LOSS_WEIGHT", 0.2))
     muon_beta2 = float(os.environ.get("MUON_BETA2", 0.95))
@@ -1399,7 +1400,7 @@ def main() -> None:
         )
         log0(f"final_int6_sliding_window_exact val_loss:{sw_val_loss:.8f} val_bpb:{sw_val_bpb:.8f}")
         log0(f"final_int8_zlib_roundtrip_exact val_loss:{sw_val_loss:.8f} val_bpb:{sw_val_bpb:.8f}")
-    if args.eval_stride != 64 and 64 < sw_seq_len:
+    if args.extra_stride64_final_eval and args.eval_stride != 64 and 64 < sw_seq_len:
         torch.cuda.synchronize()
         t_slide64 = time.perf_counter()
         sw64_val_loss, sw64_val_bpb = eval_val_sliding(

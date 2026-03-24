@@ -185,3 +185,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: A fresh background VRL/GPTQ smoke run is active at `runs/non_ttt_vrl_gptq/seed1337/20260324T025035Z`, creating a direct same-pod comparison against the March 22 base smoke results.
 - Decision: Let the VRL/GPTQ smoke lane run to completion before deciding whether the next spend should be a full-shard single-GPU repro or an 8xH100 validation.
 - Next step: Read `runs/non_ttt_vrl_gptq/seed1337/20260324T025035Z/train.log` after completion and compare both pre-quant and post-quant behavior against the March 22 smoke run.
+
+- Timestamp: 2026-03-23 18:45 America/Chicago
+- Commit: uncommitted
+- Lane: smoke config hygiene
+- Objective: Eliminate two smoke-only evaluation problems that would waste pod time without improving ranking quality.
+- Command or config: Added `EXTRA_STRIDE64_FINAL_EVAL` to `candidates/non_ttt_m22_base/train_gpt.py`, set it to `0` in `configs/runpod/non_ttt_m22_base_smoke.env`, and corrected `configs/runpod/non_ttt_vrl_gptq_smoke.env` from `EVAL_STRIDE=0` to `EVAL_STRIDE=2048` so the VRL smoke lane uses a finite non-overlapping final eval.
+- Result: Future March 22 smoke runs no longer pay for the forced extra stride-64 tail eval, and the VRL smoke lane will no longer hang at final evaluation because of a zero stride.
+- Decision: Push the smoke-eval fixes immediately, then kill the already-launched VRL smoke process and relaunch it with the corrected config.
+- Next step: Commit and push these changes, sync them to the pod, restart the VRL/GPTQ smoke run, and compare it against the March 22 smoke baseline.
