@@ -851,3 +851,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The candidate file shrank from `66,132` bytes to `65,424` bytes, another `708` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 65,424`, which is `-9,507` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
 - Decision: Keep the config/local shortening pass in the main lane. It is another free counted-size win with no observed exporter regression.
 - Next step: Push the rename pass so the next live export rerun uses the smaller counted candidate source together with the stronger bitplane + raw-LZMA exporter path.
+
+- Timestamp: 2026-03-24 03:16 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL code-size hygiene
+- Objective: Reclaim another larger block of counted source bytes by aliasing the global `torch` module shorter and keeping the remaining runtime checks honest.
+- Command or config: Switched the candidate import from the full `torch` module name to the shorter alias `th` across `candidates/non_ttt_vrl_gptq/train_gpt.py`, then fixed the two import lines that should continue to reference the real `torch` package path, reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, reran `python3 runpod/check_ready.py`, and reran the offline codec round-trip validator on the fixed-seed quantized VRL model skeleton.
+- Result: The candidate file shrank from `65,424` bytes to `64,764` bytes, another `660` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 64,764`, which is `-10,167` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
+- Decision: Keep the shorter global `torch` alias in the main lane. It is another meaningful counted-size win with no observed exporter regression.
+- Next step: Push the alias pass so the next live export rerun uses the smaller counted candidate source together with the stronger bitplane + raw-LZMA exporter path.
