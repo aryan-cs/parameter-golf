@@ -896,3 +896,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The candidate file shrank from `63,706` bytes to `62,810` bytes, another `896` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 62,810`, which is `-12,121` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
 - Decision: Keep the environment/timing alias pass in the main lane. It is a materially better counted-size win than the recent micro-alias passes and still shows no observed exporter regression.
 - Next step: Push the environment/timing alias pass so the next live export rerun uses the smaller counted candidate source together with the stronger bitplane + raw-LZMA exporter path.
+
+- Timestamp: 2026-03-24 03:30 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL code-size hygiene
+- Objective: Reclaim another safe block of counted source bytes by aliasing repeated distributed lifecycle helpers and compile/sync calls without changing exporter behavior.
+- Command or config: Added short aliases inside `candidates/non_ttt_vrl_gptq/train_gpt.py` for `th.compile -> CMP`, `th.cuda.synchronize -> SY`, `dist.is_available -> IA`, `dist.is_initialized -> II`, `dist.barrier -> BR`, `dist.get_world_size -> GWS`, `dist.get_rank -> GRK`, `dist.init_process_group -> IGP`, and `dist.destroy_process_group -> DGP`, replaced the corresponding repeated call sites, then reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, reran `python3 runpod/check_ready.py`, and reran the offline codec round-trip validator on the fixed-seed quantized VRL model skeleton.
+- Result: The candidate file shrank from `62,810` bytes to `62,736` bytes, another `74` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 62,736`, which is `-12,195` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
+- Decision: Keep the distributed/compile alias pass in the main lane. The gain is small, but it is free, safe, and still moves the counted source in the right direction.
+- Next step: Push the distributed/compile alias pass so the next live export rerun uses the smaller counted candidate source together with the stronger bitplane + raw-LZMA exporter path.

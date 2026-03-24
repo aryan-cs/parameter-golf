@@ -12,7 +12,8 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 EG=os.environ.get; JP=os.path.join; PC=time.perf_counter
 BF=th.bfloat16; F16=th.float16; F32=th.float32; F64=th.float64; I8=th.int8; I16=th.int16; I64=th.int64; BO=th.bool; U16=th.uint16
 AC=th.autocast; IM=th.inference_mode; Z=th.zeros; TT=th.tensor; QT=th.quantile; EM=th.empty; FN=th.from_numpy; SK=th.stack
-P=nn.Parameter; PL=nn.ParameterList; M=nn.Module; ML=nn.ModuleList; NI=nn.init; NG=th.no_grad; CLP=th.clamp; DG=th.diag; ARD=dist.all_reduce; ROP=dist.ReduceOp
+P=nn.Parameter; PL=nn.ParameterList; M=nn.Module; ML=nn.ModuleList; NI=nn.init; NG=th.no_grad; CLP=th.clamp; DG=th.diag; CMP=th.compile; SY=th.cuda.synchronize
+IA=dist.is_available; II=dist.is_initialized; BR=dist.barrier; GWS=dist.get_world_size; GRK=dist.get_rank; IGP=dist.init_process_group; DGP=dist.destroy_process_group; ARD=dist.all_reduce; ROP=dist.ReduceOp
 ZL=th.zeros_like; EL=th.empty_like; AR=th.arange; SG=th.sigmoid; CAT=th.cat; ON=th.ones; FUL=th.full; EYE=th.eye
 try:
     from flash_attn_interface import flash_attn_func as _fa3_func
@@ -104,9 +105,9 @@ class Muon(th.optim.Optimizer):
         loss = None
         if closure is not None:
             with th.enable_grad(): loss = closure()
-        dd = dist.is_available() and dist.is_initialized()
-        ws = dist.get_world_size() if dd else 1
-        rk = dist.get_rank() if dd else 0
+        dd = IA() and II()
+        ws = GWS() if dd else 1
+        rk = GRK() if dd else 0
         for group in self.param_groups:
             params = group["params"]
             if not params: continue
@@ -179,7 +180,7 @@ def eval_val(args, model, rank, ws, device, gas,
             tb = bb[y.reshape(-1)].to(dtype=I16)
             tb += (hs[y.reshape(-1)] & ~ib[x.reshape(-1)]).to(dtype=I16)
             val_byte_count += tb.to(F64).sum()
-    if dist.is_available() and dist.is_initialized():
+    if IA() and II():
         for t in [val_loss_sum, val_token_count, val_byte_count]: ARD(t, op=ROP.SUM)
     val_loss = val_loss_sum / val_token_count
     bpt = val_loss.item() / math.log(2.0); tpb = val_token_count.item() / val_byte_count.item()
@@ -944,7 +945,7 @@ def eval_val_sliding(logits_fn, rank, ws, device, vt,
                 tb = bb[tgt].to(I16)
                 tb += (hs[tgt] & ~ib[prev]).to(I16)
                 byte_count += tb.to(F64).sum()
-    if dist.is_available() and dist.is_initialized():
+    if IA() and II():
         for t in [loss_sum, tok_count, byte_count]: ARD(t, op=ROP.SUM)
     vl = (loss_sum / tok_count).item()
     return vl, vl / math.log(2.0) * (tok_count.item() / byte_count.item())
@@ -1106,23 +1107,23 @@ def ree(args, bm, rank, ws, device, dd, master,
     bm.load_state_dict(deq_state, strict=True)
     eval_sl = args.esl if args.esl > 0 else args.tsl
     val_tokens_eval = load_validation_tokens(args.val_files, eval_sl) if eval_sl != args.tsl else vt
-    raw_logits_fn = th.compile(bm.forward_logits, dynamic=False) if not bool(int(EG("TORCH_COMPILE_DISABLE", "0"))) else bm.forward_logits
+    raw_logits_fn = CMP(bm.forward_logits, dynamic=False) if not bool(int(EG("TORCH_COMPILE_DISABLE", "0"))) else bm.forward_logits
     warmup_x = Z(args.eval_batch_seqs, eval_sl, dtype=I64, device=device)
     bm.eval()
     with IM(), AC(device_type="cuda", dtype=BF): _ = raw_logits_fn(warmup_x)
-    th.cuda.synchronize(); t_eval = PC()
+    SY(); t_eval = PC()
     q_vl, q_vb = eval_val_sliding(raw_logits_fn, rank, ws, device,
         val_tokens_eval, bb, hs, ib,
         eval_sl, args.eval_stride, ebs=args.eval_batch_seqs)
-    th.cuda.synchronize(); eval_time = PC() - t_eval
+    SY(); eval_time = PC() - t_eval
     log0(f"final_int6 val_loss:{q_vl:.4f} val_bpb:{q_vb:.4f} eval_time:{eval_time*1000:.0f}ms")
     log0(f"final_int6_exact val_loss:{q_vl:.8f} val_bpb:{q_vb:.8f}")
-    if dd: dist.destroy_process_group()
+    if dd: DGP()
 
 def main():
     global z5
     code = Path(__file__).read_text(encoding="utf-8"); args = H()
-    z5 = th.compile(z5)
+    z5 = CMP(z5)
     dd = "RANK" in os.environ and "WORLD_SIZE" in os.environ
     rank = int(EG("RANK", "0")); ws = int(EG("WORLD_SIZE", "1"))
     local_rank = int(EG("LOCAL_RANK", "0"))
@@ -1130,7 +1131,7 @@ def main():
     gas = 8 // ws; grad_scale = 1.0 / gas
     if not th.cuda.is_available(): raise RuntimeError("CUDA required")
     device = th.device("cuda", local_rank); th.cuda.set_device(device)
-    if dd: dist.init_process_group(backend="nccl", device_id=device); dist.barrier()
+    if dd: IGP(backend="nccl", device_id=device); BR()
     master = rank == 0
     th.backends.cuda.matmul.allow_tf32 = True; th.backends.cudnn.allow_tf32 = True
     if not HAS_FA3:
@@ -1167,7 +1168,7 @@ def main():
     for m in bm.modules():
         if isinstance(m, CL): m.float()
     restore_low_dim_params_to_fp32(bm)
-    compiled_model = th.compile(bm, dynamic=False, fullgraph=True) if not bool(int(EG("TORCH_COMPILE_DISABLE", "0"))) else bm
+    compiled_model = CMP(bm, dynamic=False, fullgraph=True) if not bool(int(EG("TORCH_COMPILE_DISABLE", "0"))) else bm
     model = DDP(compiled_model, device_ids=[local_rank], broadcast_buffers=False) if dd else compiled_model
     eoc = rcp(args.eoc)
     if eoc:
@@ -1249,16 +1250,16 @@ def main():
     ema_state = {name: t.detach().float().clone() for name, t in bm.state_dict().items()}
     ttms, stop_after_step = 0.0, None
     swa_state, swa_count = None, 0
-    th.cuda.synchronize(); t0 = PC(); step = 0
+    SY(); t0 = PC(); step = 0
     while True:
         last_step = step == args.iterations or (stop_after_step is not None and step >= stop_after_step)
         should_validate = last_step or (args.val_loss_every > 0 and step % args.val_loss_every == 0)
         if should_validate:
-            th.cuda.synchronize(); ttms += 1000.0 * (PC() - t0)
+            SY(); ttms += 1000.0 * (PC() - t0)
             vl, vb = eval_val(args, model, rank, ws, device, gas,
                               vt, bb, hs, ib)
             log0(f"step:{step}/{args.iterations} val_loss:{vl:.4f} val_bpb:{vb:.4f} train_time:{ttms:.0f}ms step_avg:{ttms/max(step,1):.2f}ms")
-            th.cuda.synchronize(); t0 = PC()
+            SY(); t0 = PC()
         if last_step:
             if stop_after_step is not None and step < args.iterations:
                 log0(f"stopping_early: wallclock_cap train_time:{ttms:.0f}ms step:{step}/{args.iterations}")
