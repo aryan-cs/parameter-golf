@@ -428,3 +428,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: `prune11` is healthy on GPU and has progressed through `step:500/20000 train_loss:2.3165 train_time:387941ms`. The pod queue chain is intact: `prune14` is still waiting on prune11 PID `168452`, and the export-only `prune17` helper is waiting for the eventual `prune14` run directory before it launches from the saved checkpoint.
 - Decision: Keep the current queue unchanged; there is no reason to interrupt `prune11`, and the staged handoffs now cover both a second full retrain (`prune14`) and a low-latency export-only hedge (`prune17`).
 - Next step: Wait for the first `prune11` validation checkpoint at `step:1000`, then compare its quality trend against the baseline to decide whether the byte-cap tradeoff still looks favorable.
+
+- Timestamp: 2026-03-24 00:54 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL export ablation
+- Objective: Reassess whether the active `prune11` run is the best use of GPU time now that its early checkpoints are available.
+- Command or config: Monitored `runs/non_ttt_vrl_gptq/seed1337/20260324T052254Z/train.log` through `step:2000`, then manually terminated prune11 PIDs `168452`, `168436`, and `168453` so the queued `prune14` watcher could take over immediately.
+- Result: `prune11` reached `step:1000/20000 val_bpb:1.3101` and `step:2000/20000 val_bpb:1.2530`, essentially matching the baseline trajectory. That confirmed the expected behavior: `PRUNE_PCT` only affects export, so the full retrain itself provides no training-side differentiation. After the kill, the queued `prune14` watcher launched the next run as PID `175714` with run directory `runs/non_ttt_vrl_gptq/seed1337/20260324T055414Z`, and its log now shows the intended recipe `VRL Prune(0.14) RawBinary`.
+- Decision: Skip the rest of the redundant prune11 retrain and spend the next full training budget on `prune14`, which also saves a reusable pre-export checkpoint for the queued export-only `prune17` sweep.
+- Next step: Let `prune14` progress to its first validation checkpoint, then use its saved checkpoint to launch the staged export-only `prune17` sweep if the final artifact is still over the byte cap.
