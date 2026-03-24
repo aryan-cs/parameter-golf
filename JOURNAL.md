@@ -266,3 +266,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The run is still compute-active on the H100 (`100%` GPU utilization, `24345 MiB` used, about `689 W`) and has advanced to `step:1500/20000 train_loss:2.1386 train_time:1169595ms step_avg:779.73ms` after the earlier `step:1000 val_bpb:1.3111` checkpoint.
 - Decision: Leave the run untouched and continue monitoring; the training curve is still improving on the fuller-data proxy and there is no sign of an infrastructure fault.
 - Next step: Wait for the next validation milestone and the eventual post-quant export so the current best live pre-quant signal can be compared to a completed quantized score.
+
+- Timestamp: 2026-03-23 23:00 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL long-run
+- Objective: Measure whether the long VRL proxy keeps improving at the second configured validation checkpoint.
+- Command or config: Polled `runs/non_ttt_vrl_gptq/seed1337/20260324T033051Z/train.log` until the run reached `step:2000/20000 val_loss`.
+- Result: The full-80-shard run improved again to `step:2000/20000 val_loss:2.1152 val_bpb:1.2527 train_time:1559312ms`, beating its earlier `step:1000 val_bpb:1.3111` checkpoint by another `0.0584` nats.
+- Decision: Keep this exact run alive; it is now the strongest training-quality signal we have seen on any lane and is still moving in the right direction.
+- Next step: Let the run continue toward its full 5400-second budget, then inspect the final GPTQ/export metrics and decide whether the next pod spend should be another single-GPU ablation or a direct 8xH100 validation.
