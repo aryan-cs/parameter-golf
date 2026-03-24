@@ -689,3 +689,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The export ladder is now operationally safer and cheaper. It will no longer blindly continue through more aggressive pruning after a valid artifact is found, and it will not depend on later rungs producing new checkpoints just to unblock the next rung.
 - Decision: Keep the sequential stop-on-valid controller as the default orchestration path for the next pod restart.
 - Next step: Push the ladder-controller fix so the relaunch path is both quality-preserving and credit-efficient before the next H100 pod comes up.
+
+- Timestamp: 2026-03-24 02:16 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL export compression
+- Objective: Find one more offline size lever by testing whether the int6 payload itself can be made more zstd-friendly without changing any quantized values.
+- Command or config: Patched `candidates/non_ttt_vrl_gptq/train_gpt.py` to keep the legacy 3-byte/4-value int6 codec for backward compatibility, add a new default int6 codec that zigzag-encodes values and stores them as six packed bitplanes, and decode both formats via `dt=4` legacy / `dt=5` new. Verified syntax with `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, reran `python3 runpod/check_ready.py`, and ran a CPU `uv run --with torch --with sentencepiece --with zstandard --with numpy` bakeoff plus round-trip harness against a real quantized VRL model skeleton.
+- Result: The new lossless codec round-trips exactly and beat the legacy int6 codec by `738,147` compressed bytes in the offline bakeoff (`legacy_compressed=5102384`, `new_compressed=4364237`, `delta=-738147`). That is materially larger than the remaining `333,801`-byte submission overage from the best invalid run, so this is the first offline change that plausibly closes the byte-cap gap by itself.
+- Decision: Keep the zigzag+bitplane int6 codec in the main lane. It is backward-compatible, lossless, and large enough to justify immediate use on the next H100 relaunch.
+- Next step: Push the codec upgrade, then relaunch the baseline-first export ladder on the next pod to measure whether the real trained artifact finally lands under `16,000,000` bytes with a competitive score intact.

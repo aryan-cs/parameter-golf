@@ -433,7 +433,20 @@ def dequantize_state_dict_mixed(result, meta, template_sd):
             out[name] = (q.float() * float(s.item())).to(orig_dtype)
     return out
 
-def pack_int6_tensor(t: torch.Tensor) -> bytes:
+def _zigzag_encode_int6(arr_i16: np.ndarray) -> np.ndarray:
+    arr = arr_i16.astype(np.int16, copy=False)
+    if arr.size == 0:
+        return np.empty((0,), dtype=np.uint8)
+    if arr.min() < -31 or arr.max() > 31:
+        raise ValueError("int6 tensor contains values outside [-31, 31]")
+    out = np.where(arr >= 0, arr * 2, (-arr) * 2 - 1)
+    return out.astype(np.uint8, copy=False)
+
+def _zigzag_decode_int6(u8: np.ndarray) -> np.ndarray:
+    u = u8.astype(np.int16, copy=False)
+    return np.where((u & 1) == 0, u // 2, -((u + 1) // 2)).astype(np.int16, copy=False)
+
+def pack_int6_tensor_legacy(t: torch.Tensor) -> bytes:
     q = t.detach().cpu().contiguous()
     if q.dtype != torch.int8:
         raise TypeError(f"expected int8 tensor for int6 packing, got {q.dtype}")
@@ -457,7 +470,7 @@ def pack_int6_tensor(t: torch.Tensor) -> bytes:
     out[2::3] = ((packed >> 16) & 0xFF).astype(np.uint8)
     return out.tobytes()
 
-def unpack_int6_tensor(raw: bytes | memoryview, shape: list[int]) -> torch.Tensor:
+def unpack_int6_tensor_legacy(raw: bytes | memoryview, shape: list[int]) -> torch.Tensor:
     numel = int(np.prod(shape, dtype=np.int64))
     if numel == 0:
         return torch.empty(shape, dtype=torch.int8)
@@ -473,6 +486,44 @@ def unpack_int6_tensor(raw: bytes | memoryview, shape: list[int]) -> torch.Tenso
     u[2::4] = ((packed >> 12) & 0x3F).astype(np.uint8)
     u[3::4] = ((packed >> 18) & 0x3F).astype(np.uint8)
     arr = u[:numel].astype(np.int16, copy=False) - 31
+    return torch.from_numpy(arr.astype(np.int8, copy=False).reshape(shape))
+
+def pack_int6_tensor(t: torch.Tensor) -> bytes:
+    q = t.detach().cpu().contiguous()
+    if q.dtype != torch.int8:
+        raise TypeError(f"expected int8 tensor for int6 packing, got {q.dtype}")
+    arr = q.numpy().reshape(-1).astype(np.int16, copy=False)
+    if arr.size == 0:
+        return b""
+    u = _zigzag_encode_int6(arr.astype(np.int16, copy=False))
+    numel = u.size
+    pad = (-numel) % 8
+    if pad:
+        u = np.pad(u, (0, pad), constant_values=0)
+    out = bytearray()
+    for bit in range(6):
+        bits = ((u >> bit) & 1).astype(np.uint8, copy=False).reshape(-1, 8)
+        out.extend(np.packbits(bits, axis=1, bitorder="little").reshape(-1).tobytes())
+    return bytes(out)
+
+def unpack_int6_tensor(raw: bytes | memoryview, shape: list[int]) -> torch.Tensor:
+    numel = int(np.prod(shape, dtype=np.int64))
+    if numel == 0:
+        return torch.empty(shape, dtype=torch.int8)
+    padded = ((numel + 7) // 8) * 8
+    plane_bytes = padded // 8
+    packed_u8 = np.frombuffer(raw, dtype=np.uint8)
+    expected = plane_bytes * 6
+    if packed_u8.size != expected:
+        raise ValueError(f"bad packed int6 size: expected {expected}, got {packed_u8.size}")
+    u = np.zeros(padded, dtype=np.uint8)
+    offset = 0
+    for bit in range(6):
+        plane = packed_u8[offset:offset + plane_bytes]
+        offset += plane_bytes
+        bits = np.unpackbits(plane, bitorder="little")
+        u |= (bits.astype(np.uint8, copy=False) << bit)
+    arr = _zigzag_decode_int6(u[:numel])
     return torch.from_numpy(arr.astype(np.int8, copy=False).reshape(shape))
 
 # ── DATA LOADING ──
@@ -952,7 +1003,9 @@ def run_export_eval(args, base_model, rank, world_size, device, distributed, mas
             and _meta_kind(quant_meta.get(base_name)) == "int6"
         )
         dtype_map = {torch.int8: 0, torch.float16: 1, torch.float32: 2, torch.bfloat16: 3}
-        dt = 4 if pack_int6 else dtype_map.get(t.dtype, 2)
+        # dt=4 stays reserved for the legacy 3-byte/4-value int6 codec so
+        # older artifacts remain loadable; new exports use the bitplane codec.
+        dt = 5 if pack_int6 else dtype_map.get(t.dtype, 2)
         if pack_int6:
             raw = pack_int6_tensor(t)
         else:
@@ -1012,6 +1065,12 @@ def run_export_eval(args, base_model, rank, world_size, device, distributed, mas
         if dt == 4:
             numel = int(np.prod(shape, dtype=np.int64))
             nbytes = ((numel + 3) // 4) * 3
+            raw = memoryview(raw_data)[offset:offset+nbytes]
+            offset += nbytes
+            t = unpack_int6_tensor_legacy(raw, shape)
+        elif dt == 5:
+            numel = int(np.prod(shape, dtype=np.int64))
+            nbytes = ((numel + 7) // 8) * 6
             raw = memoryview(raw_data)[offset:offset+nbytes]
             offset += nbytes
             t = unpack_int6_tensor(raw, shape)
