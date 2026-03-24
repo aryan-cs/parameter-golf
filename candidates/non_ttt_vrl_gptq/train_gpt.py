@@ -140,7 +140,7 @@ def vv(a, model, rk, ws, dv, gas,
     model.train(); return float(IT(vl)), float(bpt * tpb)
 
 CP = tuple(
-    p for p in "asc,ascs,msc,mscs,rm,rms,g,skw,skws,sg,bol,bgm.s,vls,vsh.s,vra".split(",") if p)
+    p for p in "asc,ascs,msc,mscs,rm,rms,g,w,s.g,o,g.s,y,v.s,r".split(",") if p)
 IC=lambda n:any(n==p or n.startswith(p+".") or n.endswith("."+p) or f".{p}." in n for p in CP)
 I8K = 65_536
 I8D = F16
@@ -166,11 +166,11 @@ LF = [{
 }]
 
 def cpm(name):
-    if "tke" in name or "lmh" in name: return "e"
+    if name.startswith("x.") or name.startswith("h."): return "e"
     if ".m." in name: return "m"
-    if "bgm" in name: return "b"
+    if name.startswith("g."): return "b"
     if ".a." in name or (".p." in name and ".m." not in name): return "a"
-    if "vsh" in name: return "v"
+    if name.startswith("v."): return "v"
     return "o"
 
 def mk(info):
@@ -716,49 +716,49 @@ class GPT(M):
         self.t, self.ts = te, teis
         self.l = lsc
         self.nl = nl
-        self.tke = nn.Embedding(vs, dm)
-        self.bgm = BHE(bgvs, bgd, dm) if bgvs > 0 else None
-        self.sg = SGT(dm) if se else None
-        self.bol = P(backout_init * ON(1)) if be else None
+        self.x = nn.Embedding(vs, dm)
+        self.g = BHE(bgvs, bgd, dm) if bgvs > 0 else None
+        self.s = SGT(dm) if se else None
+        self.o = P(backout_init * ON(1)) if be else None
         self.nel = nl // 2
         self.ndl = nl - self.nel
         self.nsw = min(self.nel, self.ndl)
-        self.skw = P(ON(self.nsw, dm, dtype=F32))
-        self.bs = ML([
+        self.w = P(ON(self.nsw, dm, dtype=F32))
+        self.b = ML([
             BL(dm, nh, nkh, mm, rb, qgi,
                   li=i, ln_scale=ln_scale)
             for i in range(nl)
         ])
         if rd > 0:
             hd = dm // nh
-            for block in self.bs:
+            for block in self.b:
                 block.a.rd = rd
                 block.a.ro = RY(hd, base=rb, tsl=1024, rd=rd)
         if xsn > 0:
             for i in range(max(0, nl - xsn), nl):
-                self.bs[i].a.ux = True
+                self.b[i].a.ux = True
         kv_dim = nkh * (dm // nh)
         self.vli = [int(x) for x in vel.split(",") if x.strip()] if vee else []
         if self.vli:
-            self.vsh = VE(vs, ved, kv_dim)
-            self.vls = PL([P(ON(1, dtype=F32)) for _ in self.vli])
+            self.v = VE(vs, ved, kv_dim)
+            self.y = PL([P(ON(1, dtype=F32)) for _ in self.vli])
         else:
-            self.vsh = None; self.vls = PL()
-        self.fn = RN()
+            self.v = None; self.y = PL()
+        self.n = RN()
         self.vre = nl > 1
         if self.vre:
-            self.vra = PL([
+            self.r = PL([
                 P(TT(0.0, dtype=F32)) for _ in range(nl - 1)
             ])
         else:
-            self.vra = PL()
-        self.lmh = None if te else CL(dm, vs, bias=False)
-        if self.lmh is not None: self.lmh._zero_init = True
+            self.r = PL()
+        self.h = None if te else CL(dm, vs, bias=False)
+        if self.h is not None: self.h._zero_init = True
         self.iw()
     def iw(self):
         if self.t:
-            NI.normal_(self.tke.weight, mean=0.0, std=self.ts)
-        nl = len(self.bs)
+            NI.normal_(self.x.weight, mean=0.0, std=self.ts)
+        nl = len(self.b)
         for name, module in self.named_modules():
             if isinstance(module, nn.Linear):
                 if getattr(module, "_zero_init", False): NI.zeros_(module.weight)
@@ -766,22 +766,22 @@ class GPT(M):
                     NI.orthogonal_(module.weight, gain=1.0)
                     if ".p." in name or name.endswith(".p"):
                         with NG(): module.weight.mul_(1.0 / math.sqrt(2 * nl))
-        for i, block in enumerate(self.bs):
+        for i, block in enumerate(self.b):
             with NG():
                 phase = SG(TT(3.0 * (i / max(nl-1, 1) - 0.5)))
                 block.rm.data[0] = phase * ON(block.rm.shape[1])
                 block.rm.data[1] = (1-phase) * ON(block.rm.shape[1])
     def gv(self, li, ids, vc):
-        if self.vsh is None or li not in self.vli: return None
-        if 've' not in vc: vc['ve'] = self.vsh(ids)
+        if self.v is None or li not in self.vli: return None
+        if 've' not in vc: vc['ve'] = self.v(ids)
         ve_idx = self.vli.index(li)
-        return vc['ve'] * TY(self.vls[ve_idx], vc['ve'].dtype)
+        return vc['ve'] * TY(self.y[ve_idx], vc['ve'].dtype)
     def rl(self, x, x0, ids):
         skips, bo, xb = [], self.nl // 2, None
         vc = {}
         v0 = None
         if self.vre:
-            blk0 = self.bs[0]
+            blk0 = self.b[0]
             mix0 = TY(blk0.rm, x0.dtype)
             x_in0 = mix0[0][None, None, :] * x0 + mix0[1][None, None, :] * x0
             v0 = blk0.a.cv(blk0.an(x_in0) * blk0.lsf)
@@ -790,40 +790,40 @@ class GPT(M):
             ve = self.gv(i, ids, vc)
             v_res = None
             if i > 0 and v0 is not None:
-                alpha = SG(TY(self.vra[vi], x.dtype))
+                alpha = SG(TY(self.r[vi], x.dtype))
                 v_res = alpha * v0
                 vi += 1
-            x = self.bs[i](x, x0, ve=ve, vr=v_res); skips.append(x)
+            x = self.b[i](x, x0, ve=ve, vr=v_res); skips.append(x)
             if i == bo: xb = x
         for i in range(self.ndl):
             li = self.nel + i
-            if skips: x = x + TY(self.skw[i], x.dtype)[None, None, :] * skips.pop()
+            if skips: x = x + TY(self.w[i], x.dtype)[None, None, :] * skips.pop()
             ve = self.gv(li, ids, vc)
             v_res = None
             if v0 is not None:
-                alpha = SG(TY(self.vra[vi], x.dtype))
+                alpha = SG(TY(self.r[vi], x.dtype))
                 v_res = alpha * v0
                 vi += 1
-            x = self.bs[li](x, x0, ve=ve, vr=v_res)
+            x = self.b[li](x, x0, ve=ve, vr=v_res)
             if li == bo and xb is None: xb = x
-        if self.bol is not None and xb is not None:
-            x = x - self.bol.to(x.dtype) * xb
+        if self.o is not None and xb is not None:
+            x = x - self.o.to(x.dtype) * xb
         return x
     def eb(self, ids):
-        x = self.tke(ids)
-        if self.bgm is not None: x = x + self.bgm(ids)
-        x = RM(x, (self.tke.weight.shape[1],))
-        if self.sg is not None: x = self.sg(x)
+        x = self.x(ids)
+        if self.g is not None: x = x + self.g(ids)
+        x = RM(x, (self.x.weight.shape[1],))
+        if self.s is not None: x = self.s(x)
         return x
     def forward(self, ids, tgt):
         x0 = self.eb(ids); x = self.rl(x0, x0, ids)
-        x_flat = RS(self.fn(x), -1, x.size(-1)); targets = RS(tgt, -1)
-        logits_proj = LI(x_flat, self.tke.weight) if self.t else self.lmh(x_flat)
+        x_flat = RS(self.n(x), -1, x.size(-1)); targets = RS(tgt, -1)
+        logits_proj = LI(x_flat, self.x.weight) if self.t else self.h(x_flat)
         logits = self.l * th.tanh(logits_proj / self.l)
         return F.cross_entropy(TF(logits), targets, reduction="mean")
     def fwl(self, ids):
-        x0 = self.eb(ids); x = self.fn(self.rl(x0, x0, ids))
-        logits = LI(x, self.tke.weight.to(x.dtype)) if self.t else self.lmh(x)
+        x0 = self.eb(ids); x = self.n(self.rl(x0, x0, ids))
+        logits = LI(x, self.x.weight.to(x.dtype)) if self.t else self.h(x)
         return self.l * th.tanh(logits / self.l)
 
 def ch(bm, tl, args, dv, gas, nbc=256):
@@ -1110,34 +1110,34 @@ def main():
         re(a, bm, rk, ws, dv, dd, m0,
                         code, vt, bb, hs, ib, log0)
         return
-    bnp = list(bm.bs.named_parameters())
+    bnp = list(bm.b.named_parameters())
     mpa = [p for n, p in bnp if p.ndim == 2 and not IC(n)]
     spa = [p for n, p in bnp if p.ndim < 2 or IC(n)]
-    if bm.skw.numel() > 0: spa.append(bm.skw)
-    if bm.sg is not None: spa.append(bm.sg.g)
-    if bm.bol is not None: spa.append(bm.bol)
-    if bm.bgm is not None: spa.append(bm.bgm.s)
-    if bm.vsh is not None:
-        spa.append(bm.vsh.s)
-        for s in bm.vls: spa.append(s)
+    if bm.w.numel() > 0: spa.append(bm.w)
+    if bm.s is not None: spa.append(bm.s.g)
+    if bm.o is not None: spa.append(bm.o)
+    if bm.g is not None: spa.append(bm.g.s)
+    if bm.v is not None:
+        spa.append(bm.v.s)
+        for s in bm.y: spa.append(s)
     if bm.vre:
-        for alpha in bm.vra: spa.append(alpha)
+        for alpha in bm.r: spa.append(alpha)
     tlr = a.telr if a.te else a.elr
-    tpg = [{PA: [bm.tke.weight], "lr": tlr, BL: tlr}]
-    if bm.bgm is not None:
-        tpg.append({PA: [bm.bgm.e.weight], "lr": tlr, BL: tlr})
-        if bm.bgm.p is not None: mpa.append(bm.bgm.p.weight)
-    if bm.vsh is not None:
-        tpg.append({PA: [bm.vsh.e.weight], "lr": tlr, BL: tlr})
-        if bm.vsh.p is not None: mpa.append(bm.vsh.p.weight)
+    tpg = [{PA: [bm.x.weight], "lr": tlr, BL: tlr}]
+    if bm.g is not None:
+        tpg.append({PA: [bm.g.e.weight], "lr": tlr, BL: tlr})
+        if bm.g.p is not None: mpa.append(bm.g.p.weight)
+    if bm.v is not None:
+        tpg.append({PA: [bm.v.e.weight], "lr": tlr, BL: tlr})
+        if bm.v.p is not None: mpa.append(bm.v.p.weight)
     ot = th.optim.AdamW(tpg, betas=(a.beta1, a.beta2), eps=a.aep, weight_decay=a.awd, fused=True)
     om = MU(mpa, lr=a.mlr, momentum=a.mum, ns_steps=a.mns, wd=a.mwd)
     for group in om.param_groups: group[BL] = a.mlr
     os = th.optim.AdamW([{PA: spa, "lr": a.slr, BL: a.slr}],
                                           betas=(a.beta1, a.beta2), eps=a.aep, weight_decay=a.awd, fused=True)
     opts = [ot, om, os]
-    if bm.lmh is not None:
-        oh = th.optim.Adam([{PA: [bm.lmh.weight], "lr": a.hlr, BL: a.hlr}],
+    if bm.h is not None:
+        oh = th.optim.Adam([{PA: [bm.h.weight], "lr": a.hlr, BL: a.hlr}],
                                            betas=(a.beta1, a.beta2), eps=a.aep, fused=True)
         opts.insert(1, oh)
     tl = DTL(a.tf, rk, ws, dv)
