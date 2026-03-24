@@ -570,9 +570,9 @@ class RY(M):
         self.rope_dims = rd if rd > 0 else dim
         inv_freq = 1.0 / (base ** (AR(0, self.rope_dims, 2, dtype=F32) / self.rope_dims))
         self.register_buffer("inv_freq", inv_freq, persistent=False)
-        self._seq_len_cached = 0; self._cos_cached = self._sin_cached = None
+        self.slc = 0; self.cc = self.sc = None
     def forward(self, sl, dv, dtype):
-        if self._cos_cached is None or self._seq_len_cached != sl or self._cos_cached.device != dv:
+        if self.cc is None or self.slc != sl or self.cc.device != dv:
             rd = self.rope_dims
             if sl > self.tsl:
                 scale = sl / self.tsl
@@ -580,9 +580,9 @@ class RY(M):
                 inv_freq = 1.0 / (new_base ** (AR(0, rd, 2, dtype=F32, device=dv) / rd))
             else: inv_freq = self.inv_freq.to(dv)
             freqs = th.outer(AR(sl, device=dv, dtype=inv_freq.dtype), inv_freq)
-            self._cos_cached = freqs.cos()[None, :, None, :]; self._sin_cached = freqs.sin()[None, :, None, :]
-            self._seq_len_cached = sl
-        return self._cos_cached.to(dtype=dtype), self._sin_cached.to(dtype=dtype)
+            self.cc = freqs.cos()[None, :, None, :]; self.sc = freqs.sin()[None, :, None, :]
+            self.slc = sl
+        return self.cc.to(dtype=dtype), self.sc.to(dtype=dtype)
 
 def are(x, cos, sin, rd=0):
     if rd > 0 and rd < x.size(-1):
@@ -598,29 +598,29 @@ def are(x, cos, sin, rd=0):
 class CSA(M):
     def __init__(self, dim, nh, nkh, rb, qgi):
         super().__init__()
-        self.num_heads, self.nkh = nh, nkh; self.head_dim = dim // nh
-        kv_dim = nkh * self.head_dim
+        self.nh, self.nkh = nh, nkh; self.hd = dim // nh
+        kv_dim = nkh * self.hd
         self.c_q = CL(dim, dim, bias=False); self.c_k = CL(dim, kv_dim, bias=False)
         self.c_v = CL(dim, kv_dim, bias=False); self.proj = CL(dim, dim, bias=False)
         self.proj._zero_init = True
         self.q_gain = P(FUL((nh,), qgi, dtype=F32))
         self.rope_dims = 0
-        self.rotary = RY(self.head_dim, base=rb, tsl=1024)
-        self.use_xsa = False
+        self.rotary = RY(self.hd, base=rb, tsl=1024)
+        self.ux = False
     def xe(self, y, v):
         B, T, H, D = y.shape; Hkv = v.size(-2); group = H // Hkv
         y_g = y.reshape(B, T, Hkv, group, D)
         vn = F.normalize(v, dim=-1).unsqueeze(-2)
         proj = (y_g * vn).sum(dim=-1, keepdim=True) * vn
         return (y_g - proj).reshape(B, T, H, D)
-    def forward(self, x, v_embed=None, v_residual=None):
+    def forward(self, x, ve=None, vr=None):
         bsz, seqlen, dim = x.shape
-        q = self.c_q(x).reshape(bsz, seqlen, self.num_heads, self.head_dim)
-        k = self.c_k(x).reshape(bsz, seqlen, self.nkh, self.head_dim)
+        q = self.c_q(x).reshape(bsz, seqlen, self.nh, self.hd)
+        k = self.c_k(x).reshape(bsz, seqlen, self.nkh, self.hd)
         v = self.c_v(x)
-        if v_embed is not None: v = v + v_embed
-        if v_residual is not None: v = v + v_residual
-        v = v.reshape(bsz, seqlen, self.nkh, self.head_dim)
+        if ve is not None: v = v + ve
+        if vr is not None: v = v + vr
+        v = v.reshape(bsz, seqlen, self.nkh, self.hd)
         q, k = RM(q, (q.size(-1),)), RM(k, (k.size(-1),))
         cos, sin = self.rotary(seqlen, x.device, q.dtype)
         q = are(q, cos, sin, self.rope_dims)
@@ -632,8 +632,8 @@ class CSA(M):
         else:
             qt, kt, vt = q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)
             y = F.scaled_dot_product_attention(qt, kt, vt, attn_mask=None, is_causal=True,
-                                               enable_gqa=(self.nkh != self.num_heads)).transpose(1, 2)
-        if self.use_xsa: y = self.xe(y, v)
+                                               enable_gqa=(self.nkh != self.nh)).transpose(1, 2)
+        if self.ux: y = self.xe(y, v)
         return self.proj(y.reshape(bsz, seqlen, dim))
 
 class MLP(M):
@@ -667,8 +667,8 @@ class BHE(M):
         out = EL(t); out[..., 0] = mod
         out[..., 1:] = th.bitwise_xor(36313 * t[..., 1:], 27191 * t[..., :-1]) % mod
         return out.long()
-    def forward(self, token_ids):
-        h = self.embed(self.bh(token_ids))
+    def forward(self, ids):
+        h = self.embed(self.bh(ids))
         if self.proj is not None: h = self.proj(h)
         return h * self.scale.to(dtype=h.dtype)
 
@@ -680,13 +680,13 @@ class VE(M):
         self.proj = CL(ve_dim, kv_dim, bias=False) if ve_dim != kv_dim else None
         if self.proj is not None: NI.zeros_(self.proj.weight)
         self.scale = P(TT(0.1, dtype=F32))
-    def forward(self, token_ids):
-        h = self.embed(token_ids)
+    def forward(self, ids):
+        h = self.embed(ids)
         if self.proj is not None: h = self.proj(h)
         return h * self.scale.to(dtype=h.dtype)
 
 class BL(M):
-    def __init__(self, dim, nh, nkh, mm, rb, qgi, layer_idx=0, ln_scale=False):
+    def __init__(self, dim, nh, nkh, mm, rb, qgi, li=0, ln_scale=False):
         super().__init__()
         self.attn_norm, self.mlp_norm = RN(), RN()
         self.attn = CSA(dim, nh, nkh, rb, qgi)
@@ -694,11 +694,11 @@ class BL(M):
         self.attn_scale = P(ON(dim, dtype=F32))
         self.mlp_scale = P(ON(dim, dtype=F32))
         self.resid_mix = P(SK((ON(dim), Z(dim))).float())
-        self.lsf = 1.0 / math.sqrt(layer_idx + 1) if ln_scale else 1.0
-    def forward(self, x, x0, v_embed=None, v_residual=None):
+        self.lsf = 1.0 / math.sqrt(li + 1) if ln_scale else 1.0
+    def forward(self, x, x0, ve=None, vr=None):
         mix = self.resid_mix.to(dtype=x.dtype)
         x_in = mix[0][None, None, :] * x + mix[1][None, None, :] * x0
-        attn_out = self.attn(self.attn_norm(x_in) * self.lsf, v_embed=v_embed, v_residual=v_residual)
+        attn_out = self.attn(self.attn_norm(x_in) * self.lsf, ve=ve, vr=vr)
         x_out = x_in + self.attn_scale.to(dtype=x_in.dtype)[None, None, :] * attn_out
         x_out = x_out + self.mlp_scale.to(dtype=x_out.dtype)[None, None, :] * self.mlp(self.mlp_norm(x_out) * self.lsf)
         return x_out
@@ -724,17 +724,17 @@ class GPT(M):
         self.skip_weights = P(ON(self.nsw, dm, dtype=F32))
         self.blocks = ML([
             BL(dm, nh, nkh, mm, rb, qgi,
-                  layer_idx=i, ln_scale=ln_scale)
+                  li=i, ln_scale=ln_scale)
             for i in range(nl)
         ])
         if rd > 0:
-            head_dim = dm // nh
+            hd = dm // nh
             for block in self.blocks:
                 block.attn.rope_dims = rd
-                block.attn.rotary = RY(head_dim, base=rb, tsl=1024, rd=rd)
+                block.attn.rotary = RY(hd, base=rb, tsl=1024, rd=rd)
         if xsn > 0:
             for i in range(max(0, nl - xsn), nl):
-                self.blocks[i].attn.use_xsa = True
+                self.blocks[i].attn.ux = True
         kv_dim = nkh * (dm // nh)
         self.vli = [int(x) for x in vel.split(",") if x.strip()] if vee else []
         if self.vli:
@@ -752,8 +752,8 @@ class GPT(M):
             self.vrl_alphas = PL()
         self.lm_head = None if te else CL(dm, vs, bias=False)
         if self.lm_head is not None: self.lm_head._zero_init = True
-        self._init_weights()
-    def _init_weights(self):
+        self.iw()
+    def iw(self):
         if self.te:
             NI.normal_(self.tok_emb.weight, mean=0.0, std=self.teis)
         nl = len(self.blocks)
@@ -769,43 +769,43 @@ class GPT(M):
                 phase = SG(TT(3.0 * (i / max(nl-1, 1) - 0.5)))
                 block.resid_mix.data[0] = phase * ON(block.resid_mix.shape[1])
                 block.resid_mix.data[1] = (1-phase) * ON(block.resid_mix.shape[1])
-    def gv(self, layer_idx, ids, ve_cache):
-        if self.ve_shared is None or layer_idx not in self.vli: return None
-        if 've' not in ve_cache: ve_cache['ve'] = self.ve_shared(ids)
-        ve_idx = self.vli.index(layer_idx)
-        return ve_cache['ve'] * self.ve_layer_scales[ve_idx].to(dtype=ve_cache['ve'].dtype)
+    def gv(self, li, ids, vc):
+        if self.ve_shared is None or li not in self.vli: return None
+        if 've' not in vc: vc['ve'] = self.ve_shared(ids)
+        ve_idx = self.vli.index(li)
+        return vc['ve'] * self.ve_layer_scales[ve_idx].to(dtype=vc['ve'].dtype)
     def rl(self, x, x0, ids):
-        skips, backout_layer, x_backout = [], self.num_layers // 2, None
-        ve_cache = {}
-        v0_raw = None
+        skips, bo, xb = [], self.num_layers // 2, None
+        vc = {}
+        v0 = None
         if self.vre:
             blk0 = self.blocks[0]
             mix0 = blk0.resid_mix.to(dtype=x0.dtype)
             x_in0 = mix0[0][None, None, :] * x0 + mix0[1][None, None, :] * x0
-            v0_raw = blk0.attn.c_v(blk0.attn_norm(x_in0) * blk0.lsf)
-        vrl_idx = 0
+            v0 = blk0.attn.c_v(blk0.attn_norm(x_in0) * blk0.lsf)
+        vi = 0
         for i in range(self.nel):
-            ve = self.gv(i, ids, ve_cache)
+            ve = self.gv(i, ids, vc)
             v_res = None
-            if i > 0 and v0_raw is not None:
-                alpha = SG(self.vrl_alphas[vrl_idx].to(dtype=x.dtype))
-                v_res = alpha * v0_raw
-                vrl_idx += 1
-            x = self.blocks[i](x, x0, v_embed=ve, v_residual=v_res); skips.append(x)
-            if i == backout_layer: x_backout = x
+            if i > 0 and v0 is not None:
+                alpha = SG(self.vrl_alphas[vi].to(dtype=x.dtype))
+                v_res = alpha * v0
+                vi += 1
+            x = self.blocks[i](x, x0, ve=ve, vr=v_res); skips.append(x)
+            if i == bo: xb = x
         for i in range(self.ndl):
             li = self.nel + i
             if skips: x = x + self.skip_weights[i].to(dtype=x.dtype)[None, None, :] * skips.pop()
-            ve = self.gv(li, ids, ve_cache)
+            ve = self.gv(li, ids, vc)
             v_res = None
-            if v0_raw is not None:
-                alpha = SG(self.vrl_alphas[vrl_idx].to(dtype=x.dtype))
-                v_res = alpha * v0_raw
-                vrl_idx += 1
-            x = self.blocks[li](x, x0, v_embed=ve, v_residual=v_res)
-            if li == backout_layer and x_backout is None: x_backout = x
-        if self.backout_lambda is not None and x_backout is not None:
-            x = x - self.backout_lambda.to(x.dtype) * x_backout
+            if v0 is not None:
+                alpha = SG(self.vrl_alphas[vi].to(dtype=x.dtype))
+                v_res = alpha * v0
+                vi += 1
+            x = self.blocks[li](x, x0, ve=ve, vr=v_res)
+            if li == bo and xb is None: xb = x
+        if self.backout_lambda is not None and xb is not None:
+            x = x - self.backout_lambda.to(x.dtype) * xb
         return x
     def eb(self, ids):
         x = self.tok_emb(ids)
