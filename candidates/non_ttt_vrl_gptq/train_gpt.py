@@ -16,7 +16,7 @@ P=nn.Parameter; PL=nn.ParameterList; M=nn.Module; ML=nn.ModuleList; NI=nn.init; 
 IA=dist.is_available; II=dist.is_initialized; BR=dist.barrier; GWS=dist.get_world_size; GRK=dist.get_rank; IGP=dist.init_process_group; DGP=dist.destroy_process_group; ARD=dist.all_reduce; ROP=dist.ReduceOp
 ZL=th.zeros_like; EL=th.empty_like; AR=th.arange; SG=th.sigmoid; CAT=th.cat; ON=th.ones; FUL=th.full; EYE=th.eye
 N8=np.uint8; N6=np.int16; N1=np.int8; N4=np.uint32; NB=1
-U="utf-8"; FM="final_model.int6.ptz"; MS="model_state"; MB="momentum_buffer"; TD="TORCH_COMPILE_DISABLE"; PA="params"; BL="base_lr"
+U="utf-8"; FM="final_model.int6.ptz"; MS="model_state"; MB="momentum_buffer"; TD="TORCH_COMPILE_DISABLE"; PA="params"; BL="base_lr"; QS=".q"; SS=".scale"; F4="<I"; F3="<HB"; F5="<HBBB"; LT="little"
 try:
     from flash_attn_interface import flash_attn_func as _fa3_func
     HAS_FA3 = True
@@ -202,7 +202,7 @@ def eqm(meta: dict[str, object]) -> tuple[bytes, list[str]]:
             elif kind_name == "8": kind_code = 3
             else: raise ER(f"bad meta {name}:{kind!r}")
         name_bytes = name.encode(U)
-        parts.append(PK("<HB", len(name_bytes), kind_code))
+        parts.append(PK(F3, len(name_bytes), kind_code))
         parts.append(name_bytes)
     return b"".join(parts), names
 
@@ -218,7 +218,7 @@ def dqm(blob: bytes) -> tuple[dict[str, object], list[str], bool]:
         }
         meta, names = {}, []
         for _ in range(entry_count):
-            name_len, kind_code = UF("<HB", blob, o); o += 3
+            name_len, kind_code = UF(F3, blob, o); o += 3
             name = blob[o:o+name_len].decode(U); o += name_len
             meta[name] = kind_map[kind_code]
             names.append(name)
@@ -228,9 +228,9 @@ def dqm(blob: bytes) -> tuple[dict[str, object], list[str], bool]:
 def etr(tname: str, nti: dict[str, int]) -> tuple[int, int]:
     if tname in nti:
         return nti[tname], 0
-    if tname.endswith(".q") and tname[:-2] in nti:
+    if tname.endswith(QS) and tname[:-2] in nti:
         bn, suffix = tname[:-2], 1
-    elif tname.endswith(".scale") and tname[:-6] in nti:
+    elif tname.endswith(SS) and tname[:-6] in nti:
         bn, suffix = tname[:-6], 2
     else:
         bn, suffix = tname, 0
@@ -238,8 +238,8 @@ def etr(tname: str, nti: dict[str, int]) -> tuple[int, int]:
 
 def dtr(name_idx: int, suffix: int, names: list[str]) -> str:
     bn = names[name_idx]
-    if suffix == 1: return bn + ".q"
-    if suffix == 2: return bn + ".scale"
+    if suffix == 1: return bn + QS
+    if suffix == 2: return bn + SS
     return bn
 
 def qi6g(weight, hessian=None, cr=31, block_size=128):
@@ -347,10 +347,10 @@ def qsd(sd, hh=None):
         if cat in int6_cats and t.ndim >= 1:
             H = hh.get(name) if hh else None
             q, s = qi6g(t, hessian=H)
-            result[name + ".q"] = q; result[name + ".scale"] = s
+            result[name + QS] = q; result[name + SS] = s
             meta[name] = M6; continue
         q, s = qft(t)
-        result[name + ".q"] = q; result[name + ".scale"] = s
+        result[name + QS] = q; result[name + SS] = s
         meta[name] = M8
     return result, meta
 
@@ -364,7 +364,7 @@ def dsd(result, meta, template_sd):
             t = result[name]
             if t.dtype == F16 and orig_dtype in (F32, BF): t = t.to(orig_dtype)
             out[name] = t; continue
-        q, s = result[name + ".q"], result[name + ".scale"]
+        q, s = result[name + QS], result[name + SS]
         if s.ndim > 0:
             out[name] = (q.float() * s.float().view(q.shape[0], *([1]*(q.ndim-1)))).to(orig_dtype)
         else:
@@ -441,7 +441,7 @@ def pi6(t: Tensor) -> bytes:
     out = bytearray()
     for bit in range(6):
         bits = AS((u >> bit) & 1, N8).reshape(-1, 8)
-        out.extend(np.packbits(bits, axis=1, bitorder="little").reshape(-1).tobytes())
+        out.extend(np.packbits(bits, axis=1, bitorder=LT).reshape(-1).tobytes())
     return bytes(out)
 
 def ui6(raw: bytes | memoryview, shape: list[int]) -> Tensor:
@@ -459,7 +459,7 @@ def ui6(raw: bytes | memoryview, shape: list[int]) -> Tensor:
     for bit in range(6):
         plane = packed_u8[o:o + plane_bytes]
         o += plane_bytes
-        bits = np.unpackbits(plane, bitorder="little")
+        bits = np.unpackbits(plane, bitorder=LT)
         u |= (AS(bits, N8) << bit)
     arr = _zigzag_decode_int6(u[:numel])
     return FN(AS(arr, N1).reshape(shape))
@@ -952,7 +952,7 @@ def ree(a, bm, rank, ws, dv, dd, m0,
             log0(f"prune:{prc}/{ti6} ({100*prc/max(ti6,1):.1f}%) thr={threshold:.0f}")
     meta_blob, meta_names = eqm(qm)
     nti = {name: idx for idx, name in enumerate(meta_names)}
-    parts = [PK("<I", len(meta_blob)), meta_blob]
+    parts = [PK(F4, len(meta_blob)), meta_blob]
     meta_bytes = 4 + len(meta_blob)
     thb = 0
     p6b = 0
@@ -961,9 +961,9 @@ def ree(a, bm, rank, ws, dv, dd, m0,
     tensor_order = sorted(qr.keys())
     for tname in tensor_order:
         t = qr[tname]
-        bn = tname[:-2] if tname.endswith(".q") else ""
+        bn = tname[:-2] if tname.endswith(QS) else ""
         pi = (
-            tname.endswith(".q")
+            tname.endswith(QS)
             and mk(qm.get(bn)) == "6"
         )
         dtype_map = {I8: 0, F16: 1, F32: 2, BF: 3}
@@ -974,9 +974,9 @@ def ree(a, bm, rank, ws, dv, dd, m0,
             t_np = t.contiguous().numpy() if t.dtype != BF else t.contiguous().view(U16).numpy()
             raw = t_np.tobytes()
         name_idx, suffix = etr(tname, nti)
-        parts.append(PK("<HBBB", name_idx, suffix, dt, t.ndim))
+        parts.append(PK(F5, name_idx, suffix, dt, t.ndim))
         thb += 5 + 4 * t.ndim
-        for d in t.shape: parts.append(PK("<I", d))
+        for d in t.shape: parts.append(PK(F4, d))
         parts.append(raw)
         if pi:
             p6b += len(raw)
@@ -1006,13 +1006,13 @@ def ree(a, bm, rank, ws, dv, dd, m0,
     with open(FM, "rb") as f: model_blob_loaded = f.read()
     rd, _ = dmb(model_blob_loaded)
     o = 0
-    meta_len = UF("<I", rd, o)[0]; o += 4
+    meta_len = UF(F4, rd, o)[0]; o += 4
     lm, meta_names, ctr = dqm(rd[o:o+meta_len]); o += meta_len
     drm = {0: (I8, np.int8), 1: (F16, np.float16), 2: (F32, np.float32), 3: (BF, np.uint16)}
     lr = {}
     while o < len(rd):
         if ctr:
-            name_idx, suffix, dt, ndim = UF("<HBBB", rd, o); o += 5
+            name_idx, suffix, dt, ndim = UF(F5, rd, o); o += 5
             tname = dtr(name_idx, suffix, meta_names)
         else:
             name_len = UF("<H", rd, o)[0]; o += 2
@@ -1020,7 +1020,7 @@ def ree(a, bm, rank, ws, dv, dd, m0,
             dt, ndim = UF("<BB", rd, o); o += 2
         shape = []
         for _ in range(ndim):
-            shape.append(UF("<I", rd, o)[0]); o += 4
+            shape.append(UF(F4, rd, o)[0]); o += 4
         if dt == 4:
             numel = NM(shape)
             nbytes = ((numel + 3) // 4) * 3
