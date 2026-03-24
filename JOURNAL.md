@@ -275,3 +275,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The full-80-shard run improved again to `step:2000/20000 val_loss:2.1152 val_bpb:1.2527 train_time:1559312ms`, beating its earlier `step:1000 val_bpb:1.3111` checkpoint by another `0.0584` nats.
 - Decision: Keep this exact run alive; it is now the strongest training-quality signal we have seen on any lane and is still moving in the right direction.
 - Next step: Let the run continue toward its full 5400-second budget, then inspect the final GPTQ/export metrics and decide whether the next pod spend should be another single-GPU ablation or a direct 8xH100 validation.
+
+- Timestamp: 2026-03-23 23:08 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL export ablation
+- Objective: Prepare the most likely next follow-up run without interrupting the active long VRL baseline.
+- Command or config: Added `configs/runpod/non_ttt_vrl_gptq_1gpu_long_noprune.env` and `configs/runpod/non_ttt_vrl_gptq_8gpu_noprune.env`, keeping the full promoted VRL recipe fixed but changing `PRUNE_PCT` from `0.02` to `0.00`.
+- Result: The repo now has a ready-to-launch no-prune follow-up for both the long 1xH100 proxy lane and the eventual 8xH100 validation lane.
+- Decision: If the current long VRL run still loses too much quality during post-quant export, test the no-prune variant next before changing the architecture or optimizer.
+- Next step: Let the active baseline long run finish first, then compare its final quantized score and artifact size against this no-prune contingency plan.
