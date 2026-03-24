@@ -446,3 +446,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: `prune14` is live on GPU as PID `175714` and has progressed through warmup plus the initial training steps with the expected banner `VRL Prune(0.14) RawBinary`. The export-only watcher has moved past “waiting for run dir” and is now logging `source still running for non_ttt_vrl_gptq_1gpu_long_prune14`, which confirms it has detected the active source run and will wait for the saved checkpoint before launching the export-only `prune17` sweep.
 - Decision: Keep the current queue intact; the handoff logic is now behaving as intended from active training through the staged export-only hedge.
 - Next step: Wait for the first `prune14` validation checkpoint at `step:1000`, then compare it against the earlier trajectory while preparing to consume its saved checkpoint for the queued export-only sweep if the byte cap is still missed.
+
+- Timestamp: 2026-03-24 00:57 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL export infrastructure
+- Objective: Verify that the active prune14 run is actually capable of producing the reusable checkpoint needed by the staged export-only sweep.
+- Command or config: Inspected `runs/non_ttt_vrl_gptq/seed1337/20260324T055414Z/config.env` and `runs/non_ttt_vrl_gptq/seed1337/20260324T055414Z/train_gpt.snapshot.py` on the pod using `grep`.
+- Result: The active run bundle confirms `PRUNE_PCT=0.14` and `SAVE_PRE_EXPORT_CHECKPOINT=1`, and the captured trainer snapshot includes `maybe_save_pre_export_checkpoint`, `export_only_checkpoint`, and `run_export_eval`.
+- Decision: Keep the export-only `prune17` watcher in place; the currently running prune14 job has the exact checkpoint/export support it needs for that handoff to succeed.
+- Next step: Continue monitoring prune14 for its first validation checkpoint and eventual saved checkpoint rather than spending time on more queue surgery.
