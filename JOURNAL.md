@@ -1004,3 +1004,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The candidate file shrank from `57,955` bytes to `57,855` bytes, another `100` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 57,855`, which is `-17,076` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
 - Decision: Keep the class/helper-symbol shortening pass in the main lane. The gain is smaller than the last few passes, but it is validated, free, and still moves the counted candidate source down.
 - Next step: Push the class/helper-symbol shortening pass so the next live export rerun uses the smallest counted candidate source we have so far together with the stronger bitplane + raw-LZMA exporter path.
+
+- Timestamp: 2026-03-24 04:01 America/Chicago
+- Commit: `2f205b3`
+- Lane: non-ttt VRL code-size hygiene
+- Objective: Reclaim another meaningful block of counted source bytes by shortening long local-only names in the sentencepiece, validation, shard-loader, and batch-loader helpers without changing runtime behavior or external interfaces.
+- Command or config: Shortened the repeated local variable names in `bsl(...)`, `eval_val(...)`, `lds(...)`, and `DTL.next_batch(...)` inside `candidates/non_ttt_vrl_gptq/train_gpt.py`, then reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, reran `python3 runpod/check_ready.py`, and reran the offline codec round-trip validator on the fixed-seed quantized VRL model skeleton.
+- Result: The candidate file shrank from `57,855` bytes to `57,260` bytes, another `595` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 57,260`, which is `-17,671` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
+- Decision: Keep the loader/validation local-name shortening pass in the main lane. It is another good counted-size win with no observed exporter regression.
+- Next step: Push the loader/validation local-name shortening pass so the next live export rerun uses the smallest counted candidate source we have so far together with the stronger bitplane + raw-LZMA exporter path.
