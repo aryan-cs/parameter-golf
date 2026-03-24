@@ -61,7 +61,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Next step: Re-run the sync command against `root@216.243.220.229:16214`, then continue with bootstrap and the first smoke run.
 
 - Timestamp: 2026-03-23 16:53 America/Chicago
-- Commit: uncommitted
+- Commit: `ab61d33`
 - Lane: runpod bring-up
 - Objective: Recover from the tar-over-SSH ownership warnings seen on the first fallback sync attempt.
 - Command or config: Updated the tar sync and fetch paths to ignore ownership and permission preservation, and excluded `.env` from transfer.
@@ -70,7 +70,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Next step: Re-run `bash runpod/local_sync_to_pod.sh root@216.243.220.229 /workspace/golf 16214`, then start `TRAIN_SHARDS=10 bash runpod/pod_bootstrap.sh` over SSH.
 
 - Timestamp: 2026-03-23 17:03 America/Chicago
-- Commit: uncommitted
+- Commit: `e73078a`
 - Lane: runpod bring-up
 - Objective: Recover from the first remote launch failure after bootstrap completed.
 - Command or config: Inspected `/workspace/golf/runs/.../commit.txt` and traced the failure to `pod_run.sh` assuming the synced pod copy still had a `.git` directory.
@@ -79,7 +79,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Next step: Push the launcher fix, re-sync the repo to `/workspace/golf`, and relaunch `bash runpod/pod_run.sh non_ttt_m22_base 1337`.
 
 - Timestamp: 2026-03-23 17:08 America/Chicago
-- Commit: uncommitted
+- Commit: `7d1d3ce`
 - Lane: runpod bring-up
 - Objective: Recover from the second remote launch failure after the commit stamping fix landed.
 - Command or config: Inspected the failed launcher output and found that `uv` was installed under `/root/.local/bin`, but `pod_run.sh` was executing without that directory on `PATH`.
@@ -1031,3 +1031,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The candidate file shrank from `56,661` bytes to `56,091` bytes, another `570` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 56,091`, which is `-18,840` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
 - Decision: Keep the quant/export and optimizer-local shortening pass in the main lane. It is another safe counted-size win with no observed exporter or wrapper regression.
 - Next step: Push this pass so the next live export rerun uses the smallest counted candidate source we have so far together with the stronger bitplane + raw-LZMA exporter path.
+
+- Timestamp: 2026-03-24 04:12 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL code-size hygiene
+- Objective: Reclaim a larger counted-size block by shortening the candidate-private env keys in `H` and updating the VRL runpod configs/scripts in lockstep, while leaving torchrun’s standard distributed env vars alone.
+- Command or config: Patched `candidates/non_ttt_vrl_gptq/train_gpt.py` so the candidate now reads short private env keys such as `DP`, `TP`, `VLE`, `MWS`, `GCB`, `GBS`, `PP`, `SPC`, and `EOC`; updated the `non_ttt_vrl_gptq*.env` runpod configs to the same short keys; and updated `runpod/check_ready.py`, `runpod/pod_queue_export_ladder.sh`, and `runpod/pod_queue_export_after_prefix.sh` to look for `PP` / `SPC` / `EOC`. Then reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, reran `python3 runpod/check_ready.py`, and reran the offline codec round-trip validator on the fixed-seed quantized VRL model skeleton.
+- Result: The candidate file shrank from `56,091` bytes to `55,504` bytes, another `587` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 55,504`, which is `-19,427` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
+- Decision: Keep the short private env-key scheme in the main lane. It is a larger validated counted-size win than the last few local-only rename passes, and the runpod orchestration still passes readiness after the synchronized config/script update.
+- Next step: Push the short env-key pass so the next live export rerun uses the smallest counted candidate source we have so far together with the stronger bitplane + raw-LZMA exporter path.
