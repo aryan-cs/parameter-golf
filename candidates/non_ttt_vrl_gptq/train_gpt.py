@@ -827,22 +827,22 @@ class GPT(M):
 def ch(bm, tl, args, dv, gas, nbc=256):
     hh = {}
     hooks = []
-    for name, module in bm.named_modules():
-        if isinstance(module, CL):
-            pn = name + WT
-            cols = module.weight.shape[1]
-            hh[pn] = Z(cols, cols, dtype=F32, device='cpu')
-            def mh(mod_id, pname, ncols):
-                count = [0]
-                def hf(module, input, output):
-                    x = input[0].detach().float()
+    for n, m in bm.named_modules():
+        if isinstance(m, CL):
+            pn = n + WT
+            c = m.weight.shape[1]
+            hh[pn] = Z(c, c, dtype=F32, device='cpu')
+            def mh(pn):
+                ct = [0]
+                def hf(_, inp, __):
+                    x = inp[0].detach().float()
                     if x.ndim == 3:
                         x = x.reshape(-1, x.shape[-1])
                     xtx = (x.T @ x).cpu()
-                    hh[pname] += xtx
-                    count[0] += x.shape[0]
+                    hh[pn] += xtx
+                    ct[0] += x.shape[0]
                 return hf
-            h = module.register_forward_hook(mh(id(module), pn, cols))
+            h = m.register_forward_hook(mh(pn))
             hooks.append(h)
     bm.eval()
     with IM(), AU():
@@ -918,12 +918,10 @@ def ree(a, bm, rank, ws, dv, dd, m0,
     hh = ch(bm, cl, a, dv, 8 // ws,
                                 nbc=a.gcb)
     hm = {}
-    for name, module in bm.named_modules():
-        if isinstance(module, CL):
-            sd_name = name + WT
-            h_name = name + WT
-            if h_name in hh:
-                hm[sd_name] = hh[h_name]
+    for n, m in bm.named_modules():
+        if isinstance(m, CL):
+            k = n + WT
+            if k in hh: hm[k] = hh[k]
     sd_cpu = {k: DC(v) for k, v in bm.state_dict().items()}
     cb = len(code.encode(U)); sl = 16_000_000
     qr, qm = qsd(sd_cpu, hh=hm)
