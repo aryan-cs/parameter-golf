@@ -140,7 +140,7 @@ def vv(a, model, rk, ws, dv, gas,
     model.train(); return float(IT(vl)), float(bpt * tpb)
 
 CP = tuple(
-    p for p in "asc,ascs,msc,mscs,rm,rms,g,skw,skws,smear,bol,bgm.s,vls,vsh.s,vra".split(",") if p)
+    p for p in "asc,ascs,msc,mscs,rm,rms,g,skw,skws,sg,bol,bgm.s,vls,vsh.s,vra".split(",") if p)
 IC=lambda n:any(n==p or n.startswith(p+".") or n.endswith("."+p) or f".{p}." in n for p in CP)
 I8K = 65_536
 I8D = F16
@@ -607,7 +607,7 @@ class CSA(M):
         self.p._zero_init = True
         self.g = P(FUL((nh,), qgi, dtype=F32))
         self.rd = 0
-        self.rotary = RY(self.hd, base=rb, tsl=1024)
+        self.ro = RY(self.hd, base=rb, tsl=1024)
         self.ux = False
     def xe(self, y, v):
         B, T, H, D = y.shape; Hkv = v.size(-2); group = H // Hkv
@@ -624,7 +624,7 @@ class CSA(M):
         if vr is not None: v = v + vr
         v = RS(v, bsz, seqlen, self.nkh, self.hd)
         q, k = RM(q, (q.size(-1),)), RM(k, (k.size(-1),))
-        cos, sin = self.rotary(seqlen, x.device, q.dtype)
+        cos, sin = self.ro(seqlen, x.device, q.dtype)
         q = are(q, cos, sin, self.rd)
         k = are(k, cos, sin, self.rd)
         q = q * TY(self.g, q.dtype)[None, None, :, None]
@@ -649,9 +649,9 @@ class MLP(M):
 
 class SGT(M):
     def __init__(self, dim):
-        super().__init__(); self.gate = P(Z(dim, dtype=F32))
+        super().__init__(); self.g = P(Z(dim, dtype=F32))
     def forward(self, x):
-        g = SG(TY(self.gate, x.dtype))[None, None, :]
+        g = SG(TY(self.g, x.dtype))[None, None, :]
         x_prev = CAT([ZL(x[:, :1]), x[:, :-1]], dim=1)
         return (1 - g) * x + g * x_prev
 
@@ -690,7 +690,7 @@ class VE(M):
 class BL(M):
     def __init__(self, dim, nh, nkh, mm, rb, qgi, li=0, ln_scale=False):
         super().__init__()
-        self.attn_norm, self.mlp_norm = RN(), RN()
+        self.an, self.mn = RN(), RN()
         self.a = CSA(dim, nh, nkh, rb, qgi)
         self.m = MLP(dim, mm)
         self.asc = P(ON(dim, dtype=F32))
@@ -700,9 +700,9 @@ class BL(M):
     def forward(self, x, x0, ve=None, vr=None):
         mix = TY(self.rm, x.dtype)
         x_in = mix[0][None, None, :] * x + mix[1][None, None, :] * x0
-        attn_out = self.a(self.attn_norm(x_in) * self.lsf, ve=ve, vr=vr)
+        attn_out = self.a(self.an(x_in) * self.lsf, ve=ve, vr=vr)
         x_out = x_in + TY(self.asc, x_in.dtype)[None, None, :] * attn_out
-        x_out = x_out + TY(self.msc, x_out.dtype)[None, None, :] * self.m(self.mlp_norm(x_out) * self.lsf)
+        x_out = x_out + TY(self.msc, x_out.dtype)[None, None, :] * self.m(self.mn(x_out) * self.lsf)
         return x_out
 
 class GPT(M):
@@ -718,7 +718,7 @@ class GPT(M):
         self.nl = nl
         self.tke = nn.Embedding(vs, dm)
         self.bgm = BHE(bgvs, bgd, dm) if bgvs > 0 else None
-        self.smear = SGT(dm) if se else None
+        self.sg = SGT(dm) if se else None
         self.bol = P(backout_init * ON(1)) if be else None
         self.nel = nl // 2
         self.ndl = nl - self.nel
@@ -733,7 +733,7 @@ class GPT(M):
             hd = dm // nh
             for block in self.bs:
                 block.a.rd = rd
-                block.a.rotary = RY(hd, base=rb, tsl=1024, rd=rd)
+                block.a.ro = RY(hd, base=rb, tsl=1024, rd=rd)
         if xsn > 0:
             for i in range(max(0, nl - xsn), nl):
                 self.bs[i].a.ux = True
@@ -744,7 +744,7 @@ class GPT(M):
             self.vls = PL([P(ON(1, dtype=F32)) for _ in self.vli])
         else:
             self.vsh = None; self.vls = PL()
-        self.final_norm = RN()
+        self.fn = RN()
         self.vre = nl > 1
         if self.vre:
             self.vra = PL([
@@ -784,7 +784,7 @@ class GPT(M):
             blk0 = self.bs[0]
             mix0 = TY(blk0.rm, x0.dtype)
             x_in0 = mix0[0][None, None, :] * x0 + mix0[1][None, None, :] * x0
-            v0 = blk0.a.cv(blk0.attn_norm(x_in0) * blk0.lsf)
+            v0 = blk0.a.cv(blk0.an(x_in0) * blk0.lsf)
         vi = 0
         for i in range(self.nel):
             ve = self.gv(i, ids, vc)
@@ -813,16 +813,16 @@ class GPT(M):
         x = self.tke(ids)
         if self.bgm is not None: x = x + self.bgm(ids)
         x = RM(x, (self.tke.weight.shape[1],))
-        if self.smear is not None: x = self.smear(x)
+        if self.sg is not None: x = self.sg(x)
         return x
     def forward(self, ids, tgt):
         x0 = self.eb(ids); x = self.rl(x0, x0, ids)
-        x_flat = RS(self.final_norm(x), -1, x.size(-1)); targets = RS(tgt, -1)
+        x_flat = RS(self.fn(x), -1, x.size(-1)); targets = RS(tgt, -1)
         logits_proj = LI(x_flat, self.tke.weight) if self.t else self.lmh(x_flat)
         logits = self.l * th.tanh(logits_proj / self.l)
         return F.cross_entropy(TF(logits), targets, reduction="mean")
     def fwl(self, ids):
-        x0 = self.eb(ids); x = self.final_norm(self.rl(x0, x0, ids))
+        x0 = self.eb(ids); x = self.fn(self.rl(x0, x0, ids))
         logits = LI(x, self.tke.weight.to(x.dtype)) if self.t else self.lmh(x)
         return self.l * th.tanh(logits / self.l)
 
@@ -1114,7 +1114,7 @@ def main():
     mpa = [p for n, p in bnp if p.ndim == 2 and not IC(n)]
     spa = [p for n, p in bnp if p.ndim < 2 or IC(n)]
     if bm.skw.numel() > 0: spa.append(bm.skw)
-    if bm.smear is not None: spa.append(bm.smear.gate)
+    if bm.sg is not None: spa.append(bm.sg.g)
     if bm.bol is not None: spa.append(bm.bol)
     if bm.bgm is not None: spa.append(bm.bgm.s)
     if bm.vsh is not None:
