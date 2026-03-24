@@ -383,3 +383,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The finished baseline produced `final_int6_zstd_roundtrip val_loss:1.8842 val_bpb:1.1159 eval_time:624877ms`, which is a strong quantized score but still invalid because the artifact is `16,333,801` bytes. The immediate prune11 relaunch attempt failed because `runpod/pod_run.sh` was still looking for `/root/.venvs/golf/bin/python` even though this pod is using `/workspace/golf/.venv`.
 - Decision: Patch the launcher to prefer the repo-local `.venv` so future detached launches and queued follow-ups use the same working Python environment as the successful baseline run.
 - Next step: Update `runpod/pod_run.sh`, push the fix, sync it to the pod, and relaunch the prune11 follow-up immediately so the GPU does not sit idle.
+
+- Timestamp: 2026-03-24 00:23 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL export ablation
+- Objective: Restore forward progress after the launcher regression and get the prune-focused follow-up onto the GPU.
+- Command or config: Patched `runpod/pod_run.sh` to prefer `$ROOT/.venv` when present, pushed commit `9b01544`, synced the updated launcher to `/workspace/golf/runpod/pod_run.sh`, killed the stale prune11 watcher, and relaunched `bash runpod/pod_run.sh non_ttt_vrl_gptq 1337 configs/runpod/non_ttt_vrl_gptq_1gpu_long_prune11.env`.
+- Result: The prune11 run is now live as PID `168452` with run directory `runs/non_ttt_vrl_gptq/seed1337/20260324T052254Z`. Its log has started successfully and confirms the intended recipe change: `VRL Prune(0.11) RawBinary`.
+- Decision: Keep prune11 as the active next experiment, since we now know the baseline quality is good enough and the next question is whether slightly stronger pruning can bring the artifact under the cap without giving back too much of the `1.1159` quantized score.
+- Next step: Monitor the new prune11 run through its first validation checkpoints and compare its eventual export size and post-quant score against the over-cap baseline.
