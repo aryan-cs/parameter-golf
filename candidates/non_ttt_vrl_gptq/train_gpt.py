@@ -11,11 +11,11 @@ from torch import Tensor, nn
 from torch.nn.parallel import DistributedDataParallel as DDP
 EG=os.environ.get; GI=lambda k,d=0:int(EG(k,d)); GF=lambda k,d=0:float(EG(k,d)); GB=lambda k,d=0:bool(int(EG(k,d))); JP=os.path.join; PC=time.perf_counter
 BF=th.bfloat16; F16=th.float16; F32=th.float32; F64=th.float64; I8=th.int8; I16=th.int16; I64=th.int64; BO=th.bool; U16=th.uint16
-AC=th.autocast; IM=th.inference_mode; Z=th.zeros; TT=th.tensor; QT=th.quantile; EM=th.empty; FN=th.from_numpy; SK=th.stack; PK=struct.pack; UF=struct.unpack_from; ER=ValueError; CU="cuda"; AU=lambda e=1:AC(device_type=CU,dtype=BF,enabled=e); DC=lambda t:t.detach().cpu(); DL=lambda t:DC(t).clone(); DX=lambda t:DC(t).contiguous(); AS=lambda x,d:x.astype(d,copy=False); NM=lambda s:int(np.prod(s,dtype=np.int64)); FB=np.frombuffer; NE=np.empty; NZ=np.zeros; RM=F.rms_norm; LI=F.linear; PT=Path; GG=glob.glob
+AC=th.autocast; IM=th.inference_mode; Z=th.zeros; TT=th.tensor; QT=th.quantile; EM=th.empty; FN=th.from_numpy; SK=th.stack; PK=struct.pack; UF=struct.unpack_from; ER=ValueError; FE=FileNotFoundError; RE=RuntimeError; CU="cuda"; AU=lambda e=1:AC(device_type=CU,dtype=BF,enabled=e); DC=lambda t:t.detach().cpu(); DL=lambda t:DC(t).clone(); DX=lambda t:DC(t).contiguous(); AS=lambda x,d:x.astype(d,copy=False); NM=lambda s:int(np.prod(s,dtype=np.int64)); FB=np.frombuffer; NE=np.empty; NZ=np.zeros; RM=F.rms_norm; LI=F.linear; PT=Path; GG=glob.glob
 P=nn.Parameter; PL=nn.ParameterList; M=nn.Module; ML=nn.ModuleList; NI=nn.init; NG=th.no_grad; CLP=th.clamp; DG=th.diag; CMP=th.compile; SY=th.cuda.synchronize
 IA=dist.is_available; II=dist.is_initialized; BR=dist.barrier; GWS=dist.get_world_size; GRK=dist.get_rank; IGP=dist.init_process_group; DGP=dist.destroy_process_group; ARD=dist.all_reduce; ROP=dist.ReduceOp
 ZL=th.zeros_like; EL=th.empty_like; AR=th.arange; SG=th.sigmoid; CAT=th.cat; ON=th.ones; FUL=th.full; EYE=th.eye
-N8=np.uint8; N6=np.int16; N1=np.int8
+N8=np.uint8; N6=np.int16; N1=np.int8; N4=np.uint32; NB=1
 try:
     from flash_attn_interface import flash_attn_func as _fa3_func
     HAS_FA3 = True
@@ -103,7 +103,7 @@ def bsl(sp, vs, dv):
 
 def lvt(pattern, sl):
     files = [PT(p) for p in sorted(GG(pattern))]
-    if not files: raise FileNotFoundError(f"no:{pattern}")
+    if not files: raise FE(f"no:{pattern}")
     tokens = CAT([lds(file) for file in files]).contiguous()
     usable = ((tokens.numel() - 1) // sl) * sl
     if usable <= 0: raise ER(f"val<{sl}")
@@ -122,7 +122,7 @@ def eval_val(a, model, rank, ws, dv, gas,
     with IM():
         for bss in range(ss, se, lbs):
             bse = min(bss + lbs, se)
-            local = vt[bss*sl:(bse*sl)+1].to(device=dv, dtype=I64, non_blocking=True)
+            local = vt[bss*sl:(bse*sl)+1].to(device=dv, dtype=I64, non_blocking=NB)
             x, y = local[:-1].reshape(-1, sl), local[1:].reshape(-1, sl)
             with AU():
                 bl = model(x, y).detach()
@@ -396,7 +396,7 @@ def pi6l(t: Tensor) -> bytes:
     pad = (-u.size) % 4
     if pad:
         u = np.pad(u, (0, pad), constant_values=0)
-    groups = AS(u.reshape(-1, 4), np.uint32)
+    groups = AS(u.reshape(-1, 4), N4)
     packed = (groups[:, 0]
               | (groups[:, 1] << 6)
               | (groups[:, 2] << 12)
@@ -415,7 +415,7 @@ def ui6l(raw: bytes | memoryview, shape: list[int]) -> Tensor:
     groups = (numel + 3) // 4
     if packed_u8.size != groups * 3:
         raise ER(f"bad int6 sz {groups*3}!={packed_u8.size}")
-    triplets = AS(packed_u8.reshape(-1, 3), np.uint32)
+    triplets = AS(packed_u8.reshape(-1, 3), N4)
     packed = triplets[:, 0] | (triplets[:, 1] << 8) | (triplets[:, 2] << 16)
     u = NE(groups * 4, dtype=N8)
     u[0::4] = (packed & 0x3F).astype(N8)
@@ -488,7 +488,7 @@ def dmb(blob: bytes) -> tuple[bytes, str]:
         payload = blob[len(QCB) + 1:]
         if cid == KZ:
             if not HAS_ZSTD:
-                raise RuntimeError("zstd unavailable")
+                raise RE("zstd unavailable")
             return zstd.ZstdDecompressor().decompress(payload), mcn(cid)
         if cid == KG:
             return zlib.decompress(payload), mcn(cid)
@@ -516,7 +516,7 @@ def lds(file):
 class TS:
     def __init__(self, pat):
         self.files = [PT(p) for p in sorted(GG(pat))]
-        if not self.files: raise FileNotFoundError(f"no:{pat}")
+        if not self.files: raise FE(f"no:{pat}")
         self.file_idx = 0; self.tokens = lds(self.files[0]); self.pos = 0
     def _advance_file(self):
         self.file_idx = (self.file_idx + 1) % len(self.files); self.tokens = lds(self.files[self.file_idx]); self.pos = 0
@@ -536,7 +536,7 @@ class DTL:
         chunk = self.stream.take(prs * self.ws)
         start = self.rank * prs; local = chunk[start:start+prs].to(dtype=I64)
         x, y = local[:-1].reshape(-1, sl), local[1:].reshape(-1, sl)
-        return x.to(self.dv, non_blocking=True), y.to(self.dv, non_blocking=True)
+        return x.to(self.dv, non_blocking=NB), y.to(self.dv, non_blocking=NB)
 
 class RN(M):
     def __init__(self, eps=None): super().__init__(); self.eps = eps
@@ -1067,7 +1067,7 @@ def main():
     lrk = GI("LOCAL_RANK")
     if ws <= 0 or 8 % ws != 0: raise ER(f"bad WS={ws}")
     gas = 8 // ws; grad_scale = 1.0 / gas
-    if not th.cuda.is_available(): raise RuntimeError("cuda req")
+    if not th.cuda.is_available(): raise RE("cuda req")
     dv = th.device(CU, lrk); th.cuda.set_device(dv)
     if dd: IGP(backend="nccl", device_id=dv); BR()
     m0 = rank == 0

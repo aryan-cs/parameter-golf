@@ -47,14 +47,15 @@ def main() -> int:
         run_name_prefixes[prefix] = name
 
     wrappers = [
-        ROOT / "runpod" / "local_recover_export_chain.sh",
-        ROOT / "runpod" / "local_recover_export_chain_8gpu.sh",
-        ROOT / "runpod" / "local_recover_existing_export.sh",
+        (ROOT / "runpod" / "local_recover_export_chain.sh", 5),
+        (ROOT / "runpod" / "local_recover_export_chain_8gpu.sh", 5),
+        (ROOT / "runpod" / "local_recover_existing_export.sh", 5),
+        (ROOT / "runpod" / "local_resume_existing_export.sh", 0),
     ]
-    for wrapper in wrappers:
+    for wrapper, min_refs in wrappers:
         refs = extract_configs_from_wrapper(wrapper)
-        if len(refs) < 5:
-            errors.append(f"{wrapper.name}: expected at least 5 config references, found {len(refs)}")
+        if len(refs) < min_refs:
+            errors.append(f"{wrapper.name}: expected at least {min_refs} config references, found {len(refs)}")
         for ref in refs:
             path = ROOT / ref
             if not path.exists():
