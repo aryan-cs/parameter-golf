@@ -285,15 +285,15 @@ def etr(tname: str, name_to_idx: dict[str, int]) -> tuple[int, int]:
     return name_to_idx[base_name], suffix
 
 def dtr(name_idx: int, suffix: int, names: list[str]) -> str:
-    base_name = names[name_idx]
-    if suffix == 1: return base_name + ".q"
-    if suffix == 2: return base_name + ".scale"
-    return base_name
+    bn = names[name_idx]
+    if suffix == 1: return bn + ".q"
+    if suffix == 2: return bn + ".scale"
+    return bn
 
-def qi6g(weight, hessian=None, clip_range=31, block_size=128):
+def qi6g(weight, hessian=None, cr=31, block_size=128):
     t32 = weight.float()
     if t32.ndim != 2 or hessian is None:
-        return qi6p(t32, clip_range)
+        return qi6p(t32, cr)
     rows, cols = t32.shape
     H = hessian.float().clone()
     dead = DG(H) == 0
@@ -310,14 +310,14 @@ def qi6g(weight, hessian=None, clip_range=31, block_size=128):
         Hinv = th.cholesky_inverse(Hinv)
         Hinv = th.linalg.cholesky(Hinv, upper=True)
     except th.linalg.LinAlgError:
-        return qi6p(t32, clip_range)
+        return qi6p(t32, cr)
     best_q = None; best_scale = None; best_err = float('inf')
     for pct in [0.9990, 0.9995, 0.9999, 0.99999, 1.0]:
         if pct < 1.0:
             row_clip = QT(t32.abs(), pct, dim=1)
         else:
             row_clip = t32.abs().amax(dim=1)
-        s = (row_clip / clip_range).clamp_min(1.0 / clip_range).to(F16)
+        s = (row_clip / cr).clamp_min(1.0 / cr).to(F16)
         sf = s.float()
         Q = ZL(W, dtype=I8)
         W_work = W.clone()
@@ -331,7 +331,7 @@ def qi6g(weight, hessian=None, clip_range=31, block_size=128):
             for i in range(count):
                 w = W1[:, i]
                 d = Hinv1[i, i]
-                q = CLP(th.round(w / sf), -clip_range, clip_range).to(I8)
+                q = CLP(th.round(w / sf), -cr, cr).to(I8)
                 Q1[:, i] = q
                 err = (w - q.float() * sf) / d
                 W1[:, i:] -= err.unsqueeze(1) * Hinv1[i, i:].unsqueeze(0)
@@ -346,7 +346,7 @@ def qi6g(weight, hessian=None, clip_range=31, block_size=128):
     best_q = best_q[:, inv_perm]
     return best_q, best_scale
 
-def qi6p(t32, clip_range=31):
+def qi6p(t32, cr=31):
     if t32.ndim == 2:
         best_q, best_s, best_err = None, None, float('inf')
         for pct in [0.9990, 0.9995, 0.9999, 0.99999, 1.0]:
@@ -354,16 +354,16 @@ def qi6p(t32, clip_range=31):
                 row_clip = QT(t32.abs(), pct, dim=1)
             else:
                 row_clip = t32.abs().amax(dim=1)
-            s = (row_clip / clip_range).clamp_min(1.0 / clip_range).to(F16)
-            q = CLP(th.round(t32 / s.float()[:, None]), -clip_range, clip_range).to(I8)
+            s = (row_clip / cr).clamp_min(1.0 / cr).to(F16)
+            q = CLP(th.round(t32 / s.float()[:, None]), -cr, cr).to(I8)
             recon = q.float() * s.float()[:, None]
             err = (t32 - recon).pow(2).mean().item()
             if err < best_err:
                 best_q, best_s, best_err = q, s, err
         return best_q, best_s
     amax = t32.abs().max().item()
-    scale = TT(amax / clip_range if amax > 0 else 1.0, dtype=F16)
-    q = CLP(th.round(t32 / scale.float()), -clip_range, clip_range).to(I8)
+    scale = TT(amax / cr if amax > 0 else 1.0, dtype=F16)
+    q = CLP(th.round(t32 / scale.float()), -cr, cr).to(I8)
     return q, scale
 
 def qft(t):
@@ -381,7 +381,7 @@ def qft(t):
     q = CLP(th.round(CLP(t32, -clip_abs, clip_abs) / scale), -127, 127).to(I8).contiguous()
     return q, scale
 
-def qsd(sd, hessians=None):
+def qsd(sd, hh=None):
     result, meta = {}, {}
     int6_cats = {"mlp", "attn", "bigram", "ve"}
     for name, tensor in sd.items():
@@ -393,7 +393,7 @@ def qsd(sd, hessians=None):
         if any(p in name for p in CP):
             result[name] = t.float(); meta[name] = MC; continue
         if cat in int6_cats and t.ndim >= 1:
-            H = hessians.get(name) if hessians else None
+            H = hh.get(name) if hh else None
             q, s = qi6g(t, hessian=H)
             result[name + ".q"] = q; result[name + ".scale"] = s
             meta[name] = M6; continue
@@ -965,18 +965,18 @@ def mspc(path_spec: str, sd: dict[str, th.Tensor], log0):
 def ree(a, bm, rank, ws, device, dd, master,
                     code, vt, bb, hs, ib, log0):
     cl = DTL(a.tf, rank, ws, device)
-    hessians = ch(bm, cl, a, device, 8 // ws,
+    hh = ch(bm, cl, a, device, 8 // ws,
                                 num_batches=a.gcb)
     hm = {}
     for name, module in bm.named_modules():
         if isinstance(module, CL):
             sd_name = name + ".weight"
             h_name = name + ".weight"
-            if h_name in hessians:
-                hm[sd_name] = hessians[h_name]
+            if h_name in hh:
+                hm[sd_name] = hh[h_name]
     sd_cpu = {k: v.detach().cpu() for k, v in bm.state_dict().items()}
     cb = len(code.encode("utf-8")); sl = 16_000_000
-    qr, qm = qsd(sd_cpu, hessians=hm)
+    qr, qm = qsd(sd_cpu, hh=hm)
     if a.pp > 0:
         ai6 = []
         for name, info in qm.items():
@@ -999,7 +999,7 @@ def ree(a, bm, rank, ws, device, dd, master,
             ti6 = sum(qr[n + ".q"].numel() for n, i in qm.items() if mk(i) == "int6" and n + ".q" in qr)
             log0(f"prune:{prc}/{ti6} ({100*prc/max(ti6,1):.1f}%) thr={threshold:.0f}")
     meta_blob, meta_names = eqm(qm)
-    name_to_idx = {name: idx for idx, name in enumerate(meta_names)}
+    nti = {name: idx for idx, name in enumerate(meta_names)}
     parts = [struct.pack("<I", len(meta_blob)), meta_blob]
     meta_bytes = 4 + len(meta_blob)
     thb = 0
@@ -1009,24 +1009,24 @@ def ree(a, bm, rank, ws, device, dd, master,
     tensor_order = sorted(qr.keys())
     for tname in tensor_order:
         t = qr[tname]
-        base_name = tname[:-2] if tname.endswith(".q") else ""
-        pack_int6 = (
+        bn = tname[:-2] if tname.endswith(".q") else ""
+        pi = (
             tname.endswith(".q")
-            and mk(qm.get(base_name)) == "int6"
+            and mk(qm.get(bn)) == "int6"
         )
         dtype_map = {I8: 0, F16: 1, F32: 2, BF: 3}
-        dt = 5 if pack_int6 else dtype_map.get(t.dtype, 2)
-        if pack_int6:
+        dt = 5 if pi else dtype_map.get(t.dtype, 2)
+        if pi:
             raw = pi6(t)
         else:
             t_np = t.contiguous().numpy() if t.dtype != BF else t.contiguous().view(U16).numpy()
             raw = t_np.tobytes()
-        name_idx, suffix = etr(tname, name_to_idx)
+        name_idx, suffix = etr(tname, nti)
         parts.append(struct.pack("<HBBB", name_idx, suffix, dt, t.ndim))
         thb += 5 + 4 * t.ndim
         for d in t.shape: parts.append(struct.pack("<I", d))
         parts.append(raw)
-        if pack_int6:
+        if pi:
             p6b += len(raw)
             p6t += 1
         else:
@@ -1161,30 +1161,30 @@ def main():
         ree(a, bm, rank, ws, device, dd, master,
                         code, vt, bb, hs, ib, log0)
         return
-    block_named_params = list(bm.blocks.named_parameters())
-    matrix_params = [p for n, p in block_named_params if p.ndim == 2 and not any(pat in n for pat in CP)]
-    scalar_params = [p for n, p in block_named_params if p.ndim < 2 or any(pat in n for pat in CP)]
-    if bm.skip_weights.numel() > 0: scalar_params.append(bm.skip_weights)
-    if bm.smear is not None: scalar_params.append(bm.smear.gate)
-    if bm.backout_lambda is not None: scalar_params.append(bm.backout_lambda)
-    if bm.bigram is not None: scalar_params.append(bm.bigram.scale)
+    bnp = list(bm.blocks.named_parameters())
+    mpa = [p for n, p in bnp if p.ndim == 2 and not any(pat in n for pat in CP)]
+    spa = [p for n, p in bnp if p.ndim < 2 or any(pat in n for pat in CP)]
+    if bm.skip_weights.numel() > 0: spa.append(bm.skip_weights)
+    if bm.smear is not None: spa.append(bm.smear.gate)
+    if bm.backout_lambda is not None: spa.append(bm.backout_lambda)
+    if bm.bigram is not None: spa.append(bm.bigram.scale)
     if bm.ve_shared is not None:
-        scalar_params.append(bm.ve_shared.scale)
-        for s in bm.ve_layer_scales: scalar_params.append(s)
+        spa.append(bm.ve_shared.scale)
+        for s in bm.ve_layer_scales: spa.append(s)
     if bm.vrl_enabled:
-        for alpha in bm.vrl_alphas: scalar_params.append(alpha)
-    token_lr = a.telr if a.te else a.elr
-    tok_param_groups = [{"params": [bm.tok_emb.weight], "lr": token_lr, "base_lr": token_lr}]
+        for alpha in bm.vrl_alphas: spa.append(alpha)
+    tlr = a.telr if a.te else a.elr
+    tpg = [{"params": [bm.tok_emb.weight], "lr": tlr, "base_lr": tlr}]
     if bm.bigram is not None:
-        tok_param_groups.append({"params": [bm.bigram.embed.weight], "lr": token_lr, "base_lr": token_lr})
-        if bm.bigram.proj is not None: matrix_params.append(bm.bigram.proj.weight)
+        tpg.append({"params": [bm.bigram.embed.weight], "lr": tlr, "base_lr": tlr})
+        if bm.bigram.proj is not None: mpa.append(bm.bigram.proj.weight)
     if bm.ve_shared is not None:
-        tok_param_groups.append({"params": [bm.ve_shared.embed.weight], "lr": token_lr, "base_lr": token_lr})
-        if bm.ve_shared.proj is not None: matrix_params.append(bm.ve_shared.proj.weight)
-    ot = th.optim.AdamW(tok_param_groups, betas=(a.beta1, a.beta2), eps=a.aep, weight_decay=a.awd, fused=True)
-    om = MU(matrix_params, lr=a.mlr, momentum=a.mum, ns_steps=a.mns, wd=a.mwd)
+        tpg.append({"params": [bm.ve_shared.embed.weight], "lr": tlr, "base_lr": tlr})
+        if bm.ve_shared.proj is not None: mpa.append(bm.ve_shared.proj.weight)
+    ot = th.optim.AdamW(tpg, betas=(a.beta1, a.beta2), eps=a.aep, weight_decay=a.awd, fused=True)
+    om = MU(mpa, lr=a.mlr, momentum=a.mum, ns_steps=a.mns, wd=a.mwd)
     for group in om.param_groups: group["base_lr"] = a.mlr
-    os = th.optim.AdamW([{"params": scalar_params, "lr": a.slr, "base_lr": a.slr}],
+    os = th.optim.AdamW([{"params": spa, "lr": a.slr, "base_lr": a.slr}],
                                           betas=(a.beta1, a.beta2), eps=a.aep, weight_decay=a.awd, fused=True)
     opts = [ot, om, os]
     if bm.lm_head is not None:
@@ -1192,7 +1192,7 @@ def main():
                                            betas=(a.beta1, a.beta2), eps=a.aep, fused=True)
         opts.insert(1, oh)
     tl = DTL(a.tf, rank, ws, device)
-    def zero_grad_all():
+    def zga():
         for opt in opts: opt.zero_grad(set_to_none=True)
     mwm = 1000.0 * a.mws if a.mws > 0 else None
     def lr_mul(step, ems):
@@ -1209,17 +1209,17 @@ def main():
         ios = [copy.deepcopy(opt.state_dict()) for opt in opts]
         model.train()
         for wi in range(a.wus):
-            zero_grad_all()
+            zga()
             for ms in range(gas):
                 if dd: model.require_backward_grad_sync = ms == gas - 1
                 x, y = tl.next_batch(a.tbt, a.tsl, gas)
                 with AC(device_type="cuda", dtype=BF, enabled=True): wl = model(x, y)
                 (wl * grad_scale).backward()
             for opt in opts: opt.step()
-            zero_grad_all()
+            zga()
         bm.load_state_dict(ims, strict=True)
         for opt, state in zip(opts, ios, strict=True): opt.load_state_dict(state)
-        zero_grad_all()
+        zga()
         if dd: model.require_backward_grad_sync = True
         tl = DTL(a.tf, rank, ws, device)
     ema_state = {name: t.detach().float().clone() for name, t in bm.state_dict().items()}
@@ -1243,7 +1243,7 @@ def main():
         scale = lr_mul(step, ems)
         if a.lqt > 0 and scale < a.lqt and not CL._qat_enabled:
             CL._qat_enabled = True
-        zero_grad_all(); trl = Z((), device=device)
+        zga(); trl = Z((), device=device)
         for ms in range(gas):
             if dd: model.require_backward_grad_sync = ms == gas - 1
             x, y = tl.next_batch(a.tbt, a.tsl, gas)
@@ -1257,7 +1257,7 @@ def main():
             for group in opt.param_groups: group["lr"] = group["base_lr"] * scale
         if a.gcn > 0: th.nn.utils.clip_grad_norm_(bm.parameters(), a.gcn)
         for opt in opts: opt.step()
-        zero_grad_all()
+        zga()
         with NG():
             for name, t in bm.state_dict().items():
                 ema_state[name].mul_(a.ed).add_(t.detach().float(), alpha=1.0 - a.ed)
