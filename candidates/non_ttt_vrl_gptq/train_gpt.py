@@ -140,7 +140,7 @@ def vv(a, model, rk, ws, dv, gas,
     model.train(); return float(IT(vl)), float(bpt * tpb)
 
 CP = tuple(
-    p for p in "attn_scale,attn_scales,mlp_scale,mlp_scales,resid_mix,resid_mixes,q_gain,skip_weight,skip_weights,smear,backout_lambda,bigram.scale,ve_layer_scales,ve_shared.scale,vrl_alphas".split(",") if p)
+    p for p in "asc,ascs,msc,mscs,rm,rms,q_gain,skw,skws,smear,bol,bgm.scale,vls,vsh.scale,vrl_alphas".split(",") if p)
 I8K = 65_536
 I8D = F16
 MP = "p"
@@ -165,11 +165,11 @@ LF = [{
 }]
 
 def cpm(name):
-    if "tok_emb" in name or "lm_head" in name: return "e"
+    if "tke" in name or "lmh" in name: return "e"
     if ".mlp." in name: return "m"
-    if "bigram" in name: return "b"
+    if "bgm" in name: return "b"
     if ".attn." in name or (".proj." in name and ".mlp." not in name): return "a"
-    if "ve_shared" in name: return "v"
+    if "vsh" in name: return "v"
     return "o"
 
 def mk(info):
@@ -692,16 +692,16 @@ class BL(M):
         self.attn_norm, self.mlp_norm = RN(), RN()
         self.attn = CSA(dim, nh, nkh, rb, qgi)
         self.mlp = MLP(dim, mm)
-        self.attn_scale = P(ON(dim, dtype=F32))
-        self.mlp_scale = P(ON(dim, dtype=F32))
-        self.resid_mix = P(TF(SK((ON(dim), Z(dim)))))
+        self.asc = P(ON(dim, dtype=F32))
+        self.msc = P(ON(dim, dtype=F32))
+        self.rm = P(TF(SK((ON(dim), Z(dim)))))
         self.lsf = 1.0 / math.sqrt(li + 1) if ln_scale else 1.0
     def forward(self, x, x0, ve=None, vr=None):
-        mix = TY(self.resid_mix, x.dtype)
+        mix = TY(self.rm, x.dtype)
         x_in = mix[0][None, None, :] * x + mix[1][None, None, :] * x0
         attn_out = self.attn(self.attn_norm(x_in) * self.lsf, ve=ve, vr=vr)
-        x_out = x_in + TY(self.attn_scale, x_in.dtype)[None, None, :] * attn_out
-        x_out = x_out + TY(self.mlp_scale, x_out.dtype)[None, None, :] * self.mlp(self.mlp_norm(x_out) * self.lsf)
+        x_out = x_in + TY(self.asc, x_in.dtype)[None, None, :] * attn_out
+        x_out = x_out + TY(self.msc, x_out.dtype)[None, None, :] * self.mlp(self.mlp_norm(x_out) * self.lsf)
         return x_out
 
 class GPT(M):
@@ -715,34 +715,34 @@ class GPT(M):
         self.t, self.ts = te, teis
         self.l = lsc
         self.nl = nl
-        self.tok_emb = nn.Embedding(vs, dm)
-        self.bigram = BHE(bgvs, bgd, dm) if bgvs > 0 else None
+        self.tke = nn.Embedding(vs, dm)
+        self.bgm = BHE(bgvs, bgd, dm) if bgvs > 0 else None
         self.smear = SGT(dm) if se else None
-        self.backout_lambda = P(backout_init * ON(1)) if be else None
+        self.bol = P(backout_init * ON(1)) if be else None
         self.nel = nl // 2
         self.ndl = nl - self.nel
         self.nsw = min(self.nel, self.ndl)
-        self.skip_weights = P(ON(self.nsw, dm, dtype=F32))
-        self.blocks = ML([
+        self.skw = P(ON(self.nsw, dm, dtype=F32))
+        self.bs = ML([
             BL(dm, nh, nkh, mm, rb, qgi,
                   li=i, ln_scale=ln_scale)
             for i in range(nl)
         ])
         if rd > 0:
             hd = dm // nh
-            for block in self.blocks:
+            for block in self.bs:
                 block.attn.rd = rd
                 block.attn.rotary = RY(hd, base=rb, tsl=1024, rd=rd)
         if xsn > 0:
             for i in range(max(0, nl - xsn), nl):
-                self.blocks[i].attn.ux = True
+                self.bs[i].attn.ux = True
         kv_dim = nkh * (dm // nh)
         self.vli = [int(x) for x in vel.split(",") if x.strip()] if vee else []
         if self.vli:
-            self.ve_shared = VE(vs, ved, kv_dim)
-            self.ve_layer_scales = PL([P(ON(1, dtype=F32)) for _ in self.vli])
+            self.vsh = VE(vs, ved, kv_dim)
+            self.vls = PL([P(ON(1, dtype=F32)) for _ in self.vli])
         else:
-            self.ve_shared = None; self.ve_layer_scales = PL()
+            self.vsh = None; self.vls = PL()
         self.final_norm = RN()
         self.vre = nl > 1
         if self.vre:
@@ -751,13 +751,13 @@ class GPT(M):
             ])
         else:
             self.vrl_alphas = PL()
-        self.lm_head = None if te else CL(dm, vs, bias=False)
-        if self.lm_head is not None: self.lm_head._zero_init = True
+        self.lmh = None if te else CL(dm, vs, bias=False)
+        if self.lmh is not None: self.lmh._zero_init = True
         self.iw()
     def iw(self):
         if self.t:
-            NI.normal_(self.tok_emb.weight, mean=0.0, std=self.ts)
-        nl = len(self.blocks)
+            NI.normal_(self.tke.weight, mean=0.0, std=self.ts)
+        nl = len(self.bs)
         for name, module in self.named_modules():
             if isinstance(module, nn.Linear):
                 if getattr(module, "_zero_init", False): NI.zeros_(module.weight)
@@ -765,23 +765,23 @@ class GPT(M):
                     NI.orthogonal_(module.weight, gain=1.0)
                     if ".proj." in name or name.endswith(".proj"):
                         with NG(): module.weight.mul_(1.0 / math.sqrt(2 * nl))
-        for i, block in enumerate(self.blocks):
+        for i, block in enumerate(self.bs):
             with NG():
                 phase = SG(TT(3.0 * (i / max(nl-1, 1) - 0.5)))
-                block.resid_mix.data[0] = phase * ON(block.resid_mix.shape[1])
-                block.resid_mix.data[1] = (1-phase) * ON(block.resid_mix.shape[1])
+                block.rm.data[0] = phase * ON(block.rm.shape[1])
+                block.rm.data[1] = (1-phase) * ON(block.rm.shape[1])
     def gv(self, li, ids, vc):
-        if self.ve_shared is None or li not in self.vli: return None
-        if 've' not in vc: vc['ve'] = self.ve_shared(ids)
+        if self.vsh is None or li not in self.vli: return None
+        if 've' not in vc: vc['ve'] = self.vsh(ids)
         ve_idx = self.vli.index(li)
-        return vc['ve'] * TY(self.ve_layer_scales[ve_idx], vc['ve'].dtype)
+        return vc['ve'] * TY(self.vls[ve_idx], vc['ve'].dtype)
     def rl(self, x, x0, ids):
         skips, bo, xb = [], self.nl // 2, None
         vc = {}
         v0 = None
         if self.vre:
-            blk0 = self.blocks[0]
-            mix0 = TY(blk0.resid_mix, x0.dtype)
+            blk0 = self.bs[0]
+            mix0 = TY(blk0.rm, x0.dtype)
             x_in0 = mix0[0][None, None, :] * x0 + mix0[1][None, None, :] * x0
             v0 = blk0.attn.c_v(blk0.attn_norm(x_in0) * blk0.lsf)
         vi = 0
@@ -792,37 +792,37 @@ class GPT(M):
                 alpha = SG(TY(self.vrl_alphas[vi], x.dtype))
                 v_res = alpha * v0
                 vi += 1
-            x = self.blocks[i](x, x0, ve=ve, vr=v_res); skips.append(x)
+            x = self.bs[i](x, x0, ve=ve, vr=v_res); skips.append(x)
             if i == bo: xb = x
         for i in range(self.ndl):
             li = self.nel + i
-            if skips: x = x + TY(self.skip_weights[i], x.dtype)[None, None, :] * skips.pop()
+            if skips: x = x + TY(self.skw[i], x.dtype)[None, None, :] * skips.pop()
             ve = self.gv(li, ids, vc)
             v_res = None
             if v0 is not None:
                 alpha = SG(TY(self.vrl_alphas[vi], x.dtype))
                 v_res = alpha * v0
                 vi += 1
-            x = self.blocks[li](x, x0, ve=ve, vr=v_res)
+            x = self.bs[li](x, x0, ve=ve, vr=v_res)
             if li == bo and xb is None: xb = x
-        if self.backout_lambda is not None and xb is not None:
-            x = x - self.backout_lambda.to(x.dtype) * xb
+        if self.bol is not None and xb is not None:
+            x = x - self.bol.to(x.dtype) * xb
         return x
     def eb(self, ids):
-        x = self.tok_emb(ids)
-        if self.bigram is not None: x = x + self.bigram(ids)
-        x = RM(x, (self.tok_emb.weight.shape[1],))
+        x = self.tke(ids)
+        if self.bgm is not None: x = x + self.bgm(ids)
+        x = RM(x, (self.tke.weight.shape[1],))
         if self.smear is not None: x = self.smear(x)
         return x
     def forward(self, ids, tgt):
         x0 = self.eb(ids); x = self.rl(x0, x0, ids)
         x_flat = RS(self.final_norm(x), -1, x.size(-1)); targets = RS(tgt, -1)
-        logits_proj = LI(x_flat, self.tok_emb.weight) if self.t else self.lm_head(x_flat)
+        logits_proj = LI(x_flat, self.tke.weight) if self.t else self.lmh(x_flat)
         logits = self.l * th.tanh(logits_proj / self.l)
         return F.cross_entropy(TF(logits), targets, reduction="mean")
     def fwl(self, ids):
         x0 = self.eb(ids); x = self.final_norm(self.rl(x0, x0, ids))
-        logits = LI(x, self.tok_emb.weight.to(x.dtype)) if self.t else self.lm_head(x)
+        logits = LI(x, self.tke.weight.to(x.dtype)) if self.t else self.lmh(x)
         return self.l * th.tanh(logits / self.l)
 
 def ch(bm, tl, args, dv, gas, nbc=256):
@@ -1109,34 +1109,34 @@ def main():
         re(a, bm, rk, ws, dv, dd, m0,
                         code, vt, bb, hs, ib, log0)
         return
-    bnp = list(bm.blocks.named_parameters())
+    bnp = list(bm.bs.named_parameters())
     mpa = [p for n, p in bnp if p.ndim == 2 and not any(pat in n for pat in CP)]
     spa = [p for n, p in bnp if p.ndim < 2 or any(pat in n for pat in CP)]
-    if bm.skip_weights.numel() > 0: spa.append(bm.skip_weights)
+    if bm.skw.numel() > 0: spa.append(bm.skw)
     if bm.smear is not None: spa.append(bm.smear.gate)
-    if bm.backout_lambda is not None: spa.append(bm.backout_lambda)
-    if bm.bigram is not None: spa.append(bm.bigram.scale)
-    if bm.ve_shared is not None:
-        spa.append(bm.ve_shared.scale)
-        for s in bm.ve_layer_scales: spa.append(s)
+    if bm.bol is not None: spa.append(bm.bol)
+    if bm.bgm is not None: spa.append(bm.bgm.scale)
+    if bm.vsh is not None:
+        spa.append(bm.vsh.scale)
+        for s in bm.vls: spa.append(s)
     if bm.vre:
         for alpha in bm.vrl_alphas: spa.append(alpha)
     tlr = a.telr if a.te else a.elr
-    tpg = [{PA: [bm.tok_emb.weight], "lr": tlr, BL: tlr}]
-    if bm.bigram is not None:
-        tpg.append({PA: [bm.bigram.embed.weight], "lr": tlr, BL: tlr})
-        if bm.bigram.proj is not None: mpa.append(bm.bigram.proj.weight)
-    if bm.ve_shared is not None:
-        tpg.append({PA: [bm.ve_shared.embed.weight], "lr": tlr, BL: tlr})
-        if bm.ve_shared.proj is not None: mpa.append(bm.ve_shared.proj.weight)
+    tpg = [{PA: [bm.tke.weight], "lr": tlr, BL: tlr}]
+    if bm.bgm is not None:
+        tpg.append({PA: [bm.bgm.embed.weight], "lr": tlr, BL: tlr})
+        if bm.bgm.proj is not None: mpa.append(bm.bgm.proj.weight)
+    if bm.vsh is not None:
+        tpg.append({PA: [bm.vsh.embed.weight], "lr": tlr, BL: tlr})
+        if bm.vsh.proj is not None: mpa.append(bm.vsh.proj.weight)
     ot = th.optim.AdamW(tpg, betas=(a.beta1, a.beta2), eps=a.aep, weight_decay=a.awd, fused=True)
     om = MU(mpa, lr=a.mlr, momentum=a.mum, ns_steps=a.mns, wd=a.mwd)
     for group in om.param_groups: group[BL] = a.mlr
     os = th.optim.AdamW([{PA: spa, "lr": a.slr, BL: a.slr}],
                                           betas=(a.beta1, a.beta2), eps=a.aep, weight_decay=a.awd, fused=True)
     opts = [ot, om, os]
-    if bm.lm_head is not None:
-        oh = th.optim.Adam([{PA: [bm.lm_head.weight], "lr": a.hlr, BL: a.hlr}],
+    if bm.lmh is not None:
+        oh = th.optim.Adam([{PA: [bm.lmh.weight], "lr": a.hlr, BL: a.hlr}],
                                            betas=(a.beta1, a.beta2), eps=a.aep, fused=True)
         opts.insert(1, oh)
     tl = DTL(a.tf, rk, ws, dv)
