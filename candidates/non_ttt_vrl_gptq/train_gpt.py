@@ -15,7 +15,7 @@ AC=th.autocast; IM=th.inference_mode; Z=th.zeros; TT=th.tensor; QT=th.quantile; 
 P=nn.Parameter; PL=nn.ParameterList; M=nn.Module; ML=nn.ModuleList; NI=nn.init; NG=th.no_grad; CLP=th.clamp; DG=th.diag; CMP=th.compile; SY=th.cuda.synchronize
 IA=dist.is_available; II=dist.is_initialized; BR=dist.barrier; GWS=dist.get_world_size; GRK=dist.get_rank; IGP=dist.init_process_group; DGP=dist.destroy_process_group; ARD=dist.all_reduce; ROP=dist.ReduceOp
 ZL=th.zeros_like; EL=th.empty_like; AR=th.arange; SG=th.sigmoid; CAT=th.cat; ON=th.ones; FUL=th.full; EYE=th.eye
-TF=lambda t:t.float(); RS=lambda t,*s:t.reshape(*s)
+TF=lambda t:t.float(); RS=lambda t,*s:t.reshape(*s); TY=lambda t,d:t.to(dtype=d); IT=lambda t:t.item()
 N8=np.uint8; N6=np.int16; N1=np.int8; N4=np.uint32; NB=1
 U="utf-8"; FM="final_model.int6.ptz"; MS="model_state"; MB="momentum_buffer"; TD="TORCH_COMPILE_DISABLE"; PA="params"; BL="base_lr"; QS=".q"; SS=".scale"; WT=".weight"; F4="<I"; F3="<HB"; F5="<HBBB"; LT="little"
 try:
@@ -82,7 +82,7 @@ class MU(th.optim.Optimizer):
             if dd: ARD(uf, op=ROP.SUM)
             wd = group.get("wd", 0.0); curr = 0
             for p in params:
-                g = uf[curr : curr + p.numel()].view_as(p).to(dtype=p.dtype)
+                g = TY(uf[curr : curr + p.numel()].view_as(p), p.dtype)
                 if wd > 0: p.data.mul_(1.0 - lr * wd)
                 p.add_(g, alpha=-lr); curr += p.numel()
         return loss
@@ -130,14 +130,14 @@ def evv(a, model, rk, ws, dv, gas,
                 bl = model(x, y).detach()
             vls += bl.to(F64) * float(y.numel())
             vtc += float(y.numel())
-            tb = bb[RS(y, -1)].to(dtype=I16)
-            tb += (hs[RS(y, -1)] & ~ib[RS(x, -1)]).to(dtype=I16)
+            tb = TY(bb[RS(y, -1)], I16)
+            tb += TY(hs[RS(y, -1)] & ~ib[RS(x, -1)], I16)
             vbc += tb.to(F64).sum()
     if IA() and II():
         for t in [vls, vtc, vbc]: ARD(t, op=ROP.SUM)
     vl = vls / vtc
-    bpt = vl.item() / math.log(2.0); tpb = vtc.item() / vbc.item()
-    model.train(); return float(vl.item()), float(bpt * tpb)
+    bpt = IT(vl) / math.log(2.0); tpb = IT(vtc) / IT(vbc)
+    model.train(); return float(IT(vl)), float(bpt * tpb)
 
 CP = tuple(
     p for p in "attn_scale,attn_scales,mlp_scale,mlp_scales,resid_mix,resid_mixes,q_gain,skip_weight,skip_weights,smear,backout_lambda,bigram.scale,ve_layer_scales,ve_shared.scale,vrl_alphas".split(",") if p)
@@ -293,7 +293,7 @@ def qi6g(weight, hessian=None, cr=31, block_size=128):
             if i2 < cols:
                 W_work[:, i2:] -= Err1 @ Hinv[i1:i2, i2:]
         recon = TF(Q) * sf[:, None]
-        mse = (W - recon).pow(2).mean().item()
+        mse = IT((W - recon).pow(2).mean())
         if mse < best_err:
             best_q, best_s, best_err = Q, s, mse
     best_q = best_q[:, inv_perm]
@@ -310,11 +310,11 @@ def qi6p(t32, cr=31):
             s = (rc / cr).clamp_min(1.0 / cr).to(F16)
             q = CLP(th.round(t32 / TF(s)[:, None]), -cr, cr).to(I8)
             recon = TF(q) * TF(s)[:, None]
-            err = (t32 - recon).pow(2).mean().item()
+            err = IT((t32 - recon).pow(2).mean())
             if err < best_err:
                 best_q, best_s, best_err = q, s, err
         return best_q, best_s
-    amax = t32.abs().max().item()
+    amax = IT(t32.abs().max())
     scale = TT(amax / cr if amax > 0 else 1.0, dtype=F16)
     q = CLP(th.round(t32 / TF(scale)), -cr, cr).to(I8)
     return q, scale
@@ -327,9 +327,9 @@ def qft(t):
         ct = th.maximum(th.minimum(t32, ca[:, None]), -ca[:, None])
         scale = (ca / 127.0).clamp_min(1.0 / 127.0)
         q = CLP(th.round(ct / scale[:, None]), -127, 127).to(I8).contiguous()
-        return q, scale.to(dtype=I8D).contiguous()
+        return q, TY(scale, I8D).contiguous()
     clip_q = 99.99984 / 100.0
-    ca = float(QT(t32.abs().flatten(), clip_q).item()) if t32.numel() else 0.0
+    ca = float(IT(QT(t32.abs().flatten(), clip_q))) if t32.numel() else 0.0
     scale = TT(ca / 127.0 if ca > 0 else 1.0, dtype=F32)
     q = CLP(th.round(CLP(t32, -ca, ca) / scale), -127, 127).to(I8).contiguous()
     return q, scale
@@ -369,7 +369,7 @@ def dsd(result, meta, tsd):
         if s.ndim > 0:
             out[name] = (TF(q) * RS(TF(s), q.shape[0], *([1]*(q.ndim-1)))).to(od)
         else:
-            out[name] = (TF(q) * float(s.item())).to(od)
+            out[name] = (TF(q) * float(IT(s))).to(od)
     return out
 
 def ze6(arr_i16: np.ndarray) -> np.ndarray:
@@ -536,7 +536,7 @@ class DTL:
     def nb(self, gt, sl, gas):
         prs = gt // (self.ws * gas) + 1
         ck = self.s.tk(prs * self.ws)
-        st = self.rk * prs; lc = ck[st:st+prs].to(dtype=I64)
+        st = self.rk * prs; lc = TY(ck[st:st+prs], I64)
         x, y = RS(lc[:-1], -1, sl), RS(lc[1:], -1, sl)
         return x.to(self.dv, non_blocking=NB), y.to(self.dv, non_blocking=NB)
 
@@ -583,7 +583,7 @@ class RY(M):
             freqs = th.outer(AR(sl, device=dv, dtype=inv_freq.dtype), inv_freq)
             self.cc = freqs.cos()[None, :, None, :]; self.sc = freqs.sin()[None, :, None, :]
             self.slc = sl
-        return self.cc.to(dtype=dtype), self.sc.to(dtype=dtype)
+        return TY(self.cc, dtype), TY(self.sc, dtype)
 
 def are(x, cos, sin, rd=0):
     if rd > 0 and rd < x.size(-1):
@@ -626,7 +626,7 @@ class CSA(M):
         cos, sin = self.rotary(seqlen, x.device, q.dtype)
         q = are(q, cos, sin, self.rd)
         k = are(k, cos, sin, self.rd)
-        q = q * self.q_gain.to(dtype=q.dtype)[None, None, :, None]
+        q = q * TY(self.q_gain, q.dtype)[None, None, :, None]
         if HAS_FA3:
             y = _fa3_func(q, k, v, causal=True)
             if isinstance(y, tuple): y = y[0]
@@ -650,7 +650,7 @@ class SGT(M):
     def __init__(self, dim):
         super().__init__(); self.gate = P(Z(dim, dtype=F32))
     def forward(self, x):
-        g = SG(self.gate.to(dtype=x.dtype))[None, None, :]
+        g = SG(TY(self.gate, x.dtype))[None, None, :]
         x_prev = CAT([ZL(x[:, :1]), x[:, :-1]], dim=1)
         return (1 - g) * x + g * x_prev
 
@@ -671,7 +671,7 @@ class BHE(M):
     def forward(self, ids):
         h = self.embed(self.bh(ids))
         if self.proj is not None: h = self.proj(h)
-        return h * self.scale.to(dtype=h.dtype)
+        return h * TY(self.scale, h.dtype)
 
 class VE(M):
     def __init__(self, vs, ve_dim, kv_dim):
@@ -684,7 +684,7 @@ class VE(M):
     def forward(self, ids):
         h = self.embed(ids)
         if self.proj is not None: h = self.proj(h)
-        return h * self.scale.to(dtype=h.dtype)
+        return h * TY(self.scale, h.dtype)
 
 class BL(M):
     def __init__(self, dim, nh, nkh, mm, rb, qgi, li=0, ln_scale=False):
@@ -697,11 +697,11 @@ class BL(M):
         self.resid_mix = P(TF(SK((ON(dim), Z(dim)))))
         self.lsf = 1.0 / math.sqrt(li + 1) if ln_scale else 1.0
     def forward(self, x, x0, ve=None, vr=None):
-        mix = self.resid_mix.to(dtype=x.dtype)
+        mix = TY(self.resid_mix, x.dtype)
         x_in = mix[0][None, None, :] * x + mix[1][None, None, :] * x0
         attn_out = self.attn(self.attn_norm(x_in) * self.lsf, ve=ve, vr=vr)
-        x_out = x_in + self.attn_scale.to(dtype=x_in.dtype)[None, None, :] * attn_out
-        x_out = x_out + self.mlp_scale.to(dtype=x_out.dtype)[None, None, :] * self.mlp(self.mlp_norm(x_out) * self.lsf)
+        x_out = x_in + TY(self.attn_scale, x_in.dtype)[None, None, :] * attn_out
+        x_out = x_out + TY(self.mlp_scale, x_out.dtype)[None, None, :] * self.mlp(self.mlp_norm(x_out) * self.lsf)
         return x_out
 
 class GPT(M):
@@ -774,14 +774,14 @@ class GPT(M):
         if self.ve_shared is None or li not in self.vli: return None
         if 've' not in vc: vc['ve'] = self.ve_shared(ids)
         ve_idx = self.vli.index(li)
-        return vc['ve'] * self.ve_layer_scales[ve_idx].to(dtype=vc['ve'].dtype)
+        return vc['ve'] * TY(self.ve_layer_scales[ve_idx], vc['ve'].dtype)
     def rl(self, x, x0, ids):
         skips, bo, xb = [], self.nl // 2, None
         vc = {}
         v0 = None
         if self.vre:
             blk0 = self.blocks[0]
-            mix0 = blk0.resid_mix.to(dtype=x0.dtype)
+            mix0 = TY(blk0.resid_mix, x0.dtype)
             x_in0 = mix0[0][None, None, :] * x0 + mix0[1][None, None, :] * x0
             v0 = blk0.attn.c_v(blk0.attn_norm(x_in0) * blk0.lsf)
         vi = 0
@@ -789,18 +789,18 @@ class GPT(M):
             ve = self.gv(i, ids, vc)
             v_res = None
             if i > 0 and v0 is not None:
-                alpha = SG(self.vrl_alphas[vi].to(dtype=x.dtype))
+                alpha = SG(TY(self.vrl_alphas[vi], x.dtype))
                 v_res = alpha * v0
                 vi += 1
             x = self.blocks[i](x, x0, ve=ve, vr=v_res); skips.append(x)
             if i == bo: xb = x
         for i in range(self.ndl):
             li = self.nel + i
-            if skips: x = x + self.skip_weights[i].to(dtype=x.dtype)[None, None, :] * skips.pop()
+            if skips: x = x + TY(self.skip_weights[i], x.dtype)[None, None, :] * skips.pop()
             ve = self.gv(li, ids, vc)
             v_res = None
             if v0 is not None:
-                alpha = SG(self.vrl_alphas[vi].to(dtype=x.dtype))
+                alpha = SG(TY(self.vrl_alphas[vi], x.dtype))
                 v_res = alpha * v0
                 vi += 1
             x = self.blocks[li](x, x0, ve=ve, vr=v_res)
@@ -891,8 +891,8 @@ def evl(lfn, rk, ws, dv, vt,
                 bc += tb.to(F64).sum()
     if IA() and II():
         for t in [ls, tc, bc]: ARD(t, op=ROP.SUM)
-    vl = (ls / tc).item()
-    return vl, vl / math.log(2.0) * (tc.item() / bc.item())
+    vl = IT(ls / tc)
+    return vl, vl / math.log(2.0) * (IT(tc) / IT(bc))
 
 def rcp(sp: str) -> str:
     if not sp:
@@ -936,14 +936,14 @@ def ree(a, bm, rk, ws, dv, dd, m0,
         if a6:
             av = CAT(a6)
             k = max(1, int(a.pp * av.numel()))
-            thr = av.kthvalue(k).values.item()
+            thr = IT(av.kthvalue(k).values)
             prc = 0
             for name, info in qm.items():
                 if mk(info) == "6":
                     qname = name + ".q"
                     if qname in qr:
                         mask = qr[qname].abs() <= int(thr)
-                        prc += mask.sum().item()
+                        prc += IT(mask.sum())
                         qr[qname][mask] = 0
             ti6 = sum(qr[n + ".q"].numel() for n, i in qm.items() if mk(i) == "6" and n + ".q" in qr)
             log0(f"prune:{prc}/{ti6} ({100*prc/max(ti6,1):.1f}%) thr={thr:.0f}")
@@ -1219,13 +1219,13 @@ def main():
                 for n, t in gs().items(): sws[n] += DC(t)
                 swc += 1
         if a.tle > 0 and (step <= 10 or step % a.tle == 0):
-            log0(f"step:{step}/{a.it} train_loss:{tls.item():.4f} train_time:{cms:.0f}ms step_avg:{cms/step:.2f}ms")
+            log0(f"step:{step}/{a.it} train_loss:{IT(tls):.4f} train_time:{cms:.0f}ms step_avg:{cms/step:.2f}ms")
         rc = wm is not None and cms >= wm
         if dd and wm is not None:
-            rct = TT(int(rc), device=dv); ARD(rct, op=ROP.MAX); rc = bool(rct.item())
+            rct = TT(int(rc), device=dv); ARD(rct, op=ROP.MAX); rc = bool(IT(rct))
         if ss is None and rc: ss = step
     cs = gs()
-    avs = {name: t.to(dtype=cs[name].dtype) for name, t in es.items()}
+    avs = {name: TY(t, cs[name].dtype) for name, t in es.items()}
     ls(avs, 1)
     mspc(a.spc, gs())
     ree(a, bm, rk, ws, dv, dd, m0,
