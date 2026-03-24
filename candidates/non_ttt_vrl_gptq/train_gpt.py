@@ -158,10 +158,10 @@ def load_validation_tokens(pattern, seq_len):
     if usable <= 0: raise ValueError(f"val<{seq_len}")
     return tokens[:usable + 1]
 
-def eval_val(args, model, rank, ws, device, gas,
+def eval_val(a, model, rank, ws, device, gas,
              vt, bb, hs, ib, esl=0):
-    seq_len = esl if esl > 0 else args.tsl
-    local_batch_seqs = args.vbs // (ws * gas) // seq_len
+    seq_len = esl if esl > 0 else a.tsl
+    local_batch_seqs = a.vbs // (ws * gas) // seq_len
     total_seqs = (vt.numel() - 1) // seq_len
     seq_start = (total_seqs * rank) // ws; seq_end = (total_seqs * (rank + 1)) // ws
     val_loss_sum = Z((), device=device, dtype=F64)
@@ -962,11 +962,11 @@ def mspc(path_spec: str, sd: dict[str, th.Tensor], log0):
     os.replace(tmp_path, path)
     return str(path)
 
-def ree(args, bm, rank, ws, device, dd, master,
+def ree(a, bm, rank, ws, device, dd, master,
                     code, vt, bb, hs, ib, log0):
-    calib_loader = DTL(args.tf, rank, ws, device)
-    hessians = chs(bm, calib_loader, args, device, 8 // ws,
-                                num_batches=args.gptq_calib_batches)
+    calib_loader = DTL(a.tf, rank, ws, device)
+    hessians = chs(bm, calib_loader, a, device, 8 // ws,
+                                num_batches=a.gptq_calib_batches)
     hessian_map = {}
     for name, module in bm.named_modules():
         if isinstance(module, CL):
@@ -977,7 +977,7 @@ def ree(args, bm, rank, ws, device, dd, master,
     sd_cpu = {k: v.detach().cpu() for k, v in bm.state_dict().items()}
     code_bytes = len(code.encode("utf-8")); size_limit = 16_000_000
     qr, qm = qsd(sd_cpu, hessians=hessian_map)
-    if args.prune_pct > 0:
+    if a.prune_pct > 0:
         all_int6_vals = []
         for name, info in qm.items():
             if _meta_kind(info) == "int6":
@@ -986,7 +986,7 @@ def ree(args, bm, rank, ws, device, dd, master,
                     all_int6_vals.append(qr[qname].flatten().abs().float())
         if all_int6_vals:
             all_vals = CAT(all_int6_vals)
-            k = max(1, int(args.prune_pct * all_vals.numel()))
+            k = max(1, int(a.prune_pct * all_vals.numel()))
             threshold = all_vals.kthvalue(k).values.item()
             pruned_count = 0
             for name, info in qm.items():
@@ -1093,16 +1093,16 @@ def ree(args, bm, rank, ws, device, dd, master,
         loaded_result[tname] = t
     deq_state = dsd(loaded_result, loaded_meta, sd_cpu)
     bm.load_state_dict(deq_state, strict=True)
-    eval_sl = args.esl if args.esl > 0 else args.tsl
-    val_tokens_eval = load_validation_tokens(args.val_files, eval_sl) if eval_sl != args.tsl else vt
+    eval_sl = a.esl if a.esl > 0 else a.tsl
+    val_tokens_eval = load_validation_tokens(a.val_files, eval_sl) if eval_sl != a.tsl else vt
     raw_logits_fn = CMP(bm.forward_logits, dynamic=False) if not bool(int(EG("TORCH_COMPILE_DISABLE", "0"))) else bm.forward_logits
-    warmup_x = Z(args.eval_batch_seqs, eval_sl, dtype=I64, device=device)
+    warmup_x = Z(a.eval_batch_seqs, eval_sl, dtype=I64, device=device)
     bm.eval()
     with IM(), AC(device_type="cuda", dtype=BF): _ = raw_logits_fn(warmup_x)
     SY(); t_eval = PC()
     q_vl, q_vb = eval_val_sliding(raw_logits_fn, rank, ws, device,
         val_tokens_eval, bb, hs, ib,
-        eval_sl, args.eval_stride, ebs=args.eval_batch_seqs)
+        eval_sl, a.eval_stride, ebs=a.eval_batch_seqs)
     SY(); eval_time = PC() - t_eval
     log0(f"final_int6 val_loss:{q_vl:.4f} val_bpb:{q_vb:.4f} eval_time:{eval_time*1000:.0f}ms")
     log0(f"final_int6_exact val_loss:{q_vl:.8f} val_bpb:{q_vb:.8f}")
