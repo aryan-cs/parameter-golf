@@ -17,8 +17,8 @@ except ImportError:
 
 class H:
     data_path = os.environ.get("DATA_PATH", "./data/datasets/fineweb10B_sp1024")
-    train_files = os.path.join(data_path, "fineweb_train_*.bin")
-    val_files = os.path.join(data_path, "fineweb_val_*.bin")
+    tf = os.path.join(data_path, "fineweb_train_*.bin")
+    vf = os.path.join(data_path, "fineweb_val_*.bin")
     tokenizer_path = os.environ.get("TOKENIZER_PATH", "./data/tokenizers/fineweb_1024_bpe.model")
     run_id = os.environ.get("RUN_ID", str(uuid.uuid4()))
     seed = int(os.environ.get("SEED", 42))
@@ -46,7 +46,7 @@ class H:
     embed_lr = float(os.environ.get("EMBED_LR", 0.6))
     head_lr = float(os.environ.get("HEAD_LR", 0.008))
     tied_embed_lr = float(os.environ.get("TIED_EMBED_LR", 0.035))
-    tied_embed_init_std = float(os.environ.get("TIED_EMBED_INIT_STD", 0.005))
+    teis = float(os.environ.get("TIED_EMBED_INIT_STD", 0.005))
     matrix_lr = float(os.environ.get("MATRIX_LR", 0.025))
     scalar_lr = float(os.environ.get("SCALAR_LR", 0.025))
     muon_momentum = float(os.environ.get("MUON_MOMENTUM", 0.99))
@@ -59,22 +59,22 @@ class H:
     adam_eps = float(os.environ.get("ADAM_EPS", 1e-8))
     adam_wd = float(os.environ.get("ADAM_WD", 0.04))
     grad_clip_norm = float(os.environ.get("GRAD_CLIP_NORM", 0.3))
-    smear_enabled = bool(int(os.environ.get("SMEAR_ENABLED", "1")))
-    backout_enabled = bool(int(os.environ.get("BACKOUT_ENABLED", "0")))
+    se = bool(int(os.environ.get("SMEAR_ENABLED", "1")))
+    be = bool(int(os.environ.get("BACKOUT_ENABLED", "0")))
     backout_init = float(os.environ.get("BACKOUT_INIT", 0.2))
     ema_decay = float(os.environ.get("EMA_DECAY", 0.997))
     swa_enabled = bool(int(os.environ.get("SWA_ENABLED", "1")))
     swa_interval = int(os.environ.get("SWA_INTERVAL", 50))
-    warmdown_iters = int(os.environ.get("WARMDOWN_ITERS", 3500))
-    late_qat_threshold = float(os.environ.get("LATE_QAT_THRESHOLD", 0.15))
+    wdi = int(os.environ.get("WARMDOWN_ITERS", 3500))
+    lqt = float(os.environ.get("LATE_QAT_THRESHOLD", 0.15))
     bgvs = int(os.environ.get("BIGRAM_VOCAB_SIZE", 2048))
     bgd = int(os.environ.get("BIGRAM_DIM", 128))
     xsn = int(os.environ.get("XSA_LAST_N", 11))
     rd = int(os.environ.get("ROPE_DIMS", 16))
     ln_scale = bool(int(os.environ.get("LN_SCALE", "1")))
-    ve_enabled = bool(int(os.environ.get("VE_ENABLED", "1")))
-    ve_dim = int(os.environ.get("VE_DIM", 128))
-    ve_layers = os.environ.get("VE_LAYERS", "9,10")
+    vee = bool(int(os.environ.get("VE_ENABLED", "1")))
+    ved = int(os.environ.get("VE_DIM", 128))
+    vel = os.environ.get("VE_LAYERS", "9,10")
     gptq_calib_batches = int(os.environ.get("GPTQ_CALIB_BATCHES", 256))
     gptq_block_size = int(os.environ.get("GPTQ_BLOCK_SIZE", 128))
     qat_clip_pct = float(os.environ.get("QAT_CLIP_PCT", 0.9995))
@@ -753,19 +753,19 @@ class Block(nn.Module):
 
 class GPT(nn.Module):
     def __init__(self, vs, nl, dm, nh, nkh,
-                 mm, te, tied_embed_init_std, lsc,
-                 rb, qgi, smear_enabled=True, backout_enabled=True, backout_init=0.2,
+                 mm, te, teis, lsc,
+                 rb, qgi, se=True, be=True, backout_init=0.2,
                  bgvs=0, bgd=128, xsn=0,
                  rd=0, ln_scale=False,
-                 ve_enabled=False, ve_dim=128, ve_layers="9,10"):
+                 vee=False, ved=128, vel="9,10"):
         super().__init__()
-        self.tie_embeddings, self.tied_embed_init_std = te, tied_embed_init_std
-        self.logit_softcap = lsc
-        self.smear_enabled, self.backout_enabled, self.num_layers = smear_enabled, backout_enabled, nl
+        self.te, self.teis = te, teis
+        self.lsc = lsc
+        self.se, self.be, self.num_layers = se, be, nl
         self.tok_emb = nn.Embedding(vs, dm)
         self.bigram = BHE(bgvs, bgd, dm) if bgvs > 0 else None
-        self.smear = SmearGate(dm) if smear_enabled else None
-        self.backout_lambda = nn.Parameter(backout_init * torch.ones(1)) if backout_enabled else None
+        self.smear = SmearGate(dm) if se else None
+        self.backout_lambda = nn.Parameter(backout_init * torch.ones(1)) if be else None
         self.num_encoder_layers = nl // 2
         self.num_decoder_layers = nl - self.num_encoder_layers
         self.num_skip_weights = min(self.num_encoder_layers, self.num_decoder_layers)
@@ -784,9 +784,9 @@ class GPT(nn.Module):
             for i in range(max(0, nl - xsn), nl):
                 self.blocks[i].attn.use_xsa = True
         kv_dim = nkh * (dm // nh)
-        self.ve_layer_indices = [int(x) for x in ve_layers.split(",") if x.strip()] if ve_enabled else []
+        self.ve_layer_indices = [int(x) for x in vel.split(",") if x.strip()] if vee else []
         if self.ve_layer_indices:
-            self.ve_shared = VE(vs, ve_dim, kv_dim)
+            self.ve_shared = VE(vs, ved, kv_dim)
             self.ve_layer_scales = nn.ParameterList([nn.Parameter(torch.ones(1, dtype=torch.float32)) for _ in self.ve_layer_indices])
         else:
             self.ve_shared = None; self.ve_layer_scales = nn.ParameterList()
@@ -802,8 +802,8 @@ class GPT(nn.Module):
         if self.lm_head is not None: self.lm_head._zero_init = True
         self._init_weights()
     def _init_weights(self):
-        if self.tie_embeddings:
-            nn.init.normal_(self.tok_emb.weight, mean=0.0, std=self.tied_embed_init_std)
+        if self.te:
+            nn.init.normal_(self.tok_emb.weight, mean=0.0, std=self.teis)
         nl = len(self.blocks)
         for name, module in self.named_modules():
             if isinstance(module, nn.Linear):
@@ -864,13 +864,13 @@ class GPT(nn.Module):
     def forward(self, ids, tgt):
         x0 = self._embed(ids); x = self._run_layers(x0, x0, ids)
         x_flat = self.final_norm(x).reshape(-1, x.size(-1)); targets = tgt.reshape(-1)
-        logits_proj = F.linear(x_flat, self.tok_emb.weight) if self.tie_embeddings else self.lm_head(x_flat)
-        logits = self.logit_softcap * torch.tanh(logits_proj / self.logit_softcap)
+        logits_proj = F.linear(x_flat, self.tok_emb.weight) if self.te else self.lm_head(x_flat)
+        logits = self.lsc * torch.tanh(logits_proj / self.lsc)
         return F.cross_entropy(logits.float(), targets, reduction="mean")
     def forward_logits(self, ids):
         x0 = self._embed(ids); x = self.final_norm(self._run_layers(x0, x0, ids))
-        logits = F.linear(x, self.tok_emb.weight.to(x.dtype)) if self.tie_embeddings else self.lm_head(x)
-        return self.logit_softcap * torch.tanh(logits / self.logit_softcap)
+        logits = F.linear(x, self.tok_emb.weight.to(x.dtype)) if self.te else self.lm_head(x)
+        return self.lsc * torch.tanh(logits / self.lsc)
 
 def chs(bm, tl, args, device, gas, num_batches=256):
     """Run calibration batches through the model, collecting H = X^T X for each CL."""
@@ -967,7 +967,7 @@ def mspc(path_spec: str, sd: dict[str, torch.Tensor], log0):
 def ree(args, bm, rank, ws, device, dd, master,
                     code, vt, bb, hs, ib, log0):
     log0(f"gptq:calib {args.gptq_calib_batches} batches")
-    calib_loader = DTL(args.train_files, rank, ws, device)
+    calib_loader = DTL(args.tf, rank, ws, device)
     hessians = chs(bm, calib_loader, args, device, 8 // ws,
                                 num_batches=args.gptq_calib_batches)
     hessian_map = {}
@@ -1118,14 +1118,14 @@ def main():
     global z5
     code = Path(__file__).read_text(encoding="utf-8"); args = H()
     z5 = torch.compile(z5)
-    distributed = "RANK" in os.environ and "WORLD_SIZE" in os.environ
+    dd = "RANK" in os.environ and "WORLD_SIZE" in os.environ
     rank = int(os.environ.get("RANK", "0")); ws = int(os.environ.get("WORLD_SIZE", "1"))
     local_rank = int(os.environ.get("LOCAL_RANK", "0"))
     if ws <= 0 or 8 % ws != 0: raise ValueError(f"Bad WORLD_SIZE={ws}")
     gas = 8 // ws; grad_scale = 1.0 / gas
     if not torch.cuda.is_available(): raise RuntimeError("CUDA required")
     device = torch.device("cuda", local_rank); torch.cuda.set_device(device)
-    if distributed: dist.init_process_group(backend="nccl", device_id=device); dist.barrier()
+    if dd: dist.init_process_group(backend="nccl", device_id=device); dist.barrier()
     master = rank == 0
     torch.backends.cuda.matmul.allow_tf32 = True; torch.backends.cudnn.allow_tf32 = True
     if not HAS_FA3:
@@ -1143,7 +1143,7 @@ def main():
     sp = spm.SentencePieceProcessor(model_file=args.tokenizer_path)
     dataset_dir = Path(args.data_path).resolve()
     actual_train_files = len(list(dataset_dir.glob("fineweb_train_*.bin")))
-    vt = load_validation_tokens(args.val_files, args.tsl)
+    vt = load_validation_tokens(args.vf, args.tsl)
     bb, hs, ib = build_sentencepiece_luts(sp, args.vs, device)
     log0(f"train_loader:dataset:{dataset_dir.name} train_shards:{actual_train_files}")
     log0(f"val_tokens:{vt.numel()-1}")
@@ -1152,25 +1152,25 @@ def main():
     bm = GPT(
         vs=args.vs, nl=args.nl, dm=args.dm,
         nh=args.nh, nkh=args.nkh, mm=args.mm,
-        te=args.te, tied_embed_init_std=args.tied_embed_init_std,
+        te=args.te, teis=args.teis,
         lsc=args.lsc, rb=args.rb, qgi=args.qgi,
-        smear_enabled=args.smear_enabled, backout_enabled=args.backout_enabled, backout_init=args.backout_init,
+        se=args.se, be=args.be, backout_init=args.backout_init,
         bgvs=args.bgvs, bgd=args.bgd,
         xsn=args.xsn, rd=args.rd, ln_scale=args.ln_scale,
-        ve_enabled=args.ve_enabled, ve_dim=args.ve_dim, ve_layers=args.ve_layers,
+        vee=args.vee, ved=args.ved, vel=args.vel,
     ).to(device).bfloat16()
     for m in bm.modules():
         if isinstance(m, CL): m.float()
     restore_low_dim_params_to_fp32(bm)
     compiled_model = torch.compile(bm, dynamic=False, fullgraph=True) if not bool(int(os.environ.get("TORCH_COMPILE_DISABLE", "0"))) else bm
-    model = DDP(compiled_model, device_ids=[local_rank], broadcast_buffers=False) if distributed else compiled_model
+    model = DDP(compiled_model, device_ids=[local_rank], broadcast_buffers=False) if dd else compiled_model
     eoc = rcp(args.eoc)
     if eoc:
         ckpt = torch.load(eoc, map_location="cpu")
         model_state = ckpt["model_state"] if isinstance(ckpt, dict) and "model_state" in ckpt else ckpt
         bm.load_state_dict(model_state, strict=True)
         log0(f"export_only:ckpt:{eoc}")
-        ree(args, bm, rank, ws, device, distributed, master,
+        ree(args, bm, rank, ws, device, dd, master,
                         code, vt, bb, hs, ib, log0)
         return
     block_named_params = list(bm.blocks.named_parameters())
@@ -1206,19 +1206,19 @@ def main():
     n_params = sum(p.numel() for p in bm.parameters())
     xsa_layers = [i for i in range(args.nl) if i >= args.nl - args.xsn] if args.xsn > 0 else []
     log0(f"model_params:{n_params}"); log0(f"world:{ws} ga:{gas}")
-    log0(f"cfg:v42 lqat={args.late_qat_threshold} ema={args.ema_decay} xsa={args.xsn} rope={args.rd} bg={args.bgvs} qat={args.qat_clip_pct} prune={args.prune_pct}")
+    log0(f"cfg:v42 lqat={args.lqt} ema={args.ema_decay} xsa={args.xsn} rope={args.rd} bg={args.bgvs} qat={args.qat_clip_pct} prune={args.prune_pct}")
     log0(f"xsa_layers:{xsa_layers}")
-    log0(f"fa3:{HAS_FA3} swa:{args.swa_enabled} wd:{args.warmdown_iters} adam_wd:{args.adam_wd}")
-    tl = DTL(args.train_files, rank, ws, device)
+    log0(f"fa3:{HAS_FA3} swa:{args.swa_enabled} wd:{args.wdi} adam_wd:{args.adam_wd}")
+    tl = DTL(args.tf, rank, ws, device)
     def zero_grad_all():
         for opt in opts: opt.zero_grad(set_to_none=True)
     max_wallclock_ms = 1000.0 * args.mws if args.mws > 0 else None
     def lr_mul(step, elapsed_ms):
-        if args.warmdown_iters <= 0: return 1.0
+        if args.wdi <= 0: return 1.0
         if max_wallclock_ms is None:
-            wd0 = max(args.iterations - args.warmdown_iters, 0)
-            return max((args.iterations - step) / max(args.warmdown_iters, 1), 0.0) if step >= wd0 else 1.0
-        step_ms = elapsed_ms / max(step, 1); wd_ms = args.warmdown_iters * step_ms
+            wd0 = max(args.iterations - args.wdi, 0)
+            return max((args.iterations - step) / max(args.wdi, 1), 0.0) if step >= wd0 else 1.0
+        step_ms = elapsed_ms / max(step, 1); wd_ms = args.wdi * step_ms
         rem_ms = max(max_wallclock_ms - elapsed_ms, 0.0)
         return rem_ms / max(wd_ms, 1e-9) if rem_ms <= wd_ms else 1.0
 
@@ -1229,7 +1229,7 @@ def main():
         for wi in range(args.warmup_steps):
             zero_grad_all()
             for ms in range(gas):
-                if distributed: model.require_backward_grad_sync = ms == gas - 1
+                if dd: model.require_backward_grad_sync = ms == gas - 1
                 x, y = tl.next_batch(args.tbt, args.tsl, gas)
                 with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=True): wl = model(x, y)
                 (wl * grad_scale).backward()
@@ -1239,8 +1239,8 @@ def main():
         bm.load_state_dict(initial_model_state, strict=True)
         for opt, state in zip(opts, initial_optimizer_states, strict=True): opt.load_state_dict(state)
         zero_grad_all()
-        if distributed: model.require_backward_grad_sync = True
-        tl = DTL(args.train_files, rank, ws, device)
+        if dd: model.require_backward_grad_sync = True
+        tl = DTL(args.tf, rank, ws, device)
     ema_state = {name: t.detach().float().clone() for name, t in bm.state_dict().items()}
     ttms, stop_after_step = 0.0, None
     swa_state, swa_count = None, 0
@@ -1260,12 +1260,12 @@ def main():
             break
         elapsed_ms = ttms + 1000.0 * (time.perf_counter() - t0)
         scale = lr_mul(step, elapsed_ms)
-        if args.late_qat_threshold > 0 and scale < args.late_qat_threshold and not CL._qat_enabled:
+        if args.lqt > 0 and scale < args.lqt and not CL._qat_enabled:
             CL._qat_enabled = True
             log0(f"late_qat:enabled step:{step} scale:{scale:.4f}")
         zero_grad_all(); train_loss = torch.zeros((), device=device)
         for ms in range(gas):
-            if distributed: model.require_backward_grad_sync = ms == gas - 1
+            if dd: model.require_backward_grad_sync = ms == gas - 1
             x, y = tl.next_batch(args.tbt, args.tsl, gas)
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=True): loss = model(x, y)
             train_loss += loss.detach(); (loss * grad_scale).backward()
@@ -1293,7 +1293,7 @@ def main():
         if args.train_log_every > 0 and (step <= 10 or step % args.train_log_every == 0):
             log0(f"step:{step}/{args.iterations} train_loss:{train_loss.item():.4f} train_time:{approx_ms:.0f}ms step_avg:{approx_ms/step:.2f}ms")
         reached_cap = max_wallclock_ms is not None and approx_ms >= max_wallclock_ms
-        if distributed and max_wallclock_ms is not None:
+        if dd and max_wallclock_ms is not None:
             rct = torch.tensor(int(reached_cap), device=device); dist.all_reduce(rct, op=dist.ReduceOp.MAX); reached_cap = bool(rct.item())
         if stop_after_step is None and reached_cap: stop_after_step = step
     log0(f"peak memory allocated: {torch.cuda.max_memory_allocated()//1024//1024} MiB reserved: {torch.cuda.max_memory_reserved()//1024//1024} MiB")
@@ -1303,7 +1303,7 @@ def main():
     avg_state = {name: t.to(dtype=current_state[name].dtype) for name, t in ema_state.items()}
     bm.load_state_dict(avg_state, strict=True)
     mspc(args.spc, bm.state_dict(), log0)
-    ree(args, bm, rank, ws, device, distributed, master,
+    ree(args, bm, rank, ws, device, dd, master,
                     code, vt, bb, hs, ib, log0)
 
 if __name__ == "__main__":

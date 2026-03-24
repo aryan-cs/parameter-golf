@@ -842,3 +842,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The candidate file shrank from `66,592` bytes to `66,132` bytes, another `460` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 66,132`, which is `-8,799` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
 - Decision: Keep the local/export-path shortening pass in the main lane. The gain is smaller than the earlier rename batches, but it is free and preserves the measured exporter behavior.
 - Next step: Push the rename pass so the next live export rerun uses the smaller counted candidate source together with the stronger bitplane + raw-LZMA exporter path.
+
+- Timestamp: 2026-03-24 03:13 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL code-size hygiene
+- Objective: Reclaim another safe block of counted source bytes by shortening repeated internal config aliases and plain Python-only constructor/local names that do not affect artifact format or checkpoint keys.
+- Command or config: Renamed another batch of candidate-only names in `candidates/non_ttt_vrl_gptq/train_gpt.py` (for example `train_files -> tf`, `val_files -> vf`, `tied_embed_init_std -> teis`, `smear_enabled -> se`, `backout_enabled -> be`, `warmdown_iters -> wdi`, `late_qat_threshold -> lqt`, `ve_enabled -> vee`, `ve_dim -> ved`, `ve_layers -> vel`, plus the main-process `distributed -> dd` flag and matching constructor arg names), then reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, reran `python3 runpod/check_ready.py`, and reran the offline codec round-trip validator on the fixed-seed quantized VRL model skeleton.
+- Result: The candidate file shrank from `66,132` bytes to `65,424` bytes, another `708` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 65,424`, which is `-9,507` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
+- Decision: Keep the config/local shortening pass in the main lane. It is another free counted-size win with no observed exporter regression.
+- Next step: Push the rename pass so the next live export rerun uses the smaller counted candidate source together with the stronger bitplane + raw-LZMA exporter path.
