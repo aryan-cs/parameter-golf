@@ -878,3 +878,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The candidate file shrank from `64,110` bytes to `63,904` bytes, another `206` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 63,904`, which is `-11,027` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
 - Decision: Keep the helper-alias pass in the main lane. The gain is small, but it is free, safe, and keeps stacking counted headroom while we wait for the next live export rerun.
 - Next step: Push the helper-alias pass so the next live export rerun uses the smaller counted candidate source together with the stronger bitplane + raw-LZMA exporter path.
+
+- Timestamp: 2026-03-24 03:24 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL code-size hygiene
+- Objective: Reclaim another safe block of counted source bytes by aliasing a few still-hot framework spellings (`nn.Module`, `nn.init`, `th.no_grad`, `th.clamp`, `th.diag`, and distributed reduction helpers) without changing exporter behavior or checkpoint structure.
+- Command or config: Added short aliases inside `candidates/non_ttt_vrl_gptq/train_gpt.py` for repeated framework helpers such as `nn.Module -> M`, `nn.ModuleList -> ML`, `nn.init -> NI`, `th.no_grad -> NG`, `th.clamp -> CLP`, `th.diag -> DG`, `dist.all_reduce -> ARD`, and `dist.ReduceOp -> ROP`, replaced the corresponding repeated call sites, simplified a few remaining `th.Tensor` annotations to `Tensor`, then reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, reran `python3 runpod/check_ready.py`, and reran the offline codec round-trip validator on the fixed-seed quantized VRL model skeleton.
+- Result: The candidate file shrank from `63,904` bytes to `63,706` bytes, another `198` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 63,706`, which is `-11,225` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
+- Decision: Keep the framework-alias pass in the main lane. The gain is modest, but it is another free counted-size win with no observed exporter regression.
+- Next step: Push the framework-alias pass so the next live export rerun uses the smaller counted candidate source together with the stronger bitplane + raw-LZMA exporter path.
