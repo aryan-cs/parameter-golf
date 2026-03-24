@@ -554,3 +554,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The export format now wastes fewer bytes on metadata while still accepting older encodings such as `"passthrough"` and `{\"type\":\"int6\"}`. Syntax check passed with `uv run python -m py_compile ...`, and the compatibility check reported `meta kind compatibility ok`.
 - Decision: Keep the metadata compaction patch in the main lane; it is low-risk, backward-compatible on load, and directly aligned with the byte-cap problem.
 - Next step: Resume the recovery chain on the next pod and measure the combined effect of packed int6 payloads, compact metadata, and staged pruning on final artifact size.
+
+- Timestamp: 2026-03-24 01:50 America/Chicago
+- Commit: uncommitted
+- Lane: runpod readiness
+- Objective: Prepare the repo for immediate restart once new Runpod credits arrive, without needing ad hoc command reconstruction.
+- Command or config: Added `runpod/local_recover_export_chain_8gpu.sh` for the `8x H100 SXM` path and added `RUNPOD_READY.md` as a compact runbook covering the current best result, the live lane, and the exact `1x` and `8x` recovery commands. Validated the new wrapper with `bash -n` and a usage-path invocation.
+- Result: The repo now has both `1x` and `8x` recovery wrappers plus a single place to look up the current plan the moment credits land. That removes most of the operator friction from going back live.
+- Decision: Use the new `8x` wrapper and the runbook as the default restart path once Runpod credits are restored.
+- Next step: Wait for credits, then relaunch a pod and resume the validity-focused VRL export ladder immediately.
