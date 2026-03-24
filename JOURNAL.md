@@ -977,3 +977,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The candidate file shrank from `59,826` bytes to `59,146` bytes, another `680` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 59,146`, which is `-15,785` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
 - Decision: Keep the export-helper local-name shortening pass in the main lane. It is one of the better recent offline code-size wins and still shows no observed exporter regression.
 - Next step: Push the export-helper local-name shortening pass so the next live export rerun uses the smallest counted candidate source we have so far together with the stronger bitplane + raw-LZMA exporter path.
+
+- Timestamp: 2026-03-24 03:54 America/Chicago
+- Commit: `3ba09e2`
+- Lane: non-ttt VRL code-size hygiene
+- Objective: Reclaim another larger block of counted source bytes by shortening the hottest remaining internal config field names while keeping the external env var names, artifact format, and runtime behavior unchanged.
+- Command or config: Renamed the internal `H` config fields and their in-file accesses in `candidates/non_ttt_vrl_gptq/train_gpt.py` (for example iteration/logging/warmup/eval/optimizer/pruning fields) to shorter aliases, while leaving all `EG(\"...\")` environment variable keys unchanged; then reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, reran `python3 runpod/check_ready.py`, and reran the offline codec round-trip validator on the fixed-seed quantized VRL model skeleton.
+- Result: The candidate file shrank from `59,146` bytes to `58,400` bytes, another `746` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 58,400`, which is `-16,531` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
+- Decision: Keep the config-field shortening pass in the main lane. It is a high-confidence counted-size win because the external env var interface stayed intact and the exporter validation remained unchanged.
+- Next step: Push the config-field shortening pass so the next live export rerun uses the smallest counted candidate source we have so far together with the stronger bitplane + raw-LZMA exporter path.
