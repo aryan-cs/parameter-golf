@@ -833,3 +833,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The candidate file shrank from `67,869` bytes to `66,592` bytes, another `1,277` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 66,592`, which is `-8,339` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
 - Decision: Keep the config/constructor shortening pass in the main lane. It is another materially useful code-size win with no observed exporter regression.
 - Next step: Push the rename pass so the next live export rerun uses the smaller counted candidate source together with the stronger bitplane + raw-LZMA exporter path.
+
+- Timestamp: 2026-03-24 03:10 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL code-size hygiene
+- Objective: Reclaim another safe block of counted source bytes by shortening repeated local/export-path argument names that do not affect checkpoint keys or the artifact format.
+- Command or config: Renamed a batch of local candidate-only names in `candidates/non_ttt_vrl_gptq/train_gpt.py` (for example `distributed -> dd`, `state_dict -> sd`, `input_ids -> ids`, `target_ids -> tgt`, `quant_result -> qr`, `quant_meta -> qm`, `raw_data -> rd`, and a few eval/export helper arg names), then reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, reran `python3 runpod/check_ready.py`, and reran the offline codec round-trip validator on the fixed-seed quantized VRL model skeleton.
+- Result: The candidate file shrank from `66,592` bytes to `66,132` bytes, another `460` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 66,132`, which is `-8,799` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
+- Decision: Keep the local/export-path shortening pass in the main lane. The gain is smaller than the earlier rename batches, but it is free and preserves the measured exporter behavior.
+- Next step: Push the rename pass so the next live export rerun uses the smaller counted candidate source together with the stronger bitplane + raw-LZMA exporter path.

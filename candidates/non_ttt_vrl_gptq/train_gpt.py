@@ -99,9 +99,9 @@ class Muon(torch.optim.Optimizer):
         loss = None
         if closure is not None:
             with torch.enable_grad(): loss = closure()
-        distributed = dist.is_available() and dist.is_initialized()
-        world_size = dist.get_world_size() if distributed else 1
-        rank = dist.get_rank() if distributed else 0
+        dd = dist.is_available() and dist.is_initialized()
+        ws = dist.get_world_size() if dd else 1
+        rk = dist.get_rank() if dd else 0
         for group in self.param_groups:
             params = group["params"]
             if not params: continue
@@ -111,7 +111,7 @@ class Muon(torch.optim.Optimizer):
             updates_flat = torch.zeros(total_params, device=params[0].device, dtype=torch.bfloat16)
             curr = 0
             for i, p in enumerate(params):
-                if i % world_size == rank and p.grad is not None:
+                if i % ws == rk and p.grad is not None:
                     g = p.grad; state = self.state[p]
                     if "momentum_buffer" not in state: state["momentum_buffer"] = torch.zeros_like(g)
                     buf = state["momentum_buffer"]; buf.mul_(momentum).add_(g)
@@ -120,7 +120,7 @@ class Muon(torch.optim.Optimizer):
                     g *= max(1, g.size(0) / g.size(1)) ** 0.5
                     updates_flat[curr : curr + p.numel()] = g.reshape(-1)
                 curr += p.numel()
-            if distributed: dist.all_reduce(updates_flat, op=dist.ReduceOp.SUM)
+            if dd: dist.all_reduce(updates_flat, op=dist.ReduceOp.SUM)
             wd = group.get("wd", 0.0); curr = 0
             for p in params:
                 g = updates_flat[curr : curr + p.numel()].view_as(p).to(dtype=p.dtype)
@@ -153,8 +153,8 @@ def load_validation_tokens(pattern, seq_len):
     return tokens[:usable + 1]
 
 def eval_val(args, model, rank, ws, device, gas,
-             vt, bb, hs, ib, eval_seq_len=0):
-    seq_len = eval_seq_len if eval_seq_len > 0 else args.tsl
+             vt, bb, hs, ib, esl=0):
+    seq_len = esl if esl > 0 else args.tsl
     local_batch_seqs = args.vbs // (ws * gas) // seq_len
     total_seqs = (vt.numel() - 1) // seq_len
     seq_start = (total_seqs * rank) // ws; seq_end = (total_seqs * (rank + 1)) // ws
@@ -380,11 +380,11 @@ def quantize_float_tensor(t):
     q = torch.clamp(torch.round(torch.clamp(t32, -clip_abs, clip_abs) / scale), -127, 127).to(torch.int8).contiguous()
     return q, scale
 
-def qsd(state_dict, hessians=None):
+def qsd(sd, hessians=None):
     """Mixed int6/int8 quantization. Uses Full GPTQ when Hessian data available."""
     result, meta = {}, {}
     int6_cats = {"mlp", "attn", "bigram", "ve"}
-    for name, tensor in state_dict.items():
+    for name, tensor in sd.items():
         t = tensor.detach().cpu().contiguous()
         cat = _classify_param(name)
         if not t.is_floating_point() or t.numel() <= I8K:
@@ -817,12 +817,12 @@ class GPT(nn.Module):
                 phase = torch.sigmoid(torch.tensor(3.0 * (i / max(nl-1, 1) - 0.5)))
                 block.resid_mix.data[0] = phase * torch.ones(block.resid_mix.shape[1])
                 block.resid_mix.data[1] = (1-phase) * torch.ones(block.resid_mix.shape[1])
-    def _get_ve(self, layer_idx, input_ids, ve_cache):
+    def _get_ve(self, layer_idx, ids, ve_cache):
         if self.ve_shared is None or layer_idx not in self.ve_layer_indices: return None
-        if 've' not in ve_cache: ve_cache['ve'] = self.ve_shared(input_ids)
+        if 've' not in ve_cache: ve_cache['ve'] = self.ve_shared(ids)
         ve_idx = self.ve_layer_indices.index(layer_idx)
         return ve_cache['ve'] * self.ve_layer_scales[ve_idx].to(dtype=ve_cache['ve'].dtype)
-    def _run_layers(self, x, x0, input_ids):
+    def _run_layers(self, x, x0, ids):
         skips, backout_layer, x_backout = [], self.num_layers // 2, None
         ve_cache = {}
         v0_raw = None
@@ -833,7 +833,7 @@ class GPT(nn.Module):
             v0_raw = blk0.attn.c_v(blk0.attn_norm(x_in0) * blk0.ln_scale_factor)
         vrl_idx = 0
         for i in range(self.num_encoder_layers):
-            ve = self._get_ve(i, input_ids, ve_cache)
+            ve = self._get_ve(i, ids, ve_cache)
             v_res = None
             if i > 0 and v0_raw is not None:
                 alpha = torch.sigmoid(self.vrl_alphas[vrl_idx].to(dtype=x.dtype))
@@ -844,7 +844,7 @@ class GPT(nn.Module):
         for i in range(self.num_decoder_layers):
             li = self.num_encoder_layers + i
             if skips: x = x + self.skip_weights[i].to(dtype=x.dtype)[None, None, :] * skips.pop()
-            ve = self._get_ve(li, input_ids, ve_cache)
+            ve = self._get_ve(li, ids, ve_cache)
             v_res = None
             if v0_raw is not None:
                 alpha = torch.sigmoid(self.vrl_alphas[vrl_idx].to(dtype=x.dtype))
@@ -855,20 +855,20 @@ class GPT(nn.Module):
         if self.backout_lambda is not None and x_backout is not None:
             x = x - self.backout_lambda.to(x.dtype) * x_backout
         return x
-    def _embed(self, input_ids):
-        x = self.tok_emb(input_ids)
-        if self.bigram is not None: x = x + self.bigram(input_ids)
+    def _embed(self, ids):
+        x = self.tok_emb(ids)
+        if self.bigram is not None: x = x + self.bigram(ids)
         x = F.rms_norm(x, (self.tok_emb.weight.shape[1],))
         if self.smear is not None: x = self.smear(x)
         return x
-    def forward(self, input_ids, target_ids):
-        x0 = self._embed(input_ids); x = self._run_layers(x0, x0, input_ids)
-        x_flat = self.final_norm(x).reshape(-1, x.size(-1)); targets = target_ids.reshape(-1)
+    def forward(self, ids, tgt):
+        x0 = self._embed(ids); x = self._run_layers(x0, x0, ids)
+        x_flat = self.final_norm(x).reshape(-1, x.size(-1)); targets = tgt.reshape(-1)
         logits_proj = F.linear(x_flat, self.tok_emb.weight) if self.tie_embeddings else self.lm_head(x_flat)
         logits = self.logit_softcap * torch.tanh(logits_proj / self.logit_softcap)
         return F.cross_entropy(logits.float(), targets, reduction="mean")
-    def forward_logits(self, input_ids):
-        x0 = self._embed(input_ids); x = self.final_norm(self._run_layers(x0, x0, input_ids))
+    def forward_logits(self, ids):
+        x0 = self._embed(ids); x = self.final_norm(self._run_layers(x0, x0, ids))
         logits = F.linear(x, self.tok_emb.weight.to(x.dtype)) if self.tie_embeddings else self.lm_head(x)
         return self.logit_softcap * torch.tanh(logits / self.logit_softcap)
 
@@ -951,11 +951,11 @@ def rcp(spec: str) -> str:
         return str(Path(os.environ.get("OUT_DIR", ".")) / "pre_export_model.pt")
     return spec
 
-def mspc(path_spec: str, state_dict: dict[str, torch.Tensor], log0):
+def mspc(path_spec: str, sd: dict[str, torch.Tensor], log0):
     ckpt_path = rcp(path_spec)
     if not ckpt_path:
         return ""
-    ckpt = {"model_state": {k: v.detach().cpu() for k, v in state_dict.items()}}
+    ckpt = {"model_state": {k: v.detach().cpu() for k, v in sd.items()}}
     path = Path(ckpt_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.with_suffix(path.suffix + ".tmp")
@@ -964,7 +964,7 @@ def mspc(path_spec: str, state_dict: dict[str, torch.Tensor], log0):
     log0(f"save_ckpt:{path}")
     return str(path)
 
-def ree(args, bm, rank, ws, device, distributed, master,
+def ree(args, bm, rank, ws, device, dd, master,
                     code, vt, bb, hs, ib, log0):
     log0(f"gptq:calib {args.gptq_calib_batches} batches")
     calib_loader = DTL(args.train_files, rank, ws, device)
@@ -981,29 +981,29 @@ def ree(args, bm, rank, ws, device, distributed, master,
 
     sd_cpu = {k: v.detach().cpu() for k, v in bm.state_dict().items()}
     code_bytes = len(code.encode("utf-8")); size_limit = 16_000_000
-    quant_result, quant_meta = qsd(sd_cpu, hessians=hessian_map)
+    qr, qm = qsd(sd_cpu, hessians=hessian_map)
     if args.prune_pct > 0:
         all_int6_vals = []
-        for name, info in quant_meta.items():
+        for name, info in qm.items():
             if _meta_kind(info) == "int6":
                 qname = name + ".q"
-                if qname in quant_result:
-                    all_int6_vals.append(quant_result[qname].flatten().abs().float())
+                if qname in qr:
+                    all_int6_vals.append(qr[qname].flatten().abs().float())
         if all_int6_vals:
             all_vals = torch.cat(all_int6_vals)
             k = max(1, int(args.prune_pct * all_vals.numel()))
             threshold = all_vals.kthvalue(k).values.item()
             pruned_count = 0
-            for name, info in quant_meta.items():
+            for name, info in qm.items():
                 if _meta_kind(info) == "int6":
                     qname = name + ".q"
-                    if qname in quant_result:
-                        mask = quant_result[qname].abs() <= int(threshold)
+                    if qname in qr:
+                        mask = qr[qname].abs() <= int(threshold)
                         pruned_count += mask.sum().item()
-                        quant_result[qname][mask] = 0
-            total_int6 = sum(quant_result[n + ".q"].numel() for n, i in quant_meta.items() if _meta_kind(i) == "int6" and n + ".q" in quant_result)
+                        qr[qname][mask] = 0
+            total_int6 = sum(qr[n + ".q"].numel() for n, i in qm.items() if _meta_kind(i) == "int6" and n + ".q" in qr)
             log0(f"prune:{pruned_count}/{total_int6} ({100*pruned_count/max(total_int6,1):.1f}%) thr={threshold:.0f}")
-    meta_blob, meta_names = eqm(quant_meta)
+    meta_blob, meta_names = eqm(qm)
     name_to_idx = {name: idx for idx, name in enumerate(meta_names)}
     parts = [struct.pack("<I", len(meta_blob)), meta_blob]
     meta_bytes = 4 + len(meta_blob)
@@ -1011,13 +1011,13 @@ def ree(args, bm, rank, ws, device, distributed, master,
     packed_int6_payload_bytes = 0
     other_payload_bytes = 0
     packed_int6_tensors = 0
-    tensor_order = sorted(quant_result.keys())
+    tensor_order = sorted(qr.keys())
     for tname in tensor_order:
-        t = quant_result[tname]
+        t = qr[tname]
         base_name = tname[:-2] if tname.endswith(".q") else ""
         pack_int6 = (
             tname.endswith(".q")
-            and _meta_kind(quant_meta.get(base_name)) == "int6"
+            and _meta_kind(qm.get(base_name)) == "int6"
         )
         dtype_map = {torch.int8: 0, torch.float16: 1, torch.float32: 2, torch.bfloat16: 3}
         dt = 5 if pack_int6 else dtype_map.get(t.dtype, 2)
@@ -1055,36 +1055,36 @@ def ree(args, bm, rank, ws, device, distributed, master,
     else: log0(f"size_ok:{total_size/1e6:.2f} MB")
     if master:
         with open("final_model.int6.ptz", "wb") as f: f.write(model_blob)
-    if distributed: dist.barrier()
+    if dd: dist.barrier()
     with open("final_model.int6.ptz", "rb") as f: model_blob_loaded = f.read()
-    raw_data, loaded_codec_name = dmb(model_blob_loaded)
+    rd, loaded_codec_name = dmb(model_blob_loaded)
     log0(f"codec_loaded:{loaded_codec_name}")
     offset = 0
-    meta_len = struct.unpack_from("<I", raw_data, offset)[0]; offset += 4
-    loaded_meta, meta_names, compact_tensor_refs = dqm(raw_data[offset:offset+meta_len]); offset += meta_len
+    meta_len = struct.unpack_from("<I", rd, offset)[0]; offset += 4
+    loaded_meta, meta_names, compact_tensor_refs = dqm(rd[offset:offset+meta_len]); offset += meta_len
     dtype_rmap = {0: (torch.int8, np.int8), 1: (torch.float16, np.float16), 2: (torch.float32, np.float32), 3: (torch.bfloat16, np.uint16)}
     loaded_result = {}
-    while offset < len(raw_data):
+    while offset < len(rd):
         if compact_tensor_refs:
-            name_idx, suffix, dt, ndim = struct.unpack_from("<HBBB", raw_data, offset); offset += 5
+            name_idx, suffix, dt, ndim = struct.unpack_from("<HBBB", rd, offset); offset += 5
             tname = dtr(name_idx, suffix, meta_names)
         else:
-            name_len = struct.unpack_from("<H", raw_data, offset)[0]; offset += 2
-            tname = raw_data[offset:offset+name_len].decode("utf-8"); offset += name_len
-            dt, ndim = struct.unpack_from("<BB", raw_data, offset); offset += 2
+            name_len = struct.unpack_from("<H", rd, offset)[0]; offset += 2
+            tname = rd[offset:offset+name_len].decode("utf-8"); offset += name_len
+            dt, ndim = struct.unpack_from("<BB", rd, offset); offset += 2
         shape = []
         for _ in range(ndim):
-            shape.append(struct.unpack_from("<I", raw_data, offset)[0]); offset += 4
+            shape.append(struct.unpack_from("<I", rd, offset)[0]); offset += 4
         if dt == 4:
             numel = int(np.prod(shape, dtype=np.int64))
             nbytes = ((numel + 3) // 4) * 3
-            raw = memoryview(raw_data)[offset:offset+nbytes]
+            raw = memoryview(rd)[offset:offset+nbytes]
             offset += nbytes
             t = ui6l(raw, shape)
         elif dt == 5:
             numel = int(np.prod(shape, dtype=np.int64))
             nbytes = ((numel + 7) // 8) * 6
-            raw = memoryview(raw_data)[offset:offset+nbytes]
+            raw = memoryview(rd)[offset:offset+nbytes]
             offset += nbytes
             t = ui6(raw, shape)
         else:
@@ -1092,7 +1092,7 @@ def ree(args, bm, rank, ws, device, distributed, master,
             numel = 1
             for s in shape: numel *= s
             nbytes = numel * np.dtype(np_dt).itemsize
-            arr = np.frombuffer(raw_data, dtype=np_dt, count=numel, offset=offset).copy()
+            arr = np.frombuffer(rd, dtype=np_dt, count=numel, offset=offset).copy()
             offset += nbytes
             t = torch.from_numpy(arr).reshape(shape)
             if torch_dt == torch.bfloat16: t = t.view(torch.bfloat16)
@@ -1112,7 +1112,7 @@ def ree(args, bm, rank, ws, device, distributed, master,
     torch.cuda.synchronize(); eval_time = time.perf_counter() - t_eval
     log0(f"final_int6 val_loss:{q_vl:.4f} val_bpb:{q_vb:.4f} eval_time:{eval_time*1000:.0f}ms")
     log0(f"final_int6_exact val_loss:{q_vl:.8f} val_bpb:{q_vb:.8f}")
-    if distributed: dist.destroy_process_group()
+    if dd: dist.destroy_process_group()
 
 def main():
     global z5
