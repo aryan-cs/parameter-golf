@@ -1787,3 +1787,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The exact proxy run reached `step:1000/9000 val_loss:2.2166 val_bpb:1.3128 train_time:740522ms step_avg:740.52ms`; by `step:1250` the train loss was `2.2515`. This is effectively on the same early curve as the earlier `20`-shard proxy (`1.3116` at `step:1000`), which is good news because the main difference we care about for this stack is the final legal TTT evaluation, not a large early-train divergence.
 - Decision: Keep the run untouched. The exact reproduction is numerically healthy, and the H200 is serving its intended purpose as a high-confidence proxy for the code path we will later move to `8xH100`.
 - Next step: Let the run advance to completion so we can inspect the final int6/sliding/legal-TTT metrics and total artifact bytes, then generate a candidate `submission.json` and freeze the exact handoff procedure for the eventual H100 record attempt.
+
+- Timestamp: 2026-03-24 18:14 UTC
+- Commit: `c9482f7`
+- Lane: Submission-readiness tooling
+- Objective: Make the eventual `8xH100` record attempt operationally trivial by adding the missing multi-seed launch and log-summary helpers before the final run exists.
+- Command or config: Added `scripts/h100_repro_leaky_ttt_parallel_muon_3seed.sh`, which runs the exact H100 repro launcher for the canonical three seeds (`1337 42 2025`), and `scripts/summarize_record_runs.py`, which consumes one or more run logs, extracts either the final submission metric or latest step metric, and reports mean/std plus artifact-size ranges. Also updated the H200 record-stack README to list these helpers alongside `prepare_submission_metadata.py`.
+- Result: Both helpers validate cleanly (`bash -n`, `py_compile`), and the summary tool already works on the current H200 logs. On the two local proxy logs it reports `metric_name=last_val_bpb`, `metric_min=1.2549`, `metric_max=1.3128`, `metric_mean=1.28385`, which is exactly the kind of quick triage we will need once multiple seed runs exist.
+- Decision: Keep these scripts in the submission-prep path. They do not change model behavior, but they remove a lot of manual work from the future H100 record attempt and make it easier to verify the challenge's multi-run evidence requirement.
+- Next step: Let the exact `80`-shard TTT run continue, then use the new helpers on its completed log and on later H100 logs to produce ready-to-review submission metadata and seed summaries immediately.

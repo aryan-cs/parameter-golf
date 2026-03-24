@@ -108,6 +108,9 @@ torchrun --standalone --nproc_per_node=8 train_gpt.py
 
 - H200 proxy reproduction: `scripts/icrn_h200_ttt_recordstack.sh`
 - 8xH100 repro/submit path: `scripts/h100_repro_leaky_ttt_parallel_muon.sh`
+- 8xH100 3-seed wrapper: `scripts/h100_repro_leaky_ttt_parallel_muon_3seed.sh`
+- Log-to-submission metadata: `scripts/prepare_submission_metadata.py`
+- Multi-run summary helper: `scripts/summarize_record_runs.py`
 
 The H200 copy of `train_gpt.py` in this folder is source-equivalent to the public record stack except for a safe attention fallback: if `flash_attn_interface` is installed it uses the original FA3 path, otherwise it falls back to PyTorch SDPA with GQA enabled. That lets us validate the exact stack on a single H200 now and later reuse the same folder on H100s without reconstructing the setup from scratch.
 
