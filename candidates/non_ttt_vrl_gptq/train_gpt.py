@@ -16,7 +16,7 @@ P=nn.Parameter; PL=nn.ParameterList; M=nn.Module; ML=nn.ModuleList; NI=nn.init; 
 IA=dist.is_available; II=dist.is_initialized; BR=dist.barrier; GWS=dist.get_world_size; GRK=dist.get_rank; IGP=dist.init_process_group; DGP=dist.destroy_process_group; ARD=dist.all_reduce; ROP=dist.ReduceOp
 ZL=th.zeros_like; EL=th.empty_like; AR=th.arange; SG=th.sigmoid; CAT=th.cat; ON=th.ones; FUL=th.full; EYE=th.eye
 N8=np.uint8; N6=np.int16; N1=np.int8; N4=np.uint32; NB=1
-U="utf-8"; FM="final_model.int6.ptz"; MS="model_state"; MB="momentum_buffer"; TD="TORCH_COMPILE_DISABLE"; PA="params"; BL="base_lr"; QS=".q"; SS=".scale"; F4="<I"; F3="<HB"; F5="<HBBB"; LT="little"
+U="utf-8"; FM="final_model.int6.ptz"; MS="model_state"; MB="momentum_buffer"; TD="TORCH_COMPILE_DISABLE"; PA="params"; BL="base_lr"; QS=".q"; SS=".scale"; WT=".weight"; F4="<I"; F3="<HB"; F5="<HBBB"; LT="little"
 try:
     from flash_attn_interface import flash_attn_func as _fa3_func
     HAS_FA3 = True
@@ -470,7 +470,7 @@ def mcn(cid: int) -> str:
     if cid == KG:
         return "zl9"
     if cid == KL:
-        return "lz18p1683"
+        return "l181683"
     return f"u({cid})"
 
 def cmb(raw: bytes) -> tuple[bytes, int]:
@@ -830,7 +830,7 @@ def ch(bm, tl, args, dv, gas, num_batches=256):
     param_to_name = {}
     for name, module in bm.named_modules():
         if isinstance(module, CL):
-            pn = name + ".weight"
+            pn = name + WT
             param_to_name[id(module)] = pn
             cols = module.weight.shape[1]
             hh[pn] = Z(cols, cols, dtype=F32, device='cpu')
@@ -922,8 +922,8 @@ def ree(a, bm, rank, ws, dv, dd, m0,
     hm = {}
     for name, module in bm.named_modules():
         if isinstance(module, CL):
-            sd_name = name + ".weight"
-            h_name = name + ".weight"
+            sd_name = name + WT
+            h_name = name + WT
             if h_name in hh:
                 hm[sd_name] = hh[h_name]
     sd_cpu = {k: DC(v) for k, v in bm.state_dict().items()}
