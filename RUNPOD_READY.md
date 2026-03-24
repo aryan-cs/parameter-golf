@@ -63,8 +63,7 @@ This will:
 Watch the latest run:
 
 ```bash
-ssh -p PORT root@HOST 'cd /workspace/golf && find runs/non_ttt_vrl_gptq/seed1337 -maxdepth 1 -type d | sort | tail -n 1'
-ssh -p PORT root@HOST 'cd /workspace/golf && tail -f runs/non_ttt_vrl_gptq/seed1337/LATEST_RUN/train.log'
+bash runpod/local_watch_latest.sh root@HOST /workspace/golf PORT non_ttt_vrl_gptq 1337
 ```
 
 Fetch results back:

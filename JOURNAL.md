@@ -572,3 +572,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The readiness checker passed: both local recovery wrappers reference the expected five configs, the critical prune14 configs still have `SAVE_PRE_EXPORT_CHECKPOINT=1`, and all `1x` / `8x` export-ladder configs are present and point at the VRL trainer.
 - Decision: Use `python3 runpod/check_ready.py` as the first local preflight before relaunching any Runpod pod.
 - Next step: Wait for credits, run the readiness check, then use the recovery wrapper that matches the pod we bring up.
+
+- Timestamp: 2026-03-24 02:04 America/Chicago
+- Commit: uncommitted
+- Lane: runpod readiness
+- Objective: Make the credit-wait period productive by closing the last operational gap between “pod launched” and “usable monitoring loop.”
+- Command or config: Added `runpod/local_watch_latest.sh`, updated `RUNPOD_READY.md` to use it for monitoring, and noted that new Runpod credits are pending approval so the repo should stay in a fully launch-ready state.
+- Result: The restart path now has a clean monitor command in addition to sync, bootstrap, launch, and fetch. Once credits land, we can go from zero to a watched run without reconstructing any SSH one-liners by hand.
+- Decision: Keep the repo in launch-ready mode while waiting for credits instead of making more speculative code changes.
+- Next step: When credits land, run the readiness checker, launch the recovery wrapper for the chosen pod, and monitor it with `runpod/local_watch_latest.sh`.
