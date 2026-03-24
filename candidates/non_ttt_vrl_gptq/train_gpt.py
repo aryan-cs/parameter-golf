@@ -11,7 +11,7 @@ from torch import Tensor, nn
 from torch.nn.parallel import DistributedDataParallel as DDP
 EG=os.environ.get; JP=os.path.join; PC=time.perf_counter
 BF=th.bfloat16; F16=th.float16; F32=th.float32; F64=th.float64; I8=th.int8; I16=th.int16; I64=th.int64; BO=th.bool; U16=th.uint16
-AC=th.autocast; IM=th.inference_mode; Z=th.zeros; TT=th.tensor; QT=th.quantile; EM=th.empty; FN=th.from_numpy; SK=th.stack; PK=struct.pack; UF=struct.unpack_from; ER=ValueError; CU="cuda"; AU=lambda e=1:AC(device_type=CU,dtype=BF,enabled=e); DC=lambda t:t.detach().cpu(); DL=lambda t:DC(t).clone(); DX=lambda t:DC(t).contiguous()
+AC=th.autocast; IM=th.inference_mode; Z=th.zeros; TT=th.tensor; QT=th.quantile; EM=th.empty; FN=th.from_numpy; SK=th.stack; PK=struct.pack; UF=struct.unpack_from; ER=ValueError; CU="cuda"; AU=lambda e=1:AC(device_type=CU,dtype=BF,enabled=e); DC=lambda t:t.detach().cpu(); DL=lambda t:DC(t).clone(); DX=lambda t:DC(t).contiguous(); AS=lambda x,d:x.astype(d,copy=False)
 P=nn.Parameter; PL=nn.ParameterList; M=nn.Module; ML=nn.ModuleList; NI=nn.init; NG=th.no_grad; CLP=th.clamp; DG=th.diag; CMP=th.compile; SY=th.cuda.synchronize
 IA=dist.is_available; II=dist.is_initialized; BR=dist.barrier; GWS=dist.get_world_size; GRK=dist.get_rank; IGP=dist.init_process_group; DGP=dist.destroy_process_group; ARD=dist.all_reduce; ROP=dist.ReduceOp
 ZL=th.zeros_like; EL=th.empty_like; AR=th.arange; SG=th.sigmoid; CAT=th.cat; ON=th.ones; FUL=th.full; EYE=th.eye
@@ -421,32 +421,32 @@ def dsd(result, meta, template_sd):
     return out
 
 def _zigzag_encode_int6(arr_i16: np.ndarray) -> np.ndarray:
-    arr = arr_i16.astype(N6, copy=False)
+    arr = AS(arr_i16, N6)
     if arr.size == 0:
         return np.empty((0,), dtype=N8)
     if arr.min() < -31 or arr.max() > 31:
         raise ER("int6 range")
     out = np.where(arr >= 0, arr * 2, (-arr) * 2 - 1)
-    return out.astype(N8, copy=False)
+    return AS(out, N8)
 
 def _zigzag_decode_int6(u8: np.ndarray) -> np.ndarray:
-    u = u8.astype(N6, copy=False)
-    return np.where((u & 1) == 0, u // 2, -((u + 1) // 2)).astype(N6, copy=False)
+    u = AS(u8, N6)
+    return AS(np.where((u & 1) == 0, u // 2, -((u + 1) // 2)), N6)
 
 def pi6l(t: Tensor) -> bytes:
     q = DX(t)
     if q.dtype != I8:
         raise TypeError(f"need int8, got {q.dtype}")
-    arr = q.numpy().reshape(-1).astype(N6, copy=False)
+    arr = AS(q.numpy().reshape(-1), N6)
     if arr.size == 0:
         return b""
     if arr.min() < -31 or arr.max() > 31:
         raise ER("int6 range")
-    u = (arr + 31).astype(N8, copy=False)
+    u = AS(arr + 31, N8)
     pad = (-u.size) % 4
     if pad:
         u = np.pad(u, (0, pad), constant_values=0)
-    groups = u.reshape(-1, 4).astype(np.uint32, copy=False)
+    groups = AS(u.reshape(-1, 4), np.uint32)
     packed = (groups[:, 0]
               | (groups[:, 1] << 6)
               | (groups[:, 2] << 12)
@@ -465,31 +465,31 @@ def ui6l(raw: bytes | memoryview, shape: list[int]) -> Tensor:
     groups = (numel + 3) // 4
     if packed_u8.size != groups * 3:
         raise ER(f"bad int6 sz {groups*3}!={packed_u8.size}")
-    triplets = packed_u8.reshape(-1, 3).astype(np.uint32, copy=False)
+    triplets = AS(packed_u8.reshape(-1, 3), np.uint32)
     packed = triplets[:, 0] | (triplets[:, 1] << 8) | (triplets[:, 2] << 16)
     u = np.empty(groups * 4, dtype=N8)
     u[0::4] = (packed & 0x3F).astype(N8)
     u[1::4] = ((packed >> 6) & 0x3F).astype(N8)
     u[2::4] = ((packed >> 12) & 0x3F).astype(N8)
     u[3::4] = ((packed >> 18) & 0x3F).astype(N8)
-    arr = u[:numel].astype(N6, copy=False) - 31
-    return FN(arr.astype(N1, copy=False).reshape(shape))
+    arr = AS(u[:numel], N6) - 31
+    return FN(AS(arr, N1).reshape(shape))
 
 def pi6(t: Tensor) -> bytes:
     q = DX(t)
     if q.dtype != I8:
         raise TypeError(f"need int8, got {q.dtype}")
-    arr = q.numpy().reshape(-1).astype(N6, copy=False)
+    arr = AS(q.numpy().reshape(-1), N6)
     if arr.size == 0:
         return b""
-    u = _zigzag_encode_int6(arr.astype(N6, copy=False))
+    u = _zigzag_encode_int6(AS(arr, N6))
     numel = u.size
     pad = (-numel) % 8
     if pad:
         u = np.pad(u, (0, pad), constant_values=0)
     out = bytearray()
     for bit in range(6):
-        bits = ((u >> bit) & 1).astype(N8, copy=False).reshape(-1, 8)
+        bits = AS((u >> bit) & 1, N8).reshape(-1, 8)
         out.extend(np.packbits(bits, axis=1, bitorder="little").reshape(-1).tobytes())
     return bytes(out)
 
@@ -509,9 +509,9 @@ def ui6(raw: bytes | memoryview, shape: list[int]) -> Tensor:
         plane = packed_u8[o:o + plane_bytes]
         o += plane_bytes
         bits = np.unpackbits(plane, bitorder="little")
-        u |= (bits.astype(N8, copy=False) << bit)
+        u |= (AS(bits, N8) << bit)
     arr = _zigzag_decode_int6(u[:numel])
-    return FN(arr.astype(N1, copy=False).reshape(shape))
+    return FN(AS(arr, N1).reshape(shape))
 
 def mcn(cid: int) -> str:
     if cid == KZ:
@@ -561,7 +561,7 @@ def lds(file):
     if header.size != 256 or int(header[0]) != 20240520 or int(header[1]) != 1: raise ER(f"bad hdr {file}")
     nt = int(header[2])
     if file.stat().st_size != hb + nt * np.dtype("<u2").itemsize: raise ER(f"bad size {file}")
-    return FN(np.fromfile(file, dtype="<u2", count=nt, offset=hb).astype(np.uint16, copy=False))
+    return FN(AS(np.fromfile(file, dtype="<u2", count=nt, offset=hb), np.uint16))
 
 class TS:
     def __init__(self, pat):
