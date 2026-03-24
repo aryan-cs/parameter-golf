@@ -152,12 +152,12 @@ def load_validation_tokens(pattern, seq_len):
     if usable <= 0: raise ValueError(f"Val too short for seq_len={seq_len}")
     return tokens[:usable + 1]
 
-def eval_val(args, model, rank, world_size, device, grad_accum_steps,
-             val_tokens, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut, eval_seq_len=0):
+def eval_val(args, model, rank, ws, device, gas,
+             vt, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut, eval_seq_len=0):
     seq_len = eval_seq_len if eval_seq_len > 0 else args.train_seq_len
-    local_batch_seqs = args.val_batch_size // (world_size * grad_accum_steps) // seq_len
-    total_seqs = (val_tokens.numel() - 1) // seq_len
-    seq_start = (total_seqs * rank) // world_size; seq_end = (total_seqs * (rank + 1)) // world_size
+    local_batch_seqs = args.val_batch_size // (ws * gas) // seq_len
+    total_seqs = (vt.numel() - 1) // seq_len
+    seq_start = (total_seqs * rank) // ws; seq_end = (total_seqs * (rank + 1)) // ws
     val_loss_sum = torch.zeros((), device=device, dtype=torch.float64)
     val_token_count = torch.zeros((), device=device, dtype=torch.float64)
     val_byte_count = torch.zeros((), device=device, dtype=torch.float64)
@@ -165,7 +165,7 @@ def eval_val(args, model, rank, world_size, device, grad_accum_steps,
     with torch.inference_mode():
         for bss in range(seq_start, seq_end, local_batch_seqs):
             bse = min(bss + local_batch_seqs, seq_end)
-            local = val_tokens[bss*seq_len:(bse*seq_len)+1].to(device=device, dtype=torch.int64, non_blocking=True)
+            local = vt[bss*seq_len:(bse*seq_len)+1].to(device=device, dtype=torch.int64, non_blocking=True)
             x, y = local[:-1].reshape(-1, seq_len), local[1:].reshape(-1, seq_len)
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=True):
                 batch_loss = model(x, y).detach()
@@ -872,7 +872,7 @@ class GPT(nn.Module):
         logits = F.linear(x, self.tok_emb.weight.to(x.dtype)) if self.tie_embeddings else self.lm_head(x)
         return self.logit_softcap * torch.tanh(logits / self.logit_softcap)
 
-def collect_hessians(bm, train_loader, args, device, grad_accum_steps, num_batches=256):
+def collect_hessians(bm, train_loader, args, device, gas, num_batches=256):
     """Run calibration batches through the model, collecting H = X^T X for each CastedLinear."""
     hessians = {}  # param_name -> H matrix (cols x cols)
     hooks = []
@@ -898,7 +898,7 @@ def collect_hessians(bm, train_loader, args, device, grad_accum_steps, num_batch
     bm.eval()
     with torch.inference_mode(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
         for _ in range(num_batches):
-            x, y = train_loader.next_batch(args.train_batch_tokens, args.train_seq_len, grad_accum_steps)
+            x, y = train_loader.next_batch(args.train_batch_tokens, args.train_seq_len, gas)
             _ = bm(x, y)
     for h in hooks: h.remove()
     for name in hessians:
@@ -910,13 +910,13 @@ def collect_hessians(bm, train_loader, args, device, grad_accum_steps, num_batch
     bm.train()
     return hessians
 
-def eval_val_sliding(logits_fn, rank, world_size, device, val_tokens,
+def eval_val_sliding(logits_fn, rank, ws, device, vt,
                      base_bytes_lut, has_leading_space_lut, is_boundary_token_lut,
                      seq_len, stride, eval_batch_seqs=256):
-    total = val_tokens.numel() - 1; windows, p = [], 0
+    total = vt.numel() - 1; windows, p = [], 0
     while p + seq_len <= total:
         s = 0 if p == 0 else (seq_len - stride); windows.append((p, s)); p += stride
-    n = len(windows); per_rank = (n + world_size - 1) // world_size
+    n = len(windows); per_rank = (n + ws - 1) // ws
     my_windows = windows[rank*per_rank:min((rank+1)*per_rank, n)]
     loss_sum = torch.zeros((), device=device, dtype=torch.float64)
     tok_count = torch.zeros((), device=device, dtype=torch.float64)
@@ -924,8 +924,8 @@ def eval_val_sliding(logits_fn, rank, world_size, device, val_tokens,
     with torch.inference_mode():
         for i in range(0, len(my_windows), eval_batch_seqs):
             batch = my_windows[i:i+eval_batch_seqs]; bs = len(batch)
-            x_list = [val_tokens[w:w+seq_len] for w, _ in batch]
-            y_list = [val_tokens[w+1:w+seq_len+1] for w, _ in batch]
+            x_list = [vt[w:w+seq_len] for w, _ in batch]
+            y_list = [vt[w+1:w+seq_len+1] for w, _ in batch]
             pad = eval_batch_seqs - bs
             if pad > 0: x_list.extend([x_list[-1]]*pad); y_list.extend([y_list[-1]]*pad)
             x = torch.stack(x_list).to(device=device, dtype=torch.int64)
@@ -964,11 +964,11 @@ def maybe_save_pre_export_checkpoint(path_spec: str, state_dict: dict[str, torch
     log0(f"save_ckpt:{path}")
     return str(path)
 
-def run_export_eval(args, bm, rank, world_size, device, distributed, master_process,
-                    code, val_tokens, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut, log0):
+def run_export_eval(args, bm, rank, ws, device, distributed, master,
+                    code, vt, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut, log0):
     log0(f"gptq:calib {args.gptq_calib_batches} batches")
-    calib_loader = DistributedTokenLoader(args.train_files, rank, world_size, device)
-    hessians = collect_hessians(bm, calib_loader, args, device, 8 // world_size,
+    calib_loader = DistributedTokenLoader(args.train_files, rank, ws, device)
+    hessians = collect_hessians(bm, calib_loader, args, device, 8 // ws,
                                 num_batches=args.gptq_calib_batches)
     hessian_map = {}
     for name, module in bm.named_modules():
@@ -1053,7 +1053,7 @@ def run_export_eval(args, bm, rank, world_size, device, distributed, master_proc
     log0(f"sizes:m={model_bytes} c={code_bytes} t={total_size} ({total_size/1e6:.2f} MB)")
     if total_size > size_limit: log0(f"WARN:size {total_size} +{total_size - size_limit}")
     else: log0(f"size_ok:{total_size/1e6:.2f} MB")
-    if master_process:
+    if master:
         with open("final_model.int6.ptz", "wb") as f: f.write(model_blob)
     if distributed: dist.barrier()
     with open("final_model.int6.ptz", "rb") as f: model_blob_loaded = f.read()
@@ -1100,13 +1100,13 @@ def run_export_eval(args, bm, rank, world_size, device, distributed, master_proc
     deq_state = dsd(loaded_result, loaded_meta, sd_cpu)
     bm.load_state_dict(deq_state, strict=True)
     eval_sl = args.eval_seq_len if args.eval_seq_len > 0 else args.train_seq_len
-    val_tokens_eval = load_validation_tokens(args.val_files, eval_sl) if eval_sl != args.train_seq_len else val_tokens
+    val_tokens_eval = load_validation_tokens(args.val_files, eval_sl) if eval_sl != args.train_seq_len else vt
     raw_logits_fn = torch.compile(bm.forward_logits, dynamic=False) if not bool(int(os.environ.get("TORCH_COMPILE_DISABLE", "0"))) else bm.forward_logits
     warmup_x = torch.zeros(args.eval_batch_seqs, eval_sl, dtype=torch.int64, device=device)
     bm.eval()
     with torch.inference_mode(), torch.autocast(device_type="cuda", dtype=torch.bfloat16): _ = raw_logits_fn(warmup_x)
     torch.cuda.synchronize(); t_eval = time.perf_counter()
-    q_vl, q_vb = eval_val_sliding(raw_logits_fn, rank, world_size, device,
+    q_vl, q_vb = eval_val_sliding(raw_logits_fn, rank, ws, device,
         val_tokens_eval, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut,
         eval_sl, args.eval_stride, eval_batch_seqs=args.eval_batch_seqs)
     torch.cuda.synchronize(); eval_time = time.perf_counter() - t_eval
@@ -1119,22 +1119,22 @@ def main():
     code = Path(__file__).read_text(encoding="utf-8"); args = Hyperparameters()
     zeropower_via_newtonschulz5 = torch.compile(zeropower_via_newtonschulz5)
     distributed = "RANK" in os.environ and "WORLD_SIZE" in os.environ
-    rank = int(os.environ.get("RANK", "0")); world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    rank = int(os.environ.get("RANK", "0")); ws = int(os.environ.get("WORLD_SIZE", "1"))
     local_rank = int(os.environ.get("LOCAL_RANK", "0"))
-    if world_size <= 0 or 8 % world_size != 0: raise ValueError(f"Bad WORLD_SIZE={world_size}")
-    grad_accum_steps = 8 // world_size; grad_scale = 1.0 / grad_accum_steps
+    if ws <= 0 or 8 % ws != 0: raise ValueError(f"Bad WORLD_SIZE={ws}")
+    gas = 8 // ws; grad_scale = 1.0 / gas
     if not torch.cuda.is_available(): raise RuntimeError("CUDA required")
     device = torch.device("cuda", local_rank); torch.cuda.set_device(device)
     if distributed: dist.init_process_group(backend="nccl", device_id=device); dist.barrier()
-    master_process = rank == 0
+    master = rank == 0
     torch.backends.cuda.matmul.allow_tf32 = True; torch.backends.cudnn.allow_tf32 = True
     if not HAS_FA3:
         from torch.backends.cuda import enable_cudnn_sdp, enable_flash_sdp, enable_math_sdp, enable_mem_efficient_sdp
         enable_cudnn_sdp(False); enable_flash_sdp(True); enable_mem_efficient_sdp(False); enable_math_sdp(False)
     logfile = None
-    if master_process: os.makedirs("logs", exist_ok=True); logfile = f"logs/{args.run_id}.txt"; print(logfile)
+    if master: os.makedirs("logs", exist_ok=True); logfile = f"logs/{args.run_id}.txt"; print(logfile)
     def log0(msg, console=True):
-        if not master_process: return
+        if not master: return
         if console: print(msg)
         if logfile:
             with open(logfile, "a", encoding="utf-8") as f: print(msg, file=f)
@@ -1143,10 +1143,10 @@ def main():
     sp = spm.SentencePieceProcessor(model_file=args.tokenizer_path)
     dataset_dir = Path(args.data_path).resolve()
     actual_train_files = len(list(dataset_dir.glob("fineweb_train_*.bin")))
-    val_tokens = load_validation_tokens(args.val_files, args.train_seq_len)
+    vt = load_validation_tokens(args.val_files, args.train_seq_len)
     base_bytes_lut, has_leading_space_lut, is_boundary_token_lut = build_sentencepiece_luts(sp, args.vocab_size, device)
     log0(f"train_loader:dataset:{dataset_dir.name} train_shards:{actual_train_files}")
-    log0(f"val_tokens:{val_tokens.numel()-1}")
+    log0(f"val_tokens:{vt.numel()-1}")
     CastedLinear._qat_enabled = False
     CastedLinear._qat_clip_pct = args.qat_clip_pct  # v41: QAT-export alignment
     bm = GPT(
@@ -1170,8 +1170,8 @@ def main():
         model_state = ckpt["model_state"] if isinstance(ckpt, dict) and "model_state" in ckpt else ckpt
         bm.load_state_dict(model_state, strict=True)
         log0(f"export_only:ckpt:{export_only_checkpoint}")
-        run_export_eval(args, bm, rank, world_size, device, distributed, master_process,
-                        code, val_tokens, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut, log0)
+        run_export_eval(args, bm, rank, ws, device, distributed, master,
+                        code, vt, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut, log0)
         return
     block_named_params = list(bm.blocks.named_parameters())
     matrix_params = [p for n, p in block_named_params if p.ndim == 2 and not any(pat in n for pat in CP)]
@@ -1205,19 +1205,19 @@ def main():
         optimizers.insert(1, optimizer_head)
     n_params = sum(p.numel() for p in bm.parameters())
     xsa_layers = [i for i in range(args.num_layers) if i >= args.num_layers - args.xsa_last_n] if args.xsa_last_n > 0 else []
-    log0(f"model_params:{n_params}"); log0(f"world:{world_size} ga:{grad_accum_steps}")
+    log0(f"model_params:{n_params}"); log0(f"world:{ws} ga:{gas}")
     log0(f"cfg:v42 lqat={args.late_qat_threshold} ema={args.ema_decay} xsa={args.xsa_last_n} rope={args.rope_dims} bg={args.bigram_vocab_size} qat={args.qat_clip_pct} prune={args.prune_pct}")
     log0(f"xsa_layers:{xsa_layers}")
     log0(f"fa3:{HAS_FA3} swa:{args.swa_enabled} wd:{args.warmdown_iters} adam_wd:{args.adam_wd}")
-    train_loader = DistributedTokenLoader(args.train_files, rank, world_size, device)
+    train_loader = DistributedTokenLoader(args.train_files, rank, ws, device)
     def zero_grad_all():
         for opt in optimizers: opt.zero_grad(set_to_none=True)
     max_wallclock_ms = 1000.0 * args.max_wallclock_seconds if args.max_wallclock_seconds > 0 else None
     def lr_mul(step, elapsed_ms):
         if args.warmdown_iters <= 0: return 1.0
         if max_wallclock_ms is None:
-            ws = max(args.iterations - args.warmdown_iters, 0)
-            return max((args.iterations - step) / max(args.warmdown_iters, 1), 0.0) if step >= ws else 1.0
+            wd0 = max(args.iterations - args.warmdown_iters, 0)
+            return max((args.iterations - step) / max(args.warmdown_iters, 1), 0.0) if step >= wd0 else 1.0
         step_ms = elapsed_ms / max(step, 1); wd_ms = args.warmdown_iters * step_ms
         rem_ms = max(max_wallclock_ms - elapsed_ms, 0.0)
         return rem_ms / max(wd_ms, 1e-9) if rem_ms <= wd_ms else 1.0
@@ -1226,21 +1226,21 @@ def main():
         initial_model_state = {n: t.detach().cpu().clone() for n, t in bm.state_dict().items()}
         initial_optimizer_states = [copy.deepcopy(opt.state_dict()) for opt in optimizers]
         model.train()
-        for ws in range(args.warmup_steps):
+        for wi in range(args.warmup_steps):
             zero_grad_all()
-            for ms in range(grad_accum_steps):
-                if distributed: model.require_backward_grad_sync = ms == grad_accum_steps - 1
-                x, y = train_loader.next_batch(args.train_batch_tokens, args.train_seq_len, grad_accum_steps)
+            for ms in range(gas):
+                if distributed: model.require_backward_grad_sync = ms == gas - 1
+                x, y = train_loader.next_batch(args.train_batch_tokens, args.train_seq_len, gas)
                 with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=True): wl = model(x, y)
                 (wl * grad_scale).backward()
             for opt in optimizers: opt.step()
             zero_grad_all()
-            if args.warmup_steps <= 20 or (ws+1) % 10 == 0: log0(f"warmup_step:{ws+1}/{args.warmup_steps}")
+            if args.warmup_steps <= 20 or (wi+1) % 10 == 0: log0(f"warmup_step:{wi+1}/{args.warmup_steps}")
         bm.load_state_dict(initial_model_state, strict=True)
         for opt, state in zip(optimizers, initial_optimizer_states, strict=True): opt.load_state_dict(state)
         zero_grad_all()
         if distributed: model.require_backward_grad_sync = True
-        train_loader = DistributedTokenLoader(args.train_files, rank, world_size, device)
+        train_loader = DistributedTokenLoader(args.train_files, rank, ws, device)
     ema_state = {name: t.detach().float().clone() for name, t in bm.state_dict().items()}
     training_time_ms, stop_after_step = 0.0, None
     swa_state, swa_count = None, 0
@@ -1250,8 +1250,8 @@ def main():
         should_validate = last_step or (args.val_loss_every > 0 and step % args.val_loss_every == 0)
         if should_validate:
             torch.cuda.synchronize(); training_time_ms += 1000.0 * (time.perf_counter() - t0)
-            vl, vb = eval_val(args, model, rank, world_size, device, grad_accum_steps,
-                              val_tokens, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut)
+            vl, vb = eval_val(args, model, rank, ws, device, gas,
+                              vt, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut)
             log0(f"step:{step}/{args.iterations} val_loss:{vl:.4f} val_bpb:{vb:.4f} train_time:{training_time_ms:.0f}ms step_avg:{training_time_ms/max(step,1):.2f}ms")
             torch.cuda.synchronize(); t0 = time.perf_counter()
         if last_step:
@@ -1264,12 +1264,12 @@ def main():
             CastedLinear._qat_enabled = True
             log0(f"late_qat:enabled step:{step} scale:{scale:.4f}")
         zero_grad_all(); train_loss = torch.zeros((), device=device)
-        for ms in range(grad_accum_steps):
-            if distributed: model.require_backward_grad_sync = ms == grad_accum_steps - 1
-            x, y = train_loader.next_batch(args.train_batch_tokens, args.train_seq_len, grad_accum_steps)
+        for ms in range(gas):
+            if distributed: model.require_backward_grad_sync = ms == gas - 1
+            x, y = train_loader.next_batch(args.train_batch_tokens, args.train_seq_len, gas)
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=True): loss = model(x, y)
             train_loss += loss.detach(); (loss * grad_scale).backward()
-        train_loss /= grad_accum_steps
+        train_loss /= gas
         frac = min(step / args.muon_momentum_warmup_steps, 1.0) if args.muon_momentum_warmup_steps > 0 else 1.0
         for group in optimizer_muon.param_groups:
             group["momentum"] = (1-frac)*args.muon_momentum_warmup_start + frac*args.muon_momentum
@@ -1303,8 +1303,8 @@ def main():
     avg_state = {name: t.to(dtype=current_state[name].dtype) for name, t in ema_state.items()}
     bm.load_state_dict(avg_state, strict=True)
     maybe_save_pre_export_checkpoint(args.save_pre_export_checkpoint, bm.state_dict(), log0)
-    run_export_eval(args, bm, rank, world_size, device, distributed, master_process,
-                    code, val_tokens, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut, log0)
+    run_export_eval(args, bm, rank, ws, device, distributed, master,
+                    code, vt, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut, log0)
 
 if __name__ == "__main__":
     main()
