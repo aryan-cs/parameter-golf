@@ -161,7 +161,7 @@ def load_validation_tokens(pattern, seq_len):
 def eval_val(a, model, rank, ws, device, gas,
              vt, bb, hs, ib, esl=0):
     seq_len = esl if esl > 0 else a.tsl
-    local_batch_seqs = a.vbs // (ws * gas) // seq_len
+    lbs = a.vbs // (ws * gas) // seq_len
     total_seqs = (vt.numel() - 1) // seq_len
     seq_start = (total_seqs * rank) // ws; seq_end = (total_seqs * (rank + 1)) // ws
     val_loss_sum = Z((), device=device, dtype=F64)
@@ -169,8 +169,8 @@ def eval_val(a, model, rank, ws, device, gas,
     val_byte_count = Z((), device=device, dtype=F64)
     model.eval()
     with IM():
-        for bss in range(seq_start, seq_end, local_batch_seqs):
-            bse = min(bss + local_batch_seqs, seq_end)
+        for bss in range(seq_start, seq_end, lbs):
+            bse = min(bss + lbs, seq_end)
             local = vt[bss*seq_len:(bse*seq_len)+1].to(device=device, dtype=I64, non_blocking=True)
             x, y = local[:-1].reshape(-1, seq_len), local[1:].reshape(-1, seq_len)
             with AC(device_type="cuda", dtype=BF, enabled=True):
@@ -964,48 +964,48 @@ def mspc(path_spec: str, sd: dict[str, th.Tensor], log0):
 
 def ree(a, bm, rank, ws, device, dd, master,
                     code, vt, bb, hs, ib, log0):
-    calib_loader = DTL(a.tf, rank, ws, device)
-    hessians = chs(bm, calib_loader, a, device, 8 // ws,
+    cl = DTL(a.tf, rank, ws, device)
+    hessians = chs(bm, cl, a, device, 8 // ws,
                                 num_batches=a.gptq_calib_batches)
-    hessian_map = {}
+    hm = {}
     for name, module in bm.named_modules():
         if isinstance(module, CL):
             sd_name = name + ".weight"
             h_name = name + ".weight"
             if h_name in hessians:
-                hessian_map[sd_name] = hessians[h_name]
+                hm[sd_name] = hessians[h_name]
     sd_cpu = {k: v.detach().cpu() for k, v in bm.state_dict().items()}
-    code_bytes = len(code.encode("utf-8")); size_limit = 16_000_000
-    qr, qm = qsd(sd_cpu, hessians=hessian_map)
+    cb = len(code.encode("utf-8")); sl = 16_000_000
+    qr, qm = qsd(sd_cpu, hessians=hm)
     if a.prune_pct > 0:
-        all_int6_vals = []
+        ai6 = []
         for name, info in qm.items():
             if _meta_kind(info) == "int6":
                 qname = name + ".q"
                 if qname in qr:
-                    all_int6_vals.append(qr[qname].flatten().abs().float())
-        if all_int6_vals:
-            all_vals = CAT(all_int6_vals)
+                    ai6.append(qr[qname].flatten().abs().float())
+        if ai6:
+            all_vals = CAT(ai6)
             k = max(1, int(a.prune_pct * all_vals.numel()))
             threshold = all_vals.kthvalue(k).values.item()
-            pruned_count = 0
+            prc = 0
             for name, info in qm.items():
                 if _meta_kind(info) == "int6":
                     qname = name + ".q"
                     if qname in qr:
                         mask = qr[qname].abs() <= int(threshold)
-                        pruned_count += mask.sum().item()
+                        prc += mask.sum().item()
                         qr[qname][mask] = 0
-            total_int6 = sum(qr[n + ".q"].numel() for n, i in qm.items() if _meta_kind(i) == "int6" and n + ".q" in qr)
-            log0(f"prune:{pruned_count}/{total_int6} ({100*pruned_count/max(total_int6,1):.1f}%) thr={threshold:.0f}")
+            ti6 = sum(qr[n + ".q"].numel() for n, i in qm.items() if _meta_kind(i) == "int6" and n + ".q" in qr)
+            log0(f"prune:{prc}/{ti6} ({100*prc/max(ti6,1):.1f}%) thr={threshold:.0f}")
     meta_blob, meta_names = eqm(qm)
     name_to_idx = {name: idx for idx, name in enumerate(meta_names)}
     parts = [struct.pack("<I", len(meta_blob)), meta_blob]
     meta_bytes = 4 + len(meta_blob)
-    tensor_header_bytes = 0
-    packed_int6_payload_bytes = 0
-    other_payload_bytes = 0
-    packed_int6_tensors = 0
+    thb = 0
+    p6b = 0
+    opb = 0
+    p6t = 0
     tensor_order = sorted(qr.keys())
     for tname in tensor_order:
         t = qr[tname]
@@ -1023,43 +1023,43 @@ def ree(a, bm, rank, ws, device, dd, master,
             raw = t_np.tobytes()
         name_idx, suffix = etr(tname, name_to_idx)
         parts.append(struct.pack("<HBBB", name_idx, suffix, dt, t.ndim))
-        tensor_header_bytes += 5 + 4 * t.ndim
+        thb += 5 + 4 * t.ndim
         for d in t.shape: parts.append(struct.pack("<I", d))
         parts.append(raw)
         if pack_int6:
-            packed_int6_payload_bytes += len(raw)
-            packed_int6_tensors += 1
+            p6b += len(raw)
+            p6t += 1
         else:
-            other_payload_bytes += len(raw)
+            opb += len(raw)
     quant_raw = b"".join(parts)
     model_blob, model_codec_id = cmb(quant_raw)
-    model_bytes = len(model_blob); total_size = code_bytes + model_bytes
+    mb = len(model_blob); ts = cb + mb
     log0(
         "ab:"
         f" meta={meta_bytes}"
-        f" tensor_headers={tensor_header_bytes}"
-        f" int6_payload={packed_int6_payload_bytes}"
-        f" other_payload={other_payload_bytes}"
+        f" tensor_headers={thb}"
+        f" int6_payload={p6b}"
+        f" other_payload={opb}"
         f" raw_total={len(quant_raw)}"
-        f" compressed_model={model_bytes}"
+        f" compressed_model={mb}"
         f" codec={mcn(model_codec_id)}"
-        f" int6_tensors={packed_int6_tensors}"
+        f" int6_tensors={p6t}"
     )
-    log0(f"sz:m={model_bytes} c={code_bytes} t={total_size}({total_size/1e6:.2f}M)")
-    if total_size > size_limit: log0(f"warn:size {total_size}+{total_size - size_limit}")
-    else: log0(f"size_ok:{total_size/1e6:.2f} MB")
+    log0(f"sz:m={mb} c={cb} t={ts}({ts/1e6:.2f}M)")
+    if ts > sl: log0(f"warn:size {ts}+{ts - sl}")
+    else: log0(f"size_ok:{ts/1e6:.2f} MB")
     if master:
         with open("final_model.int6.ptz", "wb") as f: f.write(model_blob)
-    if dd: dist.barrier()
+    if dd: BR()
     with open("final_model.int6.ptz", "rb") as f: model_blob_loaded = f.read()
-    rd, loaded_codec_name = dmb(model_blob_loaded)
+    rd, _ = dmb(model_blob_loaded)
     offset = 0
     meta_len = struct.unpack_from("<I", rd, offset)[0]; offset += 4
-    loaded_meta, meta_names, compact_tensor_refs = dqm(rd[offset:offset+meta_len]); offset += meta_len
-    dtype_rmap = {0: (I8, np.int8), 1: (F16, np.float16), 2: (F32, np.float32), 3: (BF, np.uint16)}
-    loaded_result = {}
+    lm, meta_names, ctr = dqm(rd[offset:offset+meta_len]); offset += meta_len
+    drm = {0: (I8, np.int8), 1: (F16, np.float16), 2: (F32, np.float32), 3: (BF, np.uint16)}
+    lr = {}
     while offset < len(rd):
-        if compact_tensor_refs:
+        if ctr:
             name_idx, suffix, dt, ndim = struct.unpack_from("<HBBB", rd, offset); offset += 5
             tname = dtr(name_idx, suffix, meta_names)
         else:
@@ -1082,7 +1082,7 @@ def ree(a, bm, rank, ws, device, dd, master,
             offset += nbytes
             t = ui6(raw, shape)
         else:
-            torch_dt, np_dt = dtype_rmap[dt]
+            torch_dt, np_dt = drm[dt]
             numel = 1
             for s in shape: numel *= s
             nbytes = numel * np.dtype(np_dt).itemsize
@@ -1090,18 +1090,18 @@ def ree(a, bm, rank, ws, device, dd, master,
             offset += nbytes
             t = FN(arr).reshape(shape)
             if torch_dt == BF: t = t.view(BF)
-        loaded_result[tname] = t
-    deq_state = dsd(loaded_result, loaded_meta, sd_cpu)
+        lr[tname] = t
+    deq_state = dsd(lr, lm, sd_cpu)
     bm.load_state_dict(deq_state, strict=True)
     eval_sl = a.esl if a.esl > 0 else a.tsl
-    val_tokens_eval = load_validation_tokens(a.val_files, eval_sl) if eval_sl != a.tsl else vt
+    vte = load_validation_tokens(a.val_files, eval_sl) if eval_sl != a.tsl else vt
     raw_logits_fn = CMP(bm.forward_logits, dynamic=False) if not bool(int(EG("TORCH_COMPILE_DISABLE", "0"))) else bm.forward_logits
     warmup_x = Z(a.eval_batch_seqs, eval_sl, dtype=I64, device=device)
     bm.eval()
     with IM(), AC(device_type="cuda", dtype=BF): _ = raw_logits_fn(warmup_x)
     SY(); t_eval = PC()
     q_vl, q_vb = eval_val_sliding(raw_logits_fn, rank, ws, device,
-        val_tokens_eval, bb, hs, ib,
+        vte, bb, hs, ib,
         eval_sl, a.eval_stride, ebs=a.eval_batch_seqs)
     SY(); eval_time = PC() - t_eval
     log0(f"final_int6 val_loss:{q_vl:.4f} val_bpb:{q_vb:.4f} eval_time:{eval_time*1000:.0f}ms")
