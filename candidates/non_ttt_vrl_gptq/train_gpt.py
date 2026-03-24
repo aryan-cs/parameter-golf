@@ -207,6 +207,7 @@ META_PASSTHROUGH = "p"
 META_PASSTHROUGH_CTRL = "c"
 META_INT6 = 6
 META_INT8 = 8
+META_BLOB_MAGIC = b"QMB1"
 
 def _classify_param(name):
     if "tok_emb" in name or "lm_head" in name: return "embed"
@@ -226,6 +227,64 @@ def _meta_kind(info):
     if info == META_INT8 or (isinstance(info, dict) and info.get("type") == "int8"):
         return "int8"
     return None
+
+def encode_quant_meta(meta: dict[str, object]) -> tuple[bytes, list[str]]:
+    names = sorted(meta)
+    kind_map = {
+        META_PASSTHROUGH: 0,
+        META_PASSTHROUGH_CTRL: 1,
+        META_INT6: 2,
+        META_INT8: 3,
+        "passthrough": 0,
+        "passthrough_ctrl": 1,
+    }
+    parts = [META_BLOB_MAGIC, struct.pack("<H", len(names))]
+    for name in names:
+        kind = meta[name]
+        kind_code = kind_map.get(kind)
+        if kind_code is None:
+            kind_name = _meta_kind(kind)
+            if kind_name == "int6": kind_code = 2
+            elif kind_name == "int8": kind_code = 3
+            else: raise ValueError(f"unsupported quant meta entry for {name}: {kind!r}")
+        name_bytes = name.encode("utf-8")
+        parts.append(struct.pack("<HB", len(name_bytes), kind_code))
+        parts.append(name_bytes)
+    return b"".join(parts), names
+
+def decode_quant_meta(blob: bytes) -> tuple[dict[str, object], list[str], bool]:
+    if blob.startswith(META_BLOB_MAGIC):
+        offset = len(META_BLOB_MAGIC)
+        entry_count = struct.unpack_from("<H", blob, offset)[0]; offset += 2
+        kind_map = {
+            0: META_PASSTHROUGH,
+            1: META_PASSTHROUGH_CTRL,
+            2: META_INT6,
+            3: META_INT8,
+        }
+        meta, names = {}, []
+        for _ in range(entry_count):
+            name_len, kind_code = struct.unpack_from("<HB", blob, offset); offset += 3
+            name = blob[offset:offset+name_len].decode("utf-8"); offset += name_len
+            meta[name] = kind_map[kind_code]
+            names.append(name)
+        return meta, names, True
+    return json.loads(blob.decode("utf-8")), [], False
+
+def encode_tensor_ref(tname: str, name_to_idx: dict[str, int]) -> tuple[int, int]:
+    if tname.endswith(".q"):
+        base_name, suffix = tname[:-2], 1
+    elif tname.endswith(".scale"):
+        base_name, suffix = tname[:-6], 2
+    else:
+        base_name, suffix = tname, 0
+    return name_to_idx[base_name], suffix
+
+def decode_tensor_ref(name_idx: int, suffix: int, names: list[str]) -> str:
+    base_name = names[name_idx]
+    if suffix == 1: return base_name + ".q"
+    if suffix == 2: return base_name + ".scale"
+    return base_name
 
 def quantize_int6_gptq(weight, hessian=None, clip_range=31, block_size=128):
     """Full GPTQ: Hessian-aware int6 quantization with Cholesky error compensation.
@@ -874,12 +933,12 @@ def run_export_eval(args, base_model, rank, world_size, device, distributed, mas
                         quant_result[qname][mask] = 0
             total_int6 = sum(quant_result[n + ".q"].numel() for n, i in quant_meta.items() if _meta_kind(i) == "int6" and n + ".q" in quant_result)
             log0(f"prune:zeroed {pruned_count}/{total_int6} int6 weights ({100*pruned_count/max(total_int6,1):.1f}%) threshold={threshold:.0f}")
-    meta_json = json.dumps(quant_meta, separators=(",", ":")).encode("utf-8")
-    parts = [struct.pack("<I", len(meta_json)), meta_json]
+    meta_blob, meta_names = encode_quant_meta(quant_meta)
+    name_to_idx = {name: idx for idx, name in enumerate(meta_names)}
+    parts = [struct.pack("<I", len(meta_blob)), meta_blob]
     tensor_order = sorted(quant_result.keys())
     for tname in tensor_order:
         t = quant_result[tname]
-        name_bytes = tname.encode("utf-8")
         base_name = tname[:-2] if tname.endswith(".q") else ""
         pack_int6 = (
             tname.endswith(".q")
@@ -892,9 +951,8 @@ def run_export_eval(args, base_model, rank, world_size, device, distributed, mas
         else:
             t_np = t.contiguous().numpy() if t.dtype != torch.bfloat16 else t.contiguous().view(torch.uint16).numpy()
             raw = t_np.tobytes()
-        parts.append(struct.pack("<H", len(name_bytes)))
-        parts.append(name_bytes)
-        parts.append(struct.pack("<BB", dt, t.ndim))
+        name_idx, suffix = encode_tensor_ref(tname, name_to_idx)
+        parts.append(struct.pack("<HBBB", name_idx, suffix, dt, t.ndim))
         for d in t.shape: parts.append(struct.pack("<I", d))
         parts.append(raw)
     quant_raw = b"".join(parts)
@@ -914,13 +972,17 @@ def run_export_eval(args, base_model, rank, world_size, device, distributed, mas
     else: raw_data = zlib.decompress(model_blob_loaded)
     offset = 0
     meta_len = struct.unpack_from("<I", raw_data, offset)[0]; offset += 4
-    loaded_meta = json.loads(raw_data[offset:offset+meta_len].decode("utf-8")); offset += meta_len
+    loaded_meta, meta_names, compact_tensor_refs = decode_quant_meta(raw_data[offset:offset+meta_len]); offset += meta_len
     dtype_rmap = {0: (torch.int8, np.int8), 1: (torch.float16, np.float16), 2: (torch.float32, np.float32), 3: (torch.bfloat16, np.uint16)}
     loaded_result = {}
     while offset < len(raw_data):
-        name_len = struct.unpack_from("<H", raw_data, offset)[0]; offset += 2
-        tname = raw_data[offset:offset+name_len].decode("utf-8"); offset += name_len
-        dt, ndim = struct.unpack_from("<BB", raw_data, offset); offset += 2
+        if compact_tensor_refs:
+            name_idx, suffix, dt, ndim = struct.unpack_from("<HBBB", raw_data, offset); offset += 5
+            tname = decode_tensor_ref(name_idx, suffix, meta_names)
+        else:
+            name_len = struct.unpack_from("<H", raw_data, offset)[0]; offset += 2
+            tname = raw_data[offset:offset+name_len].decode("utf-8"); offset += name_len
+            dt, ndim = struct.unpack_from("<BB", raw_data, offset); offset += 2
         shape = []
         for _ in range(ndim):
             shape.append(struct.unpack_from("<I", raw_data, offset)[0]); offset += 4

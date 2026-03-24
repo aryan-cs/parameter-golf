@@ -608,3 +608,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: Packed int6 reduces that payload from `26,345,472` raw bytes to `19,759,104` raw bytes, a savings of `6,586,368` bytes before compression. Since the invalid run only missed the final cap by `333,801` bytes, this materially increases confidence that the new export format plus the prune ladder can produce a valid artifact.
 - Decision: Treat the packed-int6 serializer as a likely decisive size fix rather than a speculative micro-optimization.
 - Next step: Prioritize rerunning the VRL recovery chain with the new serializer as soon as Runpod credits and a fresh pod are available.
+
+- Timestamp: 2026-03-24 02:40 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL export compression
+- Objective: Remove another source of artifact bloat while credits are still pending by shrinking the export header itself.
+- Command or config: Patched `candidates/non_ttt_vrl_gptq/train_gpt.py` so quantization metadata is stored as a compact binary blob instead of JSON, and so tensor records reference a base-name table with suffix codes instead of storing full tensor names inline. Kept the loader backward-compatible with legacy JSON metadata / legacy tensor headers. Verified syntax with `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py` and verified the new header codec with a pure-Python round-trip harness for metadata encoding, tensor-ref encoding, and legacy fallback decoding.
+- Result: The exporter now removes another layer of duplicated strings from the artifact format while preserving compatibility with older artifacts. This should shave additional bytes off the final packed model on top of the already-implemented packed-int6 payload savings.
+- Decision: Keep the compact metadata + tensor-ref table in the main lane; it is a low-risk size optimization that directly targets the remaining validity blocker.
+- Next step: Push this change, then relaunch the recovery chain on the next pod so we can measure the combined impact of packed int6, compact metadata, and the staged prune ladder.
