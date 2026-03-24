@@ -163,22 +163,22 @@ LF = [{
 }]
 
 def cpm(name):
-    if "tok_emb" in name or "lm_head" in name: return "embed"
-    if ".mlp." in name: return "mlp"
-    if "bigram" in name: return "bigram"
-    if ".attn." in name or (".proj." in name and ".mlp." not in name): return "attn"
-    if "ve_shared" in name: return "ve"
-    return "other"
+    if "tok_emb" in name or "lm_head" in name: return "e"
+    if ".mlp." in name: return "m"
+    if "bigram" in name: return "b"
+    if ".attn." in name or (".proj." in name and ".mlp." not in name): return "a"
+    if "ve_shared" in name: return "v"
+    return "o"
 
 def mk(info):
     if info == MP or info == "passthrough":
-        return "passthrough"
+        return "p"
     if info == MC or info == "passthrough_ctrl":
-        return "passthrough_ctrl"
+        return "c"
     if info == M6 or (isinstance(info, dict) and info.get("type") == "int6"):
-        return "int6"
+        return "6"
     if info == M8 or (isinstance(info, dict) and info.get("type") == "int8"):
-        return "int8"
+        return "8"
     return None
 
 def eqm(meta: dict[str, object]) -> tuple[bytes, list[str]]:
@@ -197,8 +197,8 @@ def eqm(meta: dict[str, object]) -> tuple[bytes, list[str]]:
         kind_code = kind_map.get(kind)
         if kind_code is None:
             kind_name = mk(kind)
-            if kind_name == "int6": kind_code = 2
-            elif kind_name == "int8": kind_code = 3
+            if kind_name == "6": kind_code = 2
+            elif kind_name == "8": kind_code = 3
             else: raise ER(f"bad meta {name}:{kind!r}")
         name_bytes = name.encode("utf-8")
         parts.append(PK("<HB", len(name_bytes), kind_code))
@@ -334,7 +334,7 @@ def qft(t):
 
 def qsd(sd, hh=None):
     result, meta = {}, {}
-    int6_cats = {"mlp", "attn", "bigram", "ve"}
+    int6_cats = "mabv"
     for name, tensor in sd.items():
         t = DX(tensor)
         cat = cpm(name)
@@ -359,7 +359,7 @@ def dsd(result, meta, template_sd):
         info = meta.get(name)
         if info is None: continue
         orig_dtype = orig.dtype
-        if mk(info) in {"passthrough", "passthrough_ctrl"}:
+        if info in (MP, MC) or mk(info) in "pc":
             t = result[name]
             if t.dtype == F16 and orig_dtype in (F32, BF): t = t.to(orig_dtype)
             out[name] = t; continue
@@ -931,7 +931,7 @@ def ree(a, bm, rank, ws, dv, dd, m0,
     if a.pp > 0:
         ai6 = []
         for name, info in qm.items():
-            if mk(info) == "int6":
+            if mk(info) == "6":
                 qname = name + ".q"
                 if qname in qr:
                     ai6.append(qr[qname].flatten().abs().float())
@@ -941,13 +941,13 @@ def ree(a, bm, rank, ws, dv, dd, m0,
             threshold = all_vals.kthvalue(k).values.item()
             prc = 0
             for name, info in qm.items():
-                if mk(info) == "int6":
+                if mk(info) == "6":
                     qname = name + ".q"
                     if qname in qr:
                         mask = qr[qname].abs() <= int(threshold)
                         prc += mask.sum().item()
                         qr[qname][mask] = 0
-            ti6 = sum(qr[n + ".q"].numel() for n, i in qm.items() if mk(i) == "int6" and n + ".q" in qr)
+            ti6 = sum(qr[n + ".q"].numel() for n, i in qm.items() if mk(i) == "6" and n + ".q" in qr)
             log0(f"prune:{prc}/{ti6} ({100*prc/max(ti6,1):.1f}%) thr={threshold:.0f}")
     meta_blob, meta_names = eqm(qm)
     nti = {name: idx for idx, name in enumerate(meta_names)}
@@ -963,7 +963,7 @@ def ree(a, bm, rank, ws, dv, dd, m0,
         bn = tname[:-2] if tname.endswith(".q") else ""
         pi = (
             tname.endswith(".q")
-            and mk(qm.get(bn)) == "int6"
+            and mk(qm.get(bn)) == "6"
         )
         dtype_map = {I8: 0, F16: 1, F32: 2, BF: 3}
         dt = 5 if pi else dtype_map.get(t.dtype, 2)
