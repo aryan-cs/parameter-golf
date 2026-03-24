@@ -162,7 +162,7 @@ LF = [{
     "lp": 1,
     "pb": 0,
     "mode": lzma.MODE_NORMAL,
-    "nice_len": 64,
+    "nice_len": 70,
     "mf": lzma.MF_HC3,
 }]
 
