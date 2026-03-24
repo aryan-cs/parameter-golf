@@ -230,3 +230,21 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The queue watcher is live as PID `128951`, and its log `/workspace/golf/logs/non_ttt_vrl_gptq_1gpu_long_queue_20260324T032220Z.log` is already reporting `waiting shards=65 ...`.
 - Decision: Leave the watcher running so the pod automatically rolls into the long VRL run as soon as the dataset download completes.
 - Next step: Check back for `80` train shards and confirm that the queued long run has started.
+
+- Timestamp: 2026-03-23 19:30 America/Chicago
+- Commit: uncommitted
+- Lane: runpod data plumbing
+- Objective: Fix the resumed shard downloader after it stalled at 65/80.
+- Command or config: Inspected the download log, found `RuntimeError: ... No space left on device`, moved Hugging Face cache policy into `runpod/pod_bootstrap.sh` via `HF_HOME=/workspace/.cache/huggingface`, cleared `/root/.cache/huggingface`, and relaunched the 80-shard downloader with `HF_HOME` and `HUGGINGFACE_HUB_CACHE` pointed at `/workspace`.
+- Result: The download resumed successfully from `65` to `80` shards without filling the local root disk.
+- Decision: Keep Hugging Face cache on `/workspace` permanently for Runpod workflows so future dataset/bootstrap operations do not silently exhaust the 20 GB root overlay.
+- Next step: Let the queue watcher hand off automatically from the completed download to the long VRL run, then monitor the new run.
+
+- Timestamp: 2026-03-23 19:31 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL long-run
+- Objective: Confirm that the queued long single-H100 VRL run actually started on the full 80-shard dataset.
+- Command or config: Read `/workspace/golf/logs/non_ttt_vrl_gptq_1gpu_long_queue_20260324T032220Z.log` after the downloader completed and confirmed that it launched `bash runpod/pod_run.sh non_ttt_vrl_gptq 1337 configs/runpod/non_ttt_vrl_gptq_1gpu_long.env`.
+- Result: The long run is live at `runs/non_ttt_vrl_gptq/seed1337/20260324T033051Z`, and its startup log confirms `train_shards:80`.
+- Decision: Let this long VRL run continue; it is now the highest-signal experiment we can run on the current 1xH100 pod.
+- Next step: Monitor `runs/non_ttt_vrl_gptq/seed1337/20260324T033051Z/train.log` for the first milestone and compare its eventual quantized score against the earlier 10-shard VRL smoke run.

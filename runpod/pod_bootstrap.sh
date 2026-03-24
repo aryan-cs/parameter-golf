@@ -8,6 +8,8 @@ export PATH="$HOME/.local/bin:$PATH"
 export UV_LINK_MODE=copy
 VENV_DIR="${VENV_DIR:-/root/.venvs/golf}"
 export UV_PROJECT_ENVIRONMENT="$VENV_DIR"
+export HF_HOME="${HF_HOME:-/workspace/.cache/huggingface}"
+export HUGGINGFACE_HUB_CACHE="${HUGGINGFACE_HUB_CACHE:-$HF_HOME/hub}"
 
 if ! command -v uv >/dev/null 2>&1; then
   curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -15,11 +17,14 @@ if ! command -v uv >/dev/null 2>&1; then
 fi
 
 mkdir -p "$(dirname "$VENV_DIR")"
+mkdir -p "$HF_HOME" "$HUGGINGFACE_HUB_CACHE"
 mkdir -p cache logs runs data/datasets data/tokenizers
 
 {
   echo "repo_root=$ROOT"
   echo "venv_dir=$VENV_DIR"
+  echo "hf_home=$HF_HOME"
+  echo "hf_hub_cache=$HUGGINGFACE_HUB_CACHE"
   echo "utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo "git_commit=$(git rev-parse HEAD 2>/dev/null || echo unknown)"
   echo "uv=$(uv --version)"
