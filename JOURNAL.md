@@ -959,3 +959,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The candidate file shrank from `60,163` bytes to `59,877` bytes, another `286` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 59,877`, which is `-15,054` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
 - Decision: Keep the `main()` alias-shortening pass in the main lane. The gain is modest, but it is safe, validated, and continues moving the counted candidate source downward without touching the exporter format.
 - Next step: Push the `main()` alias-shortening pass so the next live export rerun uses the smaller counted candidate source together with the stronger bitplane + raw-LZMA exporter path.
+
+- Timestamp: 2026-03-24 03:47 America/Chicago
+- Commit: `244cc2c`
+- Lane: non-ttt VRL code-size hygiene
+- Objective: Reclaim the last easy counted-source bytes still tied up in helper-function config aliases by shortening the remaining `args.` references outside `main()`.
+- Command or config: Renamed the config parameter from `args` to `a` in `eval_val(...)` and `ree(...)`, updated the corresponding local references and call sites, then reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, reran `python3 runpod/check_ready.py`, and reran the offline codec round-trip validator on the fixed-seed quantized VRL model skeleton.
+- Result: The candidate file shrank from `59,877` bytes to `59,826` bytes, another `51` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 59,826`, which is `-15,105` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
+- Decision: Keep the helper-alias cleanup in the main lane. The gain is small, but it is validated, safe, and probably close to the end of the high-confidence alias-only wins.
+- Next step: Push the helper-alias cleanup so the next live export rerun uses the smallest counted candidate source we have so far together with the stronger bitplane + raw-LZMA exporter path.
