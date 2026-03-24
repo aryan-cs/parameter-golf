@@ -516,27 +516,27 @@ def lds(file):
 
 class TS:
     def __init__(self, pat):
-        self.files = [PT(p) for p in sorted(GG(pat))]
-        if not self.files: raise FE(f"no:{pat}")
-        self.file_idx = 0; self.tokens = lds(self.files[0]); self.pos = 0
-    def _advance_file(self):
-        self.file_idx = (self.file_idx + 1) % len(self.files); self.tokens = lds(self.files[self.file_idx]); self.pos = 0
-    def take(self, n):
+        self.fs = [PT(p) for p in sorted(GG(pat))]
+        if not self.fs: raise FE(f"no:{pat}")
+        self.fi = 0; self.ts = lds(self.fs[0]); self.p = 0
+    def af(self):
+        self.fi = (self.fi + 1) % len(self.fs); self.ts = lds(self.fs[self.fi]); self.p = 0
+    def tk(self, n):
         chunks, r = [], n
         while r > 0:
-            avail = self.tokens.numel() - self.pos
-            if avail <= 0: self._advance_file(); continue
-            k = min(r, avail); chunks.append(self.tokens[self.pos:self.pos+k]); self.pos += k; r -= k
+            avail = self.ts.numel() - self.p
+            if avail <= 0: self.af(); continue
+            k = min(r, avail); chunks.append(self.ts[self.p:self.p+k]); self.p += k; r -= k
         return chunks[0] if len(chunks) == 1 else CAT(chunks)
 
 class DTL:
     def __init__(self, pat, rank, ws, dv):
-        self.rank, self.ws, self.dv = rank, ws, dv; self.stream = TS(pat)
+        self.rk, self.ws, self.dv = rank, ws, dv; self.s = TS(pat)
     def nb(self, gt, sl, gas):
         prs = gt // (self.ws * gas) + 1
-        chunk = self.stream.take(prs * self.ws)
-        start = self.rank * prs; local = chunk[start:start+prs].to(dtype=I64)
-        x, y = local[:-1].reshape(-1, sl), local[1:].reshape(-1, sl)
+        ck = self.s.tk(prs * self.ws)
+        st = self.rk * prs; lc = ck[st:st+prs].to(dtype=I64)
+        x, y = lc[:-1].reshape(-1, sl), lc[1:].reshape(-1, sl)
         return x.to(self.dv, non_blocking=NB), y.to(self.dv, non_blocking=NB)
 
 class RN(M):
