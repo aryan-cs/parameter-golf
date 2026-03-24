@@ -470,7 +470,7 @@ def mcn(cid: int) -> str:
     if cid == KG:
         return "zl9"
     if cid == KL:
-        return "lz_hc3_20_p1_n64"
+        return "lz20p1n64"
     return f"u({cid})"
 
 def cmb(raw: bytes) -> tuple[bytes, int]:
@@ -497,7 +497,7 @@ def dmb(blob: bytes) -> tuple[bytes, str]:
             try:
                 return lzma.decompress(payload, format=lzma.FORMAT_RAW, filters=LF), mcn(cid)
             except lzma.LZMAError:
-                return lzma.decompress(payload), "lx_hc4_32_xz"
+                return lzma.decompress(payload), "lx432"
         raise ER(f"bad codec {cid}")
     if HAS_ZSTD:
         try:
