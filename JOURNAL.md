@@ -590,3 +590,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The root README now explains how to navigate the repo, which lane is active, how the code is organized, and what to run next. The ignore file is shorter, better grouped, and aligned with the current repo layout.
 - Decision: Keep the new README as the main entry point for collaborators and use the journal/runbook for evolving operational details.
 - Next step: Push the cleanup so the remote repository becomes easier to onboard into before credits land.
+
+- Timestamp: 2026-03-24 02:19 America/Chicago
+- Commit: uncommitted
+- Lane: runpod readiness
+- Objective: Reconfirm that the repo is still launch-ready after the cleanup pass and before new Runpod credits arrive.
+- Command or config: Reran `python3 runpod/check_ready.py` and checked the local git state with `git rev-parse HEAD && git status --short`.
+- Result: The readiness checker still passes, both recovery wrappers still reference the expected config chains, and the worktree is clean on top of commit `724c979`.
+- Decision: Hold the repo steady; there is no new local breakage to fix before a fresh pod is available.
+- Next step: Wait for credits, then relaunch immediately from the existing recovery scripts instead of making speculative offline changes.
