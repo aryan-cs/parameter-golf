@@ -293,3 +293,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The full-80-shard run improved again to `step:3000/20000 val_loss:2.0758 val_bpb:1.2294 train_time:2339071ms`, with the intermediate training log also confirming `step:2500/20000 train_loss:2.0976`.
 - Decision: Keep the current baseline run untouched; it remains the strongest live training signal in the repo and is still improving on schedule.
 - Next step: Let the run continue toward its full 5400-second budget, then compare the final quantized output against the prepared no-prune follow-up if export degradation is still the bottleneck.
+
+- Timestamp: 2026-03-23 23:14 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL export ablation
+- Objective: Avoid idle GPU time after the active baseline run finishes on the single-H100 pod.
+- Command or config: Copied the new no-prune configs to the pod and queued `/tmp/non_ttt_vrl_gptq_1gpu_long_noprune_after_baseline.sh`, which waits for the baseline PID `129473` to exit and then launches `bash runpod/pod_run.sh non_ttt_vrl_gptq 1337 configs/runpod/non_ttt_vrl_gptq_1gpu_long_noprune.env`; queue log: `/workspace/golf/logs/non_ttt_vrl_gptq_1gpu_long_noprune_queue_20260324T041421Z.log`.
+- Result: The follow-up watcher is live as PID `135788` and is already polling the active baseline run, so the pod will automatically roll into the no-prune VRL ablation when the current run ends.
+- Decision: Keep the baseline run untouched and use the queued no-prune run as the next immediate export-side test if the final quantized score still leaves too much on the table.
+- Next step: Let the baseline finish, inspect its final post-quant result, and then compare it directly against the queued no-prune follow-up on the same hardware.
