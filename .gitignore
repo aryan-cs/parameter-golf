@@ -1,23 +1,32 @@
+# Python / local environments
 __pycache__/
-*.pyc
-.ipynb_checkpoints/
+*.py[cod]
 .venv/
-.venv-mac/
+.venv-*/
 .mypy_cache/
 .pytest_cache/
-.DS_Store
+.ruff_cache/
+.ipynb_checkpoints/
 *.egg-info/
-.env
 
-data/tokenizers/
+# Local machine / editor
+.DS_Store
+.env
+*.swp
+*.swo
+
+# Dataset caches and generated artifacts
 data/datasets/
+data/tokenizers/
 data/manifest.json
 data/docs_selected.jsonl
-
 logs/
-cache/
-workbench/
 runs/
-mac_proxy_candidates/**/logs/
-mac_proxy_candidates/**/*.npz
-mac_proxy_candidates/**/*.ptz
+cache/
+.cache/
+workbench/
+
+# Runpod / export leftovers
+.sync_commit
+final_model.int6.ptz
+pre_export_model.pt

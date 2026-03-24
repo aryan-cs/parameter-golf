@@ -581,3 +581,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The restart path now has a clean monitor command in addition to sync, bootstrap, launch, and fetch. Once credits land, we can go from zero to a watched run without reconstructing any SSH one-liners by hand.
 - Decision: Keep the repo in launch-ready mode while waiting for credits instead of making more speculative code changes.
 - Next step: When credits land, run the readiness checker, launch the recovery wrapper for the chosen pod, and monitor it with `runpod/local_watch_latest.sh`.
+
+- Timestamp: 2026-03-24 02:11 America/Chicago
+- Commit: uncommitted
+- Lane: repo cleanup
+- Objective: Clean up the remote repo surface so the root docs and ignore rules reflect the current workflow instead of stale challenge notes and ad hoc ignore patterns.
+- Command or config: Rewrote `README.md` as a codebase/operator guide and simplified `.gitignore` into grouped sections for local envs, machine clutter, generated datasets, runs, logs, and Runpod leftovers.
+- Result: The root README now explains how to navigate the repo, which lane is active, how the code is organized, and what to run next. The ignore file is shorter, better grouped, and aligned with the current repo layout.
+- Decision: Keep the new README as the main entry point for collaborators and use the journal/runbook for evolving operational details.
+- Next step: Push the cleanup so the remote repository becomes easier to onboard into before credits land.
