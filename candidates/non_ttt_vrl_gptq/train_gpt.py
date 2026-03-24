@@ -470,8 +470,8 @@ def mcn(cid: int) -> str:
     if cid == KG:
         return "zl9"
     if cid == KL:
-        return "l181683"
-    return f"u({cid})"
+        return "l183"
+    return f"u{cid}"
 
 def cmb(raw: bytes) -> tuple[bytes, int]:
     candidates = [
@@ -497,14 +497,14 @@ def dmb(blob: bytes) -> tuple[bytes, str]:
             try:
                 return lzma.decompress(payload, format=lzma.FORMAT_RAW, filters=LF), mcn(cid)
             except lzma.LZMAError:
-                return lzma.decompress(payload), "lx432"
+                return lzma.decompress(payload), "x32"
         raise ER(f"bad codec {cid}")
     if HAS_ZSTD:
         try:
-            return zstd.ZstdDecompressor().decompress(blob), "lzs22"
+            return zstd.ZstdDecompressor().decompress(blob), "zs"
         except Exception:
             pass
-    return zlib.decompress(blob), "lzl9"
+    return zlib.decompress(blob), "z9"
 
 def lds(file):
     hb = 256 * np.dtype("<i4").itemsize
