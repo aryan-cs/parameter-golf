@@ -161,7 +161,7 @@ LF = [{
     "pb": 0,
     "mode": lzma.MODE_NORMAL,
     "nice_len": 68,
-    "mf": lzma.MF_HC4,
+    "mf": lzma.MF_HC3,
 }]
 
 def cpm(name):
