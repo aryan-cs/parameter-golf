@@ -1033,7 +1033,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Next step: Push this pass so the next live export rerun uses the smallest counted candidate source we have so far together with the stronger bitplane + raw-LZMA exporter path.
 
 - Timestamp: 2026-03-24 04:12 America/Chicago
-- Commit: uncommitted
+- Commit: `7d1d3ce`
 - Lane: non-ttt VRL code-size hygiene
 - Objective: Reclaim a larger counted-size block by shortening the candidate-private env keys in `H` and updating the VRL runpod configs/scripts in lockstep, while leaving torchrun’s standard distributed env vars alone.
 - Command or config: Patched `candidates/non_ttt_vrl_gptq/train_gpt.py` so the candidate now reads short private env keys such as `DP`, `TP`, `VLE`, `MWS`, `GCB`, `GBS`, `PP`, `SPC`, and `EOC`; updated the `non_ttt_vrl_gptq*.env` runpod configs to the same short keys; and updated `runpod/check_ready.py`, `runpod/pod_queue_export_ladder.sh`, and `runpod/pod_queue_export_after_prefix.sh` to look for `PP` / `SPC` / `EOC`. Then reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, reran `python3 runpod/check_ready.py`, and reran the offline codec round-trip validator on the fixed-seed quantized VRL model skeleton.
@@ -1042,7 +1042,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Next step: Push the short env-key pass so the next live export rerun uses the smallest counted candidate source we have so far together with the stronger bitplane + raw-LZMA exporter path.
 
 - Timestamp: 2026-03-24 04:16 America/Chicago
-- Commit: uncommitted
+- Commit: `b5a8431`
 - Lane: non-ttt VRL code-size hygiene
 - Objective: Reclaim another solid counted-size block by shortening repeated internal `device`, `seq_len`, and decode `offset` locals in validation, loader, rotary-cache, export, and main-loop paths without changing external interfaces.
 - Command or config: Renamed the internal `device` locals to `dv`, shortened several local `seq_len` parameters to short in-file aliases, and collapsed decode offsets to `o` inside `candidates/non_ttt_vrl_gptq/train_gpt.py`; then reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, reran `python3 runpod/check_ready.py`, and reran the fixed-seed offline codec round-trip validator on the quantized VRL model skeleton.
@@ -1051,7 +1051,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Next step: Push this pass so the next live export rerun uses the smallest counted candidate source we have so far together with the stronger bitplane + raw-LZMA exporter path.
 
 - Timestamp: 2026-03-24 04:19 America/Chicago
-- Commit: uncommitted
+- Commit: `1277135`
 - Lane: non-ttt VRL code-size hygiene
 - Objective: Reclaim another meaningful counted-size block by shortening repeated internal export/calibration symbols such as codec ids, meta-index helpers, loader-pattern args, calibration Hessian locals, and a few main/export checkpoint locals.
 - Command or config: Renamed the remaining high-frequency internal symbols in `candidates/non_ttt_vrl_gptq/train_gpt.py` (including `codec_id`, `name_to_idx`, `pattern`, `hessians`, `param_name`, `master`, `raw_logits_fn`, and `model_state`), then reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, reran `python3 runpod/check_ready.py`, and reran the fixed-seed offline codec round-trip validator on the quantized VRL model skeleton.
