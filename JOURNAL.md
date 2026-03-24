@@ -176,3 +176,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The repo now has a fast smoke configuration for the `1.1175` VRL + Full GPTQ lane, ready for an apples-to-apples comparison against the March 22 base on the same Runpod pod and dataset subset.
 - Decision: Launch the VRL/GPTQ smoke run next on the existing pod as soon as the base smoke result is captured.
 - Next step: Commit and push the VRL smoke config, sync it to the pod, and start `bash runpod/pod_run.sh non_ttt_vrl_gptq 1337 configs/runpod/non_ttt_vrl_gptq_smoke.env`.
+
+- Timestamp: 2026-03-23 18:40 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL/GPTQ smoke
+- Objective: Start the higher-upside non-TTT lane on the same pod immediately after the March 22 smoke lane finished.
+- Command or config: Synced commit `0d7b131` to the pod and launched `bash runpod/pod_run.sh non_ttt_vrl_gptq 1337 configs/runpod/non_ttt_vrl_gptq_smoke.env` under `nohup`, with the detached launcher log at `/workspace/golf/logs/non_ttt_vrl_gptq_smoke_detached_20260324T025035Z.log`.
+- Result: A fresh background VRL/GPTQ smoke run is active at `runs/non_ttt_vrl_gptq/seed1337/20260324T025035Z`, creating a direct same-pod comparison against the March 22 base smoke results.
+- Decision: Let the VRL/GPTQ smoke lane run to completion before deciding whether the next spend should be a full-shard single-GPU repro or an 8xH100 validation.
+- Next step: Read `runs/non_ttt_vrl_gptq/seed1337/20260324T025035Z/train.log` after completion and compare both pre-quant and post-quant behavior against the March 22 smoke run.
