@@ -872,12 +872,12 @@ class GPT(nn.Module):
         logits = F.linear(x, self.tok_emb.weight.to(x.dtype)) if self.tie_embeddings else self.lm_head(x)
         return self.logit_softcap * torch.tanh(logits / self.logit_softcap)
 
-def collect_hessians(base_model, train_loader, args, device, grad_accum_steps, num_batches=256):
+def collect_hessians(bm, train_loader, args, device, grad_accum_steps, num_batches=256):
     """Run calibration batches through the model, collecting H = X^T X for each CastedLinear."""
     hessians = {}  # param_name -> H matrix (cols x cols)
     hooks = []
     param_to_name = {}
-    for name, module in base_model.named_modules():
+    for name, module in bm.named_modules():
         if isinstance(module, CastedLinear):
             param_name = name + ".weight"
             param_to_name[id(module)] = param_name
@@ -895,11 +895,11 @@ def collect_hessians(base_model, train_loader, args, device, grad_accum_steps, n
                 return hook_fn
             h = module.register_forward_hook(make_hook(id(module), param_name, cols))
             hooks.append(h)
-    base_model.eval()
+    bm.eval()
     with torch.inference_mode(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
         for _ in range(num_batches):
             x, y = train_loader.next_batch(args.train_batch_tokens, args.train_seq_len, grad_accum_steps)
-            _ = base_model(x, y)
+            _ = bm(x, y)
     for h in hooks: h.remove()
     for name in hessians:
         H = hessians[name]
@@ -907,7 +907,7 @@ def collect_hessians(base_model, train_loader, args, device, grad_accum_steps, n
         damp = 0.01 * torch.diag(H).mean().clamp_min(1e-6)
         H += damp * torch.eye(H.shape[0])
         hessians[name] = H
-    base_model.train()
+    bm.train()
     return hessians
 
 def eval_val_sliding(logits_fn, rank, world_size, device, val_tokens,
@@ -964,14 +964,14 @@ def maybe_save_pre_export_checkpoint(path_spec: str, state_dict: dict[str, torch
     log0(f"save_ckpt:{path}")
     return str(path)
 
-def run_export_eval(args, base_model, rank, world_size, device, distributed, master_process,
+def run_export_eval(args, bm, rank, world_size, device, distributed, master_process,
                     code, val_tokens, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut, log0):
     log0(f"gptq:calib {args.gptq_calib_batches} batches")
     calib_loader = DistributedTokenLoader(args.train_files, rank, world_size, device)
-    hessians = collect_hessians(base_model, calib_loader, args, device, 8 // world_size,
+    hessians = collect_hessians(bm, calib_loader, args, device, 8 // world_size,
                                 num_batches=args.gptq_calib_batches)
     hessian_map = {}
-    for name, module in base_model.named_modules():
+    for name, module in bm.named_modules():
         if isinstance(module, CastedLinear):
             sd_name = name + ".weight"
             h_name = name + ".weight"
@@ -979,7 +979,7 @@ def run_export_eval(args, base_model, rank, world_size, device, distributed, mas
                 hessian_map[sd_name] = hessians[h_name]
     log0(f"gptq:hessians {len(hessian_map)} layers")
 
-    sd_cpu = {k: v.detach().cpu() for k, v in base_model.state_dict().items()}
+    sd_cpu = {k: v.detach().cpu() for k, v in bm.state_dict().items()}
     code_bytes = len(code.encode("utf-8")); size_limit = 16_000_000
     quant_result, quant_meta = qsd(sd_cpu, hessians=hessian_map)
     if args.prune_pct > 0:
@@ -1098,12 +1098,12 @@ def run_export_eval(args, base_model, rank, world_size, device, distributed, mas
             if torch_dt == torch.bfloat16: t = t.view(torch.bfloat16)
         loaded_result[tname] = t
     deq_state = dsd(loaded_result, loaded_meta, sd_cpu)
-    base_model.load_state_dict(deq_state, strict=True)
+    bm.load_state_dict(deq_state, strict=True)
     eval_sl = args.eval_seq_len if args.eval_seq_len > 0 else args.train_seq_len
     val_tokens_eval = load_validation_tokens(args.val_files, eval_sl) if eval_sl != args.train_seq_len else val_tokens
-    raw_logits_fn = torch.compile(base_model.forward_logits, dynamic=False) if not bool(int(os.environ.get("TORCH_COMPILE_DISABLE", "0"))) else base_model.forward_logits
+    raw_logits_fn = torch.compile(bm.forward_logits, dynamic=False) if not bool(int(os.environ.get("TORCH_COMPILE_DISABLE", "0"))) else bm.forward_logits
     warmup_x = torch.zeros(args.eval_batch_seqs, eval_sl, dtype=torch.int64, device=device)
-    base_model.eval()
+    bm.eval()
     with torch.inference_mode(), torch.autocast(device_type="cuda", dtype=torch.bfloat16): _ = raw_logits_fn(warmup_x)
     torch.cuda.synchronize(); t_eval = time.perf_counter()
     q_vl, q_vb = eval_val_sliding(raw_logits_fn, rank, world_size, device,
@@ -1149,7 +1149,7 @@ def main():
     log0(f"val_tokens:{val_tokens.numel()-1}")
     CastedLinear._qat_enabled = False
     CastedLinear._qat_clip_pct = args.qat_clip_pct  # v41: QAT-export alignment
-    base_model = GPT(
+    bm = GPT(
         vocab_size=args.vocab_size, num_layers=args.num_layers, model_dim=args.model_dim,
         num_heads=args.num_heads, num_kv_heads=args.num_kv_heads, mlp_mult=args.mlp_mult,
         tie_embeddings=args.tie_embeddings, tied_embed_init_std=args.tied_embed_init_std,
@@ -1159,51 +1159,51 @@ def main():
         xsa_last_n=args.xsa_last_n, rope_dims=args.rope_dims, ln_scale=args.ln_scale,
         ve_enabled=args.ve_enabled, ve_dim=args.ve_dim, ve_layers=args.ve_layers,
     ).to(device).bfloat16()
-    for m in base_model.modules():
+    for m in bm.modules():
         if isinstance(m, CastedLinear): m.float()
-    restore_low_dim_params_to_fp32(base_model)
-    compiled_model = torch.compile(base_model, dynamic=False, fullgraph=True) if not bool(int(os.environ.get("TORCH_COMPILE_DISABLE", "0"))) else base_model
+    restore_low_dim_params_to_fp32(bm)
+    compiled_model = torch.compile(bm, dynamic=False, fullgraph=True) if not bool(int(os.environ.get("TORCH_COMPILE_DISABLE", "0"))) else bm
     model = DDP(compiled_model, device_ids=[local_rank], broadcast_buffers=False) if distributed else compiled_model
     export_only_checkpoint = resolve_checkpoint_path(args.export_only_checkpoint)
     if export_only_checkpoint:
         ckpt = torch.load(export_only_checkpoint, map_location="cpu")
         model_state = ckpt["model_state"] if isinstance(ckpt, dict) and "model_state" in ckpt else ckpt
-        base_model.load_state_dict(model_state, strict=True)
+        bm.load_state_dict(model_state, strict=True)
         log0(f"export_only:ckpt:{export_only_checkpoint}")
-        run_export_eval(args, base_model, rank, world_size, device, distributed, master_process,
+        run_export_eval(args, bm, rank, world_size, device, distributed, master_process,
                         code, val_tokens, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut, log0)
         return
-    block_named_params = list(base_model.blocks.named_parameters())
+    block_named_params = list(bm.blocks.named_parameters())
     matrix_params = [p for n, p in block_named_params if p.ndim == 2 and not any(pat in n for pat in CP)]
     scalar_params = [p for n, p in block_named_params if p.ndim < 2 or any(pat in n for pat in CP)]
-    if base_model.skip_weights.numel() > 0: scalar_params.append(base_model.skip_weights)
-    if base_model.smear is not None: scalar_params.append(base_model.smear.gate)
-    if base_model.backout_lambda is not None: scalar_params.append(base_model.backout_lambda)
-    if base_model.bigram is not None: scalar_params.append(base_model.bigram.scale)
-    if base_model.ve_shared is not None:
-        scalar_params.append(base_model.ve_shared.scale)
-        for s in base_model.ve_layer_scales: scalar_params.append(s)
-    if base_model.vrl_enabled:
-        for a in base_model.vrl_alphas: scalar_params.append(a)
+    if bm.skip_weights.numel() > 0: scalar_params.append(bm.skip_weights)
+    if bm.smear is not None: scalar_params.append(bm.smear.gate)
+    if bm.backout_lambda is not None: scalar_params.append(bm.backout_lambda)
+    if bm.bigram is not None: scalar_params.append(bm.bigram.scale)
+    if bm.ve_shared is not None:
+        scalar_params.append(bm.ve_shared.scale)
+        for s in bm.ve_layer_scales: scalar_params.append(s)
+    if bm.vrl_enabled:
+        for a in bm.vrl_alphas: scalar_params.append(a)
     token_lr = args.tied_embed_lr if args.tie_embeddings else args.embed_lr
-    tok_param_groups = [{"params": [base_model.tok_emb.weight], "lr": token_lr, "base_lr": token_lr}]
-    if base_model.bigram is not None:
-        tok_param_groups.append({"params": [base_model.bigram.embed.weight], "lr": token_lr, "base_lr": token_lr})
-        if base_model.bigram.proj is not None: matrix_params.append(base_model.bigram.proj.weight)
-    if base_model.ve_shared is not None:
-        tok_param_groups.append({"params": [base_model.ve_shared.embed.weight], "lr": token_lr, "base_lr": token_lr})
-        if base_model.ve_shared.proj is not None: matrix_params.append(base_model.ve_shared.proj.weight)
+    tok_param_groups = [{"params": [bm.tok_emb.weight], "lr": token_lr, "base_lr": token_lr}]
+    if bm.bigram is not None:
+        tok_param_groups.append({"params": [bm.bigram.embed.weight], "lr": token_lr, "base_lr": token_lr})
+        if bm.bigram.proj is not None: matrix_params.append(bm.bigram.proj.weight)
+    if bm.ve_shared is not None:
+        tok_param_groups.append({"params": [bm.ve_shared.embed.weight], "lr": token_lr, "base_lr": token_lr})
+        if bm.ve_shared.proj is not None: matrix_params.append(bm.ve_shared.proj.weight)
     optimizer_tok = torch.optim.AdamW(tok_param_groups, betas=(args.beta1, args.beta2), eps=args.adam_eps, weight_decay=args.adam_wd, fused=True)
     optimizer_muon = Muon(matrix_params, lr=args.matrix_lr, momentum=args.muon_momentum, ns_steps=args.muon_ns_steps, wd=args.muon_wd)
     for group in optimizer_muon.param_groups: group["base_lr"] = args.matrix_lr
     optimizer_scalar = torch.optim.AdamW([{"params": scalar_params, "lr": args.scalar_lr, "base_lr": args.scalar_lr}],
                                           betas=(args.beta1, args.beta2), eps=args.adam_eps, weight_decay=args.adam_wd, fused=True)
     optimizers = [optimizer_tok, optimizer_muon, optimizer_scalar]
-    if base_model.lm_head is not None:
-        optimizer_head = torch.optim.Adam([{"params": [base_model.lm_head.weight], "lr": args.head_lr, "base_lr": args.head_lr}],
+    if bm.lm_head is not None:
+        optimizer_head = torch.optim.Adam([{"params": [bm.lm_head.weight], "lr": args.head_lr, "base_lr": args.head_lr}],
                                            betas=(args.beta1, args.beta2), eps=args.adam_eps, fused=True)
         optimizers.insert(1, optimizer_head)
-    n_params = sum(p.numel() for p in base_model.parameters())
+    n_params = sum(p.numel() for p in bm.parameters())
     xsa_layers = [i for i in range(args.num_layers) if i >= args.num_layers - args.xsa_last_n] if args.xsa_last_n > 0 else []
     log0(f"model_params:{n_params}"); log0(f"world:{world_size} ga:{grad_accum_steps}")
     log0(f"cfg:v42 lqat={args.late_qat_threshold} ema={args.ema_decay} xsa={args.xsa_last_n} rope={args.rope_dims} bg={args.bigram_vocab_size} qat={args.qat_clip_pct} prune={args.prune_pct}")
@@ -1223,7 +1223,7 @@ def main():
         return rem_ms / max(wd_ms, 1e-9) if rem_ms <= wd_ms else 1.0
 
     if args.warmup_steps > 0:
-        initial_model_state = {n: t.detach().cpu().clone() for n, t in base_model.state_dict().items()}
+        initial_model_state = {n: t.detach().cpu().clone() for n, t in bm.state_dict().items()}
         initial_optimizer_states = [copy.deepcopy(opt.state_dict()) for opt in optimizers]
         model.train()
         for ws in range(args.warmup_steps):
@@ -1236,12 +1236,12 @@ def main():
             for opt in optimizers: opt.step()
             zero_grad_all()
             if args.warmup_steps <= 20 or (ws+1) % 10 == 0: log0(f"warmup_step:{ws+1}/{args.warmup_steps}")
-        base_model.load_state_dict(initial_model_state, strict=True)
+        bm.load_state_dict(initial_model_state, strict=True)
         for opt, state in zip(optimizers, initial_optimizer_states, strict=True): opt.load_state_dict(state)
         zero_grad_all()
         if distributed: model.require_backward_grad_sync = True
         train_loader = DistributedTokenLoader(args.train_files, rank, world_size, device)
-    ema_state = {name: t.detach().float().clone() for name, t in base_model.state_dict().items()}
+    ema_state = {name: t.detach().float().clone() for name, t in bm.state_dict().items()}
     training_time_ms, stop_after_step = 0.0, None
     swa_state, swa_count = None, 0
     torch.cuda.synchronize(); t0 = time.perf_counter(); step = 0
@@ -1275,20 +1275,20 @@ def main():
             group["momentum"] = (1-frac)*args.muon_momentum_warmup_start + frac*args.muon_momentum
         for opt in optimizers:
             for group in opt.param_groups: group["lr"] = group["base_lr"] * scale
-        if args.grad_clip_norm > 0: torch.nn.utils.clip_grad_norm_(base_model.parameters(), args.grad_clip_norm)
+        if args.grad_clip_norm > 0: torch.nn.utils.clip_grad_norm_(bm.parameters(), args.grad_clip_norm)
         for opt in optimizers: opt.step()
         zero_grad_all()
         with torch.no_grad():
-            for name, t in base_model.state_dict().items():
+            for name, t in bm.state_dict().items():
                 ema_state[name].mul_(args.ema_decay).add_(t.detach().float(), alpha=1.0 - args.ema_decay)
         step += 1
         approx_ms = training_time_ms + 1000.0 * (time.perf_counter() - t0)
         if args.swa_enabled and scale < 0.2 and step % args.swa_interval == 0:
             if swa_state is None:
-                swa_state = {n: t.detach().cpu().clone() for n, t in base_model.state_dict().items()}
+                swa_state = {n: t.detach().cpu().clone() for n, t in bm.state_dict().items()}
                 swa_count = 1; log0(f"swa:start step:{step}")
             else:
-                for n, t in base_model.state_dict().items(): swa_state[n] += t.detach().cpu()
+                for n, t in bm.state_dict().items(): swa_state[n] += t.detach().cpu()
                 swa_count += 1
         if args.train_log_every > 0 and (step <= 10 or step % args.train_log_every == 0):
             log0(f"step:{step}/{args.iterations} train_loss:{train_loss.item():.4f} train_time:{approx_ms:.0f}ms step_avg:{approx_ms/step:.2f}ms")
@@ -1299,11 +1299,11 @@ def main():
     log0(f"peak memory allocated: {torch.cuda.max_memory_allocated()//1024//1024} MiB reserved: {torch.cuda.max_memory_reserved()//1024//1024} MiB")
 
     log0("ema:applying EMA weights")
-    current_state = base_model.state_dict()
+    current_state = bm.state_dict()
     avg_state = {name: t.to(dtype=current_state[name].dtype) for name, t in ema_state.items()}
-    base_model.load_state_dict(avg_state, strict=True)
-    maybe_save_pre_export_checkpoint(args.save_pre_export_checkpoint, base_model.state_dict(), log0)
-    run_export_eval(args, base_model, rank, world_size, device, distributed, master_process,
+    bm.load_state_dict(avg_state, strict=True)
+    maybe_save_pre_export_checkpoint(args.save_pre_export_checkpoint, bm.state_dict(), log0)
+    run_export_eval(args, bm, rank, world_size, device, distributed, master_process,
                     code, val_tokens, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut, log0)
 
 if __name__ == "__main__":

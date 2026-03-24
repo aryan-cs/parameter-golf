@@ -779,3 +779,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The candidate file shrank from `71,982` bytes to `70,761` bytes, another `1,221` bytes of direct code-payload savings. Compile and readiness checks still passed, and the offline validator still produced the same codec/result (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
 - Decision: Keep the identifier-shortening pass in the main lane. It buys real counted headroom without changing the trained artifact path.
 - Next step: Push the rename pass so the next live export rerun benefits from both the stronger exporter and the smaller counted candidate source.
+
+- Timestamp: 2026-03-24 02:51 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL code-size hygiene
+- Objective: Reclaim another small block of counted source bytes by shortening the very frequently repeated local variable name `base_model`, while keeping behavior and artifact format unchanged.
+- Command or config: Renamed `base_model` to `bm` across the candidate's calibration/export path and main training setup in `candidates/non_ttt_vrl_gptq/train_gpt.py`, then reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, reran `python3 runpod/check_ready.py`, and reran the offline codec round-trip validator on the fixed-seed quantized VRL model skeleton.
+- Result: The candidate file shrank from `70,761` bytes to `70,305` bytes, a further `456` bytes of direct code-payload savings. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
+- Decision: Keep the local-variable shortening pass in the main lane. It is another free source-size win with no measurable exporter regression.
+- Next step: Push the rename so the next live export rerun benefits from the smaller counted candidate source.
