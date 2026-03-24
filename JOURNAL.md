@@ -509,3 +509,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The direct TCP endpoint began returning `Connection refused`, and the Runpod relay reported `container not found`, which indicates the current pod is no longer available. The new helper script can recreate an entire export-only watcher ladder on a fresh pod with one command instead of restaging each watcher manually.
 - Decision: Treat the current live run as interrupted until a replacement pod is available; keep the repo in a ready-to-recover state rather than assuming the old pod will come back.
 - Next step: Use the new ladder helper on the next pod to reestablish the staged export-only queue quickly once fresh Runpod access is available.
+
+- Timestamp: 2026-03-24 01:23 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL runpod recovery
+- Objective: Reduce fresh-pod recovery to a single launch command so we can restart the active prune14-plus-export ladder quickly after the Runpod outage.
+- Command or config: Added `runpod/pod_launch_export_chain.sh`, which starts the source run detached and immediately stages the export-only ladder behind it, then validated it with `bash -n` and a usage-path invocation.
+- Result: We now have a one-command pod-side recovery entrypoint that can relaunch `prune14` and queue `prune17 -> prune20 -> prune23 -> prune26` in one shot after `pod_bootstrap.sh` completes.
+- Decision: Use the new launcher on the next pod instead of rebuilding the live run and watcher chain by hand.
+- Next step: Once a replacement pod exists, sync the repo, run `bash runpod/pod_bootstrap.sh`, then use the new chain launcher to resume the byte-cap sweep path immediately.
