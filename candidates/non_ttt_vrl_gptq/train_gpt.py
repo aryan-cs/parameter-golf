@@ -11,7 +11,7 @@ from torch import Tensor, nn
 from torch.nn.parallel import DistributedDataParallel as DDP
 EG=os.environ.get; GI=lambda k,d=0:int(EG(k,d)); GF=lambda k,d=0:float(EG(k,d)); GB=lambda k,d=0:bool(int(EG(k,d))); JP=os.path.join; PC=time.perf_counter
 BF=th.bfloat16; F16=th.float16; F32=th.float32; F64=th.float64; I8=th.int8; I16=th.int16; I64=th.int64; BO=th.bool; U16=th.uint16
-AC=th.autocast; IM=th.inference_mode; Z=th.zeros; TT=th.tensor; QT=th.quantile; EM=th.empty; FN=th.from_numpy; SK=th.stack; PK=struct.pack; UF=struct.unpack_from; ER=ValueError; FE=FileNotFoundError; RE=RuntimeError; CU="cuda"; AU=lambda e=1:AC(device_type=CU,dtype=BF,enabled=e); DC=lambda t:t.detach().cpu(); DL=lambda t:DC(t).clone(); DX=lambda t:DC(t).contiguous(); AS=lambda x,d:x.astype(d,copy=False); NM=lambda s:int(np.prod(s,dtype=np.int64)); FB=np.frombuffer; NE=np.empty; NZ=np.zeros; RM=F.rms_norm; LI=F.linear; PT=Path; GG=glob.glob
+AC=th.autocast; IM=th.inference_mode; Z=th.zeros; TT=th.tensor; QT=th.quantile; EM=th.empty; FN=th.from_numpy; SK=th.stack; PK=struct.pack; UF=struct.unpack_from; ER=ValueError; FE=FileNotFoundError; RE=RuntimeError; CU="cuda"; AU=lambda e=1:AC(device_type=CU,dtype=BF,enabled=e); CG=lambda t:t.contiguous(); DC=lambda t:t.detach().cpu(); DL=lambda t:DC(t).clone(); DX=lambda t:CG(DC(t)); AS=lambda x,d:x.astype(d,copy=False); NM=lambda s:int(np.prod(s,dtype=np.int64)); FB=np.frombuffer; NE=np.empty; NZ=np.zeros; RM=F.rms_norm; LI=F.linear; PT=Path; GG=glob.glob
 P=nn.Parameter; PL=nn.ParameterList; M=nn.Module; ML=nn.ModuleList; NI=nn.init; NG=th.no_grad; CLP=th.clamp; DG=th.diag; CMP=th.compile; SY=th.cuda.synchronize
 IA=dist.is_available; II=dist.is_initialized; BR=dist.barrier; GWS=dist.get_world_size; GRK=dist.get_rank; IGP=dist.init_process_group; DGP=dist.destroy_process_group; ARD=dist.all_reduce; ROP=dist.ReduceOp
 ZL=th.zeros_like; EL=th.empty_like; AR=th.arange; SG=th.sigmoid; CAT=th.cat; ON=th.ones; FUL=th.full; EYE=th.eye
@@ -106,7 +106,7 @@ def bsl(sp, vs, dv):
 def lvt(pat, sl):
     fs = [PT(p) for p in sorted(GG(pat))]
     if not fs: raise FE(f"no:{pat}")
-    ts = CAT([lds(f) for f in fs]).contiguous()
+    ts = CG(CAT([lds(f) for f in fs]))
     u = ((ts.numel() - 1) // sl) * sl
     if u <= 0: raise ER(f"val<{sl}")
     return ts[:u + 1]
@@ -326,12 +326,12 @@ def qft(t):
         ca = QT(t32.abs(), clip_q, dim=1) if t32.numel() else EM((t32.shape[0],), dtype=F32)
         ct = th.maximum(th.minimum(t32, ca[:, None]), -ca[:, None])
         scale = (ca / 127.0).clamp_min(1.0 / 127.0)
-        q = CLP(th.round(ct / scale[:, None]), -127, 127).to(I8).contiguous()
-        return q, TY(scale, I8D).contiguous()
+        q = CG(CLP(th.round(ct / scale[:, None]), -127, 127).to(I8))
+        return q, CG(TY(scale, I8D))
     clip_q = 99.99984 / 100.0
     ca = float(IT(QT(t32.abs().flatten(), clip_q))) if t32.numel() else 0.0
     scale = TT(ca / 127.0 if ca > 0 else 1.0, dtype=F32)
-    q = CLP(th.round(CLP(t32, -ca, ca) / scale), -127, 127).to(I8).contiguous()
+    q = CG(CLP(th.round(CLP(t32, -ca, ca) / scale), -127, 127).to(I8))
     return q, scale
 
 def qsd(sd, hh=None):
@@ -967,7 +967,7 @@ def ree(a, bm, rk, ws, dv, dd, m0,
         if pi:
             raw = pi6(t)
         else:
-            t_np = t.contiguous().numpy() if t.dtype != BF else t.contiguous().view(U16).numpy()
+            t_np = CG(t).numpy() if t.dtype != BF else CG(t).view(U16).numpy()
             raw = t_np.tobytes()
         ni, suffix = etr(tname, nti)
         parts.append(PK(F5, ni, suffix, dt, t.ndim))
