@@ -887,3 +887,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The candidate file shrank from `63,904` bytes to `63,706` bytes, another `198` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 63,706`, which is `-11,225` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
 - Decision: Keep the framework-alias pass in the main lane. The gain is modest, but it is another free counted-size win with no observed exporter regression.
 - Next step: Push the framework-alias pass so the next live export rerun uses the smaller counted candidate source together with the stronger bitplane + raw-LZMA exporter path.
+
+- Timestamp: 2026-03-24 03:27 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL code-size hygiene
+- Objective: Reclaim a larger block of counted source bytes by shortening the hottest remaining environment and timing call paths (`os.environ.get`, `os.path.join`, and `time.perf_counter`) without changing exporter behavior.
+- Command or config: Added short aliases inside `candidates/non_ttt_vrl_gptq/train_gpt.py` for `os.environ.get -> EG`, `os.path.join -> JP`, and `time.perf_counter -> PC`, replaced the repeated config/bootstrap/timing call sites, then reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, reran `python3 runpod/check_ready.py`, and reran the offline codec round-trip validator on the fixed-seed quantized VRL model skeleton.
+- Result: The candidate file shrank from `63,706` bytes to `62,810` bytes, another `896` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 62,810`, which is `-12,121` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
+- Decision: Keep the environment/timing alias pass in the main lane. It is a materially better counted-size win than the recent micro-alias passes and still shows no observed exporter regression.
+- Next step: Push the environment/timing alias pass so the next live export rerun uses the smaller counted candidate source together with the stronger bitplane + raw-LZMA exporter path.

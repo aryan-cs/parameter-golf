@@ -9,6 +9,7 @@ import sentencepiece as spm
 import torch as th, torch.distributed as dist, torch.nn.functional as F
 from torch import Tensor, nn
 from torch.nn.parallel import DistributedDataParallel as DDP
+EG=os.environ.get; JP=os.path.join; PC=time.perf_counter
 BF=th.bfloat16; F16=th.float16; F32=th.float32; F64=th.float64; I8=th.int8; I16=th.int16; I64=th.int64; BO=th.bool; U16=th.uint16
 AC=th.autocast; IM=th.inference_mode; Z=th.zeros; TT=th.tensor; QT=th.quantile; EM=th.empty; FN=th.from_numpy; SK=th.stack
 P=nn.Parameter; PL=nn.ParameterList; M=nn.Module; ML=nn.ModuleList; NI=nn.init; NG=th.no_grad; CLP=th.clamp; DG=th.diag; ARD=dist.all_reduce; ROP=dist.ReduceOp
@@ -20,71 +21,71 @@ except ImportError:
     HAS_FA3 = False
 
 class H:
-    data_path = os.environ.get("DATA_PATH", "./data/datasets/fineweb10B_sp1024")
-    tf = os.path.join(data_path, "fineweb_train_*.bin")
-    vf = os.path.join(data_path, "fineweb_val_*.bin")
-    tokenizer_path = os.environ.get("TOKENIZER_PATH", "./data/tokenizers/fineweb_1024_bpe.model")
-    run_id = os.environ.get("RUN_ID", str(uuid.uuid4()))
-    seed = int(os.environ.get("SEED", 42))
-    vbs = int(os.environ.get("VAL_BATCH_SIZE", 524_288))
-    val_loss_every = int(os.environ.get("VAL_LOSS_EVERY", 500))
-    train_log_every = int(os.environ.get("TRAIN_LOG_EVERY", 200))
-    iterations = int(os.environ.get("ITERATIONS", 20000))
-    warmup_steps = int(os.environ.get("WARMUP_STEPS", 20))
-    tbt = int(os.environ.get("TRAIN_BATCH_TOKENS", 786_432))
-    tsl = int(os.environ.get("TRAIN_SEQ_LEN", 2048))
-    esl = int(os.environ.get("EVAL_SEQ_LEN", 2048))
-    eval_stride = int(os.environ.get("EVAL_STRIDE", 64))
-    eval_batch_seqs = int(os.environ.get("EVAL_BATCH_SEQS", 256))
-    mws = float(os.environ.get("MAX_WALLCLOCK_SECONDS", 600.0))
-    qgi = float(os.environ.get("QK_GAIN_INIT", 1.5))
-    vs = int(os.environ.get("VOCAB_SIZE", 1024))
-    nl = int(os.environ.get("NUM_LAYERS", 11))
-    nkh = int(os.environ.get("NUM_KV_HEADS", 4))
-    dm = int(os.environ.get("MODEL_DIM", 512))
-    nh = int(os.environ.get("NUM_HEADS", 8))
-    mm = int(os.environ.get("MLP_MULT", 3))
-    te = bool(int(os.environ.get("TIE_EMBEDDINGS", "1")))
-    rb = float(os.environ.get("ROPE_BASE", 10000.0))
-    lsc = float(os.environ.get("LOGIT_SOFTCAP", 30.0))
-    embed_lr = float(os.environ.get("EMBED_LR", 0.6))
-    head_lr = float(os.environ.get("HEAD_LR", 0.008))
-    tied_embed_lr = float(os.environ.get("TIED_EMBED_LR", 0.035))
-    teis = float(os.environ.get("TIED_EMBED_INIT_STD", 0.005))
-    matrix_lr = float(os.environ.get("MATRIX_LR", 0.025))
-    scalar_lr = float(os.environ.get("SCALAR_LR", 0.025))
-    muon_momentum = float(os.environ.get("MUON_MOMENTUM", 0.99))
-    muon_ns_steps = int(os.environ.get("MUON_NS_STEPS", 5))
-    muon_momentum_warmup_start = float(os.environ.get("MUON_MOMENTUM_WARMUP_START", 0.92))
-    muon_momentum_warmup_steps = int(os.environ.get("MUON_MOMENTUM_WARMUP_STEPS", 1500))
-    muon_wd = float(os.environ.get("MUON_WD", 0.04))
-    beta1 = float(os.environ.get("BETA1", 0.9))
-    beta2 = float(os.environ.get("BETA2", 0.95))
-    adam_eps = float(os.environ.get("ADAM_EPS", 1e-8))
-    adam_wd = float(os.environ.get("ADAM_WD", 0.04))
-    grad_clip_norm = float(os.environ.get("GRAD_CLIP_NORM", 0.3))
-    se = bool(int(os.environ.get("SMEAR_ENABLED", "1")))
-    be = bool(int(os.environ.get("BACKOUT_ENABLED", "0")))
-    backout_init = float(os.environ.get("BACKOUT_INIT", 0.2))
-    ema_decay = float(os.environ.get("EMA_DECAY", 0.997))
-    swa_enabled = bool(int(os.environ.get("SWA_ENABLED", "1")))
-    swa_interval = int(os.environ.get("SWA_INTERVAL", 50))
-    wdi = int(os.environ.get("WARMDOWN_ITERS", 3500))
-    lqt = float(os.environ.get("LATE_QAT_THRESHOLD", 0.15))
-    bgvs = int(os.environ.get("BIGRAM_VOCAB_SIZE", 2048))
-    bgd = int(os.environ.get("BIGRAM_DIM", 128))
-    xsn = int(os.environ.get("XSA_LAST_N", 11))
-    rd = int(os.environ.get("ROPE_DIMS", 16))
-    ln_scale = bool(int(os.environ.get("LN_SCALE", "1")))
-    vee = bool(int(os.environ.get("VE_ENABLED", "1")))
-    ved = int(os.environ.get("VE_DIM", 128))
-    vel = os.environ.get("VE_LAYERS", "9,10")
-    gptq_calib_batches = int(os.environ.get("GPTQ_CALIB_BATCHES", 256))
-    gptq_block_size = int(os.environ.get("GPTQ_BLOCK_SIZE", 128))
-    qat_clip_pct = float(os.environ.get("QAT_CLIP_PCT", 0.9995))
-    prune_pct = float(os.environ.get("PRUNE_PCT", 0.02))  # post-quant magnitude pruning
-    spc = os.environ.get("SAVE_PRE_EXPORT_CHECKPOINT", "")
-    eoc = os.environ.get("EXPORT_ONLY_CHECKPOINT", "")
+    data_path = EG("DATA_PATH", "./data/datasets/fineweb10B_sp1024")
+    tf = JP(data_path, "fineweb_train_*.bin")
+    vf = JP(data_path, "fineweb_val_*.bin")
+    tokenizer_path = EG("TOKENIZER_PATH", "./data/tokenizers/fineweb_1024_bpe.model")
+    run_id = EG("RUN_ID", str(uuid.uuid4()))
+    seed = int(EG("SEED", 42))
+    vbs = int(EG("VAL_BATCH_SIZE", 524_288))
+    val_loss_every = int(EG("VAL_LOSS_EVERY", 500))
+    train_log_every = int(EG("TRAIN_LOG_EVERY", 200))
+    iterations = int(EG("ITERATIONS", 20000))
+    warmup_steps = int(EG("WARMUP_STEPS", 20))
+    tbt = int(EG("TRAIN_BATCH_TOKENS", 786_432))
+    tsl = int(EG("TRAIN_SEQ_LEN", 2048))
+    esl = int(EG("EVAL_SEQ_LEN", 2048))
+    eval_stride = int(EG("EVAL_STRIDE", 64))
+    eval_batch_seqs = int(EG("EVAL_BATCH_SEQS", 256))
+    mws = float(EG("MAX_WALLCLOCK_SECONDS", 600.0))
+    qgi = float(EG("QK_GAIN_INIT", 1.5))
+    vs = int(EG("VOCAB_SIZE", 1024))
+    nl = int(EG("NUM_LAYERS", 11))
+    nkh = int(EG("NUM_KV_HEADS", 4))
+    dm = int(EG("MODEL_DIM", 512))
+    nh = int(EG("NUM_HEADS", 8))
+    mm = int(EG("MLP_MULT", 3))
+    te = bool(int(EG("TIE_EMBEDDINGS", "1")))
+    rb = float(EG("ROPE_BASE", 10000.0))
+    lsc = float(EG("LOGIT_SOFTCAP", 30.0))
+    embed_lr = float(EG("EMBED_LR", 0.6))
+    head_lr = float(EG("HEAD_LR", 0.008))
+    tied_embed_lr = float(EG("TIED_EMBED_LR", 0.035))
+    teis = float(EG("TIED_EMBED_INIT_STD", 0.005))
+    matrix_lr = float(EG("MATRIX_LR", 0.025))
+    scalar_lr = float(EG("SCALAR_LR", 0.025))
+    muon_momentum = float(EG("MUON_MOMENTUM", 0.99))
+    muon_ns_steps = int(EG("MUON_NS_STEPS", 5))
+    muon_momentum_warmup_start = float(EG("MUON_MOMENTUM_WARMUP_START", 0.92))
+    muon_momentum_warmup_steps = int(EG("MUON_MOMENTUM_WARMUP_STEPS", 1500))
+    muon_wd = float(EG("MUON_WD", 0.04))
+    beta1 = float(EG("BETA1", 0.9))
+    beta2 = float(EG("BETA2", 0.95))
+    adam_eps = float(EG("ADAM_EPS", 1e-8))
+    adam_wd = float(EG("ADAM_WD", 0.04))
+    grad_clip_norm = float(EG("GRAD_CLIP_NORM", 0.3))
+    se = bool(int(EG("SMEAR_ENABLED", "1")))
+    be = bool(int(EG("BACKOUT_ENABLED", "0")))
+    backout_init = float(EG("BACKOUT_INIT", 0.2))
+    ema_decay = float(EG("EMA_DECAY", 0.997))
+    swa_enabled = bool(int(EG("SWA_ENABLED", "1")))
+    swa_interval = int(EG("SWA_INTERVAL", 50))
+    wdi = int(EG("WARMDOWN_ITERS", 3500))
+    lqt = float(EG("LATE_QAT_THRESHOLD", 0.15))
+    bgvs = int(EG("BIGRAM_VOCAB_SIZE", 2048))
+    bgd = int(EG("BIGRAM_DIM", 128))
+    xsn = int(EG("XSA_LAST_N", 11))
+    rd = int(EG("ROPE_DIMS", 16))
+    ln_scale = bool(int(EG("LN_SCALE", "1")))
+    vee = bool(int(EG("VE_ENABLED", "1")))
+    ved = int(EG("VE_DIM", 128))
+    vel = EG("VE_LAYERS", "9,10")
+    gptq_calib_batches = int(EG("GPTQ_CALIB_BATCHES", 256))
+    gptq_block_size = int(EG("GPTQ_BLOCK_SIZE", 128))
+    qat_clip_pct = float(EG("QAT_CLIP_PCT", 0.9995))
+    prune_pct = float(EG("PRUNE_PCT", 0.02))  # post-quant magnitude pruning
+    spc = EG("SAVE_PRE_EXPORT_CHECKPOINT", "")
+    eoc = EG("EXPORT_ONLY_CHECKPOINT", "")
 
 def z5(G: Tensor, steps: int = 10, eps: float = 1e-7) -> Tensor:
     a, b, c = (3.4445, -4.7750, 2.0315)
@@ -952,7 +953,7 @@ def rcp(spec: str) -> str:
     if not spec:
         return ""
     if spec == "1":
-        return str(Path(os.environ.get("OUT_DIR", ".")) / "pre_export_model.pt")
+        return str(Path(EG("OUT_DIR", ".")) / "pre_export_model.pt")
     return spec
 
 def mspc(path_spec: str, sd: dict[str, th.Tensor], log0):
@@ -1105,15 +1106,15 @@ def ree(args, bm, rank, ws, device, dd, master,
     bm.load_state_dict(deq_state, strict=True)
     eval_sl = args.esl if args.esl > 0 else args.tsl
     val_tokens_eval = load_validation_tokens(args.val_files, eval_sl) if eval_sl != args.tsl else vt
-    raw_logits_fn = th.compile(bm.forward_logits, dynamic=False) if not bool(int(os.environ.get("TORCH_COMPILE_DISABLE", "0"))) else bm.forward_logits
+    raw_logits_fn = th.compile(bm.forward_logits, dynamic=False) if not bool(int(EG("TORCH_COMPILE_DISABLE", "0"))) else bm.forward_logits
     warmup_x = Z(args.eval_batch_seqs, eval_sl, dtype=I64, device=device)
     bm.eval()
     with IM(), AC(device_type="cuda", dtype=BF): _ = raw_logits_fn(warmup_x)
-    th.cuda.synchronize(); t_eval = time.perf_counter()
+    th.cuda.synchronize(); t_eval = PC()
     q_vl, q_vb = eval_val_sliding(raw_logits_fn, rank, ws, device,
         val_tokens_eval, bb, hs, ib,
         eval_sl, args.eval_stride, ebs=args.eval_batch_seqs)
-    th.cuda.synchronize(); eval_time = time.perf_counter() - t_eval
+    th.cuda.synchronize(); eval_time = PC() - t_eval
     log0(f"final_int6 val_loss:{q_vl:.4f} val_bpb:{q_vb:.4f} eval_time:{eval_time*1000:.0f}ms")
     log0(f"final_int6_exact val_loss:{q_vl:.8f} val_bpb:{q_vb:.8f}")
     if dd: dist.destroy_process_group()
@@ -1123,8 +1124,8 @@ def main():
     code = Path(__file__).read_text(encoding="utf-8"); args = H()
     z5 = th.compile(z5)
     dd = "RANK" in os.environ and "WORLD_SIZE" in os.environ
-    rank = int(os.environ.get("RANK", "0")); ws = int(os.environ.get("WORLD_SIZE", "1"))
-    local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+    rank = int(EG("RANK", "0")); ws = int(EG("WORLD_SIZE", "1"))
+    local_rank = int(EG("LOCAL_RANK", "0"))
     if ws <= 0 or 8 % ws != 0: raise ValueError(f"Bad WORLD_SIZE={ws}")
     gas = 8 // ws; grad_scale = 1.0 / gas
     if not th.cuda.is_available(): raise RuntimeError("CUDA required")
@@ -1166,7 +1167,7 @@ def main():
     for m in bm.modules():
         if isinstance(m, CL): m.float()
     restore_low_dim_params_to_fp32(bm)
-    compiled_model = th.compile(bm, dynamic=False, fullgraph=True) if not bool(int(os.environ.get("TORCH_COMPILE_DISABLE", "0"))) else bm
+    compiled_model = th.compile(bm, dynamic=False, fullgraph=True) if not bool(int(EG("TORCH_COMPILE_DISABLE", "0"))) else bm
     model = DDP(compiled_model, device_ids=[local_rank], broadcast_buffers=False) if dd else compiled_model
     eoc = rcp(args.eoc)
     if eoc:
@@ -1248,21 +1249,21 @@ def main():
     ema_state = {name: t.detach().float().clone() for name, t in bm.state_dict().items()}
     ttms, stop_after_step = 0.0, None
     swa_state, swa_count = None, 0
-    th.cuda.synchronize(); t0 = time.perf_counter(); step = 0
+    th.cuda.synchronize(); t0 = PC(); step = 0
     while True:
         last_step = step == args.iterations or (stop_after_step is not None and step >= stop_after_step)
         should_validate = last_step or (args.val_loss_every > 0 and step % args.val_loss_every == 0)
         if should_validate:
-            th.cuda.synchronize(); ttms += 1000.0 * (time.perf_counter() - t0)
+            th.cuda.synchronize(); ttms += 1000.0 * (PC() - t0)
             vl, vb = eval_val(args, model, rank, ws, device, gas,
                               vt, bb, hs, ib)
             log0(f"step:{step}/{args.iterations} val_loss:{vl:.4f} val_bpb:{vb:.4f} train_time:{ttms:.0f}ms step_avg:{ttms/max(step,1):.2f}ms")
-            th.cuda.synchronize(); t0 = time.perf_counter()
+            th.cuda.synchronize(); t0 = PC()
         if last_step:
             if stop_after_step is not None and step < args.iterations:
                 log0(f"stopping_early: wallclock_cap train_time:{ttms:.0f}ms step:{step}/{args.iterations}")
             break
-        elapsed_ms = ttms + 1000.0 * (time.perf_counter() - t0)
+        elapsed_ms = ttms + 1000.0 * (PC() - t0)
         scale = lr_mul(step, elapsed_ms)
         if args.lqt > 0 and scale < args.lqt and not CL._qat_enabled:
             CL._qat_enabled = True
@@ -1286,7 +1287,7 @@ def main():
             for name, t in bm.state_dict().items():
                 ema_state[name].mul_(args.ema_decay).add_(t.detach().float(), alpha=1.0 - args.ema_decay)
         step += 1
-        approx_ms = ttms + 1000.0 * (time.perf_counter() - t0)
+        approx_ms = ttms + 1000.0 * (PC() - t0)
         if args.swa_enabled and scale < 0.2 and step % args.swa_interval == 0:
             if swa_state is None:
                 swa_state = {n: t.detach().cpu().clone() for n, t in bm.state_dict().items()}
