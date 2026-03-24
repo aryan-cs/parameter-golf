@@ -1850,3 +1850,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The current exact run reached `step:4000/9000 val_loss:2.0664 val_bpb:1.2239 train_time:2972072ms step_avg:743.02ms`, improving again over the previous best intermediate checkpoint `1.2278` at `step:3500`. GPU telemetry remained healthy during the interval (`100%` utilization, about `24.2 GiB`, about `560 W`).
 - Decision: Keep the exact run untouched. The curve is still moving in the right direction, and there is still no sign of instability that would justify interrupting it before the final int6/sliding/legal-TTT evaluation.
 - Next step: Let this exact run finish, then compare the completed metrics and bytes against the queued `VALUE_RESIDUAL=1`, `BIGRAM_VOCAB_SIZE=3072`, and combo follow-ups as they execute.
+
+- Timestamp: 2026-03-24 19:05 UTC
+- Commit: `5f8299c`
+- Lane: H200 exact-TTT monitoring
+- Objective: Check whether the exact `80`-shard TTT run continues to improve late enough in training to justify staying on the current lane rather than forcing an earlier switch to queued follow-ups.
+- Command or config: Let the live run advance to the `step:4500` validation interval and read the updated log from `records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs/h200_ttt_recordstack_80shard_seed1337.txt`.
+- Result: The exact run reached `step:4500/9000 val_loss:2.0586 val_bpb:1.2192 train_time:3343933ms step_avg:743.10ms`, which is another clean improvement over the previous best intermediate checkpoint `1.2239` at `step:4000`. This is our best reproduced H200 score so far.
+- Decision: Keep the current exact run untouched. The training curve is still improving, so the best use of the single H200 is to finish this run and harvest the final exact sliding/legal-TTT metrics before judging the queued follow-ups.
+- Next step: Let the current run finish, then let the queued `VALUE_RESIDUAL=1`, `BIGRAM_VOCAB_SIZE=3072`, and `VALUE_RESIDUAL=1 + BIGRAM_VOCAB_SIZE=3072` lanes run if the completed result still is not strong enough.
