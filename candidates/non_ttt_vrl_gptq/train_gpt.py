@@ -11,7 +11,7 @@ from torch import Tensor, nn
 from torch.nn.parallel import DistributedDataParallel as DDP
 EG=os.environ.get; JP=os.path.join; PC=time.perf_counter
 BF=th.bfloat16; F16=th.float16; F32=th.float32; F64=th.float64; I8=th.int8; I16=th.int16; I64=th.int64; BO=th.bool; U16=th.uint16
-AC=th.autocast; IM=th.inference_mode; Z=th.zeros; TT=th.tensor; QT=th.quantile; EM=th.empty; FN=th.from_numpy; SK=th.stack; PK=struct.pack; UF=struct.unpack_from; ER=ValueError; CU="cuda"; AU=lambda e=1:AC(device_type=CU,dtype=BF,enabled=e)
+AC=th.autocast; IM=th.inference_mode; Z=th.zeros; TT=th.tensor; QT=th.quantile; EM=th.empty; FN=th.from_numpy; SK=th.stack; PK=struct.pack; UF=struct.unpack_from; ER=ValueError; CU="cuda"; AU=lambda e=1:AC(device_type=CU,dtype=BF,enabled=e); DC=lambda t:t.detach().cpu(); DL=lambda t:DC(t).clone(); DX=lambda t:DC(t).contiguous()
 P=nn.Parameter; PL=nn.ParameterList; M=nn.Module; ML=nn.ModuleList; NI=nn.init; NG=th.no_grad; CLP=th.clamp; DG=th.diag; CMP=th.compile; SY=th.cuda.synchronize
 IA=dist.is_available; II=dist.is_initialized; BR=dist.barrier; GWS=dist.get_world_size; GRK=dist.get_rank; IGP=dist.init_process_group; DGP=dist.destroy_process_group; ARD=dist.all_reduce; ROP=dist.ReduceOp
 ZL=th.zeros_like; EL=th.empty_like; AR=th.arange; SG=th.sigmoid; CAT=th.cat; ON=th.ones; FUL=th.full; EYE=th.eye
@@ -385,7 +385,7 @@ def qsd(sd, hh=None):
     result, meta = {}, {}
     int6_cats = {"mlp", "attn", "bigram", "ve"}
     for name, tensor in sd.items():
-        t = tensor.detach().cpu().contiguous()
+        t = DX(tensor)
         cat = cpm(name)
         if not t.is_floating_point() or t.numel() <= I8K:
             result[name] = t.to(F16) if t.is_floating_point() else t
@@ -433,7 +433,7 @@ def _zigzag_decode_int6(u8: np.ndarray) -> np.ndarray:
     return np.where((u & 1) == 0, u // 2, -((u + 1) // 2)).astype(np.int16, copy=False)
 
 def pi6l(t: Tensor) -> bytes:
-    q = t.detach().cpu().contiguous()
+    q = DX(t)
     if q.dtype != I8:
         raise TypeError(f"need int8, got {q.dtype}")
     arr = q.numpy().reshape(-1).astype(np.int16, copy=False)
@@ -475,7 +475,7 @@ def ui6l(raw: bytes | memoryview, shape: list[int]) -> Tensor:
     return FN(arr.astype(np.int8, copy=False).reshape(shape))
 
 def pi6(t: Tensor) -> bytes:
-    q = t.detach().cpu().contiguous()
+    q = DX(t)
     if q.dtype != I8:
         raise TypeError(f"need int8, got {q.dtype}")
     arr = q.numpy().reshape(-1).astype(np.int16, copy=False)
@@ -954,7 +954,7 @@ def mspc(path_spec: str, sd: dict[str, th.Tensor], log0):
     ckpt_path = rcp(path_spec)
     if not ckpt_path:
         return ""
-    ckpt = {"model_state": {k: v.detach().cpu() for k, v in sd.items()}}
+    ckpt = {"model_state": {k: DC(v) for k, v in sd.items()}}
     path = Path(ckpt_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.with_suffix(path.suffix + ".tmp")
@@ -974,7 +974,7 @@ def ree(a, bm, rank, ws, dv, dd, m0,
             h_name = name + ".weight"
             if h_name in hh:
                 hm[sd_name] = hh[h_name]
-    sd_cpu = {k: v.detach().cpu() for k, v in bm.state_dict().items()}
+    sd_cpu = {k: DC(v) for k, v in bm.state_dict().items()}
     cb = len(code.encode("utf-8")); sl = 16_000_000
     qr, qm = qsd(sd_cpu, hh=hm)
     if a.pp > 0:
@@ -1206,7 +1206,7 @@ def main():
         return rem_ms / max(wd_ms, 1e-9) if rem_ms <= wd_ms else 1.0
 
     if a.wus > 0:
-        ims = {n: t.detach().cpu().clone() for n, t in gs().items()}
+        ims = {n: DL(t) for n, t in gs().items()}
         ios = [copy.deepcopy(opt.state_dict()) for opt in opts]
         model.train()
         for wi in range(a.wus):
@@ -1266,10 +1266,10 @@ def main():
         ams = ttms + 1000.0 * (PC() - t0)
         if a.swe and scale < 0.2 and step % a.swi == 0:
             if swa_state is None:
-                swa_state = {n: t.detach().cpu().clone() for n, t in gs().items()}
+                swa_state = {n: DL(t) for n, t in gs().items()}
                 swa_count = 1
             else:
-                for n, t in gs().items(): swa_state[n] += t.detach().cpu()
+                for n, t in gs().items(): swa_state[n] += DC(t)
                 swa_count += 1
         if a.tle > 0 and (step <= 10 or step % a.tle == 0):
             log0(f"step:{step}/{a.it} train_loss:{trl.item():.4f} train_time:{ams:.0f}ms step_avg:{ams/step:.2f}ms")
