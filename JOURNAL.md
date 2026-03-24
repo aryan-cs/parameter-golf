@@ -437,3 +437,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: `prune11` reached `step:1000/20000 val_bpb:1.3101` and `step:2000/20000 val_bpb:1.2530`, essentially matching the baseline trajectory. That confirmed the expected behavior: `PRUNE_PCT` only affects export, so the full retrain itself provides no training-side differentiation. After the kill, the queued `prune14` watcher launched the next run as PID `175714` with run directory `runs/non_ttt_vrl_gptq/seed1337/20260324T055414Z`, and its log now shows the intended recipe `VRL Prune(0.14) RawBinary`.
 - Decision: Skip the rest of the redundant prune11 retrain and spend the next full training budget on `prune14`, which also saves a reusable pre-export checkpoint for the queued export-only `prune17` sweep.
 - Next step: Let `prune14` progress to its first validation checkpoint, then use its saved checkpoint to launch the staged export-only `prune17` sweep if the final artifact is still over the byte cap.
+
+- Timestamp: 2026-03-24 00:55 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL export orchestration
+- Objective: Confirm that the prune14 cutover is healthy and that the staged export-only sweep is now properly tracking the active source run.
+- Command or config: Monitored `runs/non_ttt_vrl_gptq/seed1337/20260324T055414Z/train.log`, checked the active pod processes, and tailed `logs/non_ttt_vrl_gptq_1gpu_long_prune14_export_queue_20260324T053401Z.log`.
+- Result: `prune14` is live on GPU as PID `175714` and has progressed through warmup plus the initial training steps with the expected banner `VRL Prune(0.14) RawBinary`. The export-only watcher has moved past “waiting for run dir” and is now logging `source still running for non_ttt_vrl_gptq_1gpu_long_prune14`, which confirms it has detected the active source run and will wait for the saved checkpoint before launching the export-only `prune17` sweep.
+- Decision: Keep the current queue intact; the handoff logic is now behaving as intended from active training through the staged export-only hedge.
+- Next step: Wait for the first `prune14` validation checkpoint at `step:1000`, then compare it against the earlier trajectory while preparing to consume its saved checkpoint for the queued export-only sweep if the byte cap is still missed.
