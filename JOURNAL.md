@@ -761,3 +761,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The candidate file shrank from `72,334` bytes to `71,982` bytes, a further `352` bytes of code-payload savings with no behavior change. Compile and readiness checks still passed.
 - Decision: Keep the log-string trim in the main lane. The savings are small, but they are free and directly improve submission headroom.
 - Next step: Push the trim so the next live rerun benefits from both the stronger exporter and the slightly smaller counted source file.
+
+- Timestamp: 2026-03-24 02:47 America/Chicago
+- Commit: uncommitted
+- Lane: runpod export ladder reliability
+- Objective: Preserve the recent candidate log-byte trims without breaking the export ladder's stop-on-valid behavior.
+- Command or config: Patched `runpod/pod_queue_export_ladder.sh` so `run_is_size_ok()` accepts both the legacy success marker (`Size OK:`) and the new shorter candidate log marker (`size_ok:`), then reran `bash -n` on the pod launcher scripts and reran `python3 runpod/check_ready.py`.
+- Result: The controller now remains compatible with both old and new train logs, so the next export ladder relaunch will still stop as soon as any rung produces a valid-size artifact instead of accidentally running past it.
+- Decision: Keep the compatibility patch in the main lane. The candidate can stay smaller without sacrificing recovery-script correctness.
+- Next step: Push the controller fix so the next live relaunch benefits from the shorter candidate logs and still exits immediately on the first valid artifact.

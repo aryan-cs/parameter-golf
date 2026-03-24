@@ -43,7 +43,7 @@ find_latest_run_dir() {
 run_is_size_ok() {
   local run_dir="$1"
   [[ -f "${run_dir}/train.log" ]] || return 1
-  grep -q "Size OK:" "${run_dir}/train.log"
+  grep -Eq "Size OK:|size_ok:" "${run_dir}/train.log"
 }
 
 resolve_checkpoint_path() {
