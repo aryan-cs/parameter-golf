@@ -157,7 +157,7 @@ LF = [{
     "lp": 0,
     "pb": 2,
     "mode": lzma.MODE_NORMAL,
-    "nice_len": 273,
+    "nice_len": 64,
     "mf": lzma.MF_HC3,
     "depth": 0,
 }]
@@ -469,7 +469,7 @@ def mcn(cid: int) -> str:
     if cid == KG:
         return "zlib9"
     if cid == KL:
-        return "lzma_raw_hc3_16mb_lc2"
+        return "lzma_raw_hc3_16mb_lc2_n64"
     return f"unknown({cid})"
 
 def cmb(raw: bytes) -> tuple[bytes, int]:
