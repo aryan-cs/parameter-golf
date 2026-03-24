@@ -392,3 +392,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The prune11 run is now live as PID `168452` with run directory `runs/non_ttt_vrl_gptq/seed1337/20260324T052254Z`. Its log has started successfully and confirms the intended recipe change: `VRL Prune(0.11) RawBinary`.
 - Decision: Keep prune11 as the active next experiment, since we now know the baseline quality is good enough and the next question is whether slightly stronger pruning can bring the artifact under the cap without giving back too much of the `1.1159` quantized score.
 - Next step: Monitor the new prune11 run through its first validation checkpoints and compare its eventual export size and post-quant score against the over-cap baseline.
+
+- Timestamp: 2026-03-24 00:25 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL export ablation
+- Objective: Avoid another idle gap if `prune11` still lands slightly above the byte cap.
+- Command or config: Added `configs/runpod/non_ttt_vrl_gptq_1gpu_long_prune14.env` and `configs/runpod/non_ttt_vrl_gptq_8gpu_prune14.env`, synced them to the pod, and queued `/tmp/non_ttt_vrl_gptq_1gpu_long_prune14_after_prune11.sh` to wait on active prune11 PID `168452` before launching the `1gpu_long_prune14` follow-up.
+- Result: The pod now has a second staged fallback ready. Queue log: `/workspace/golf/logs/non_ttt_vrl_gptq_1gpu_long_prune14_queue_20260324T052543Z.log`.
+- Decision: Keep `prune11` as the active experiment and treat `prune14` as the next byte-cap hedge rather than jumping straight to a more disruptive architectural change.
+- Next step: Monitor prune11 for its first validation checkpoint, then compare its eventual artifact size against the over-cap `1.1159` baseline and let prune14 take over automatically only if needed.
