@@ -34,7 +34,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Next step: Sync to Runpod, run `bash runpod/pod_bootstrap.sh`, then launch `NPROC_PER_NODE=1 bash runpod/pod_run.sh non_ttt_m22_base 1337`.
 
 - Timestamp: 2026-03-23 16:28 America/Chicago
-- Commit: uncommitted
+- Commit: `ab61d33`
 - Lane: runpod bring-up
 - Objective: Unblock SSH access for the first Runpod pod launch.
 - Command or config: Checked `~/.ssh` for existing public keys and selected the current `id_ed25519.pub` key for Runpod account settings.
@@ -1013,3 +1013,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The candidate file shrank from `57,855` bytes to `57,260` bytes, another `595` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 57,260`, which is `-17,671` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
 - Decision: Keep the loader/validation local-name shortening pass in the main lane. It is another good counted-size win with no observed exporter regression.
 - Next step: Push the loader/validation local-name shortening pass so the next live export rerun uses the smallest counted candidate source we have so far together with the stronger bitplane + raw-LZMA exporter path.
+
+- Timestamp: 2026-03-24 04:05 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL code-size hygiene
+- Objective: Reclaim another moderate block of counted source bytes by shortening the repeated warmup/train-control locals inside `main()` without touching env var names, log markers, or export semantics.
+- Command or config: Renamed the repeated internal `main()` locals in `candidates/non_ttt_vrl_gptq/train_gpt.py` (including the compile wrapper handle, optimizer locals, warmup snapshots, wallclock/stop flags, and a batch of train-loop temporaries), then reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, reran `python3 runpod/check_ready.py`, and reran the offline codec round-trip validator on the fixed-seed quantized VRL model skeleton.
+- Result: The candidate file shrank from `57,260` bytes to `56,661` bytes, another `599` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 56,661`, which is `-18,270` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
+- Decision: Keep the `main()` local-name shortening pass in the main lane. It is another safe counted-size win with no observed exporter or wrapper regression.
+- Next step: Push the `main()` local-name shortening pass so the next live export rerun uses the smallest counted candidate source we have so far together with the stronger bitplane + raw-LZMA exporter path.
