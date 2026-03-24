@@ -115,7 +115,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Next step: Push the sync fix, re-bootstrap the pod once to restore `.venv` and the 10-shard dataset, then relaunch `bash runpod/pod_run.sh non_ttt_m22_base 1337`.
 
 - Timestamp: 2026-03-23 17:36 America/Chicago
-- Commit: uncommitted
+- Commit: `7d1d3ce`
 - Lane: runpod bring-up
 - Objective: Recover from the restored bootstrap failing during CUDA package install on the pod.
 - Command or config: Inspected the failure and found `uv sync` hitting a stale file handle while writing into `/workspace/golf/.venv`, which sits on the pod's network-backed workspace volume.
@@ -124,7 +124,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Next step: Push the venv-location fix, re-sync the repo, re-bootstrap the pod, and relaunch `bash runpod/pod_run.sh non_ttt_m22_base 1337`.
 
 - Timestamp: 2026-03-23 17:47 America/Chicago
-- Commit: uncommitted
+- Commit: `b5a8431`
 - Lane: runpod bring-up
 - Objective: Confirm the sync path and clear the next runtime blocker on the first H100 smoke run.
 - Command or config: Re-ran `bash runpod/local_sync_to_pod.sh root@216.243.220.229 /workspace/golf 16214`, inspected the failed `train.log`, and traced the crash to `from flash_attn_interface import flash_attn_func as flash_attn_3_func` in `candidates/non_ttt_m22_base/train_gpt.py`.
@@ -133,7 +133,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Next step: Commit and push the fallback patch, sync the repo to the pod, verify the candidate imports under the pod venv, and relaunch `bash runpod/pod_run.sh non_ttt_m22_base 1337`.
 
 - Timestamp: 2026-03-23 18:02 America/Chicago
-- Commit: uncommitted
+- Commit: `1277135`
 - Lane: runpod bring-up
 - Objective: Separate launcher issues from model startup issues after the attention fallback patch landed.
 - Command or config: Synced commit `fab56be` to the pod, verified the candidate imports cleanly under `/workspace/golf/.venv`, then ran the March 22 base once through `pod_run.sh` and once directly via `/workspace/golf/.venv/bin/python candidates/non_ttt_m22_base/train_gpt.py` with the same env config.
@@ -1048,4 +1048,13 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Command or config: Renamed the internal `device` locals to `dv`, shortened several local `seq_len` parameters to short in-file aliases, and collapsed decode offsets to `o` inside `candidates/non_ttt_vrl_gptq/train_gpt.py`; then reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, reran `python3 runpod/check_ready.py`, and reran the fixed-seed offline codec round-trip validator on the quantized VRL model skeleton.
 - Result: The candidate file shrank from `55,504` bytes to `55,017` bytes, another `487` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 55,017`, which is `-19,914` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
 - Decision: Keep the internal device/seq-len/offset shortening pass in the main lane. It is another validated counted-size win with no observed exporter, wrapper, or round-trip regression.
+- Next step: Push this pass so the next live export rerun uses the smallest counted candidate source we have so far together with the stronger bitplane + raw-LZMA exporter path.
+
+- Timestamp: 2026-03-24 04:19 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL code-size hygiene
+- Objective: Reclaim another meaningful counted-size block by shortening repeated internal export/calibration symbols such as codec ids, meta-index helpers, loader-pattern args, calibration Hessian locals, and a few main/export checkpoint locals.
+- Command or config: Renamed the remaining high-frequency internal symbols in `candidates/non_ttt_vrl_gptq/train_gpt.py` (including `codec_id`, `name_to_idx`, `pattern`, `hessians`, `param_name`, `master`, `raw_logits_fn`, and `model_state`), then reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, reran `python3 runpod/check_ready.py`, and reran the fixed-seed offline codec round-trip validator on the quantized VRL model skeleton.
+- Result: The candidate file shrank from `55,017` bytes to `54,691` bytes, another `326` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 54,691`, which is `-20,240` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
+- Decision: Keep this export/calibration symbol-shortening pass in the main lane. It is another validated counted-size win with no observed exporter, wrapper, or round-trip regression.
 - Next step: Push this pass so the next live export rerun uses the smallest counted candidate source we have so far together with the stronger bitplane + raw-LZMA exporter path.
