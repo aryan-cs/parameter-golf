@@ -15,24 +15,24 @@ try:
 except ImportError:
     HAS_FA3 = False
 
-class Hyperparameters:
+class H:
     data_path = os.environ.get("DATA_PATH", "./data/datasets/fineweb10B_sp1024")
     train_files = os.path.join(data_path, "fineweb_train_*.bin")
     val_files = os.path.join(data_path, "fineweb_val_*.bin")
     tokenizer_path = os.environ.get("TOKENIZER_PATH", "./data/tokenizers/fineweb_1024_bpe.model")
     run_id = os.environ.get("RUN_ID", str(uuid.uuid4()))
     seed = int(os.environ.get("SEED", 42))
-    val_batch_size = int(os.environ.get("VAL_BATCH_SIZE", 524_288))
+    vbs = int(os.environ.get("VAL_BATCH_SIZE", 524_288))
     val_loss_every = int(os.environ.get("VAL_LOSS_EVERY", 500))
     train_log_every = int(os.environ.get("TRAIN_LOG_EVERY", 200))
     iterations = int(os.environ.get("ITERATIONS", 20000))
     warmup_steps = int(os.environ.get("WARMUP_STEPS", 20))
-    train_batch_tokens = int(os.environ.get("TRAIN_BATCH_TOKENS", 786_432))
+    tbt = int(os.environ.get("TRAIN_BATCH_TOKENS", 786_432))
     train_seq_len = int(os.environ.get("TRAIN_SEQ_LEN", 2048))
     eval_seq_len = int(os.environ.get("EVAL_SEQ_LEN", 2048))
     eval_stride = int(os.environ.get("EVAL_STRIDE", 64))
     eval_batch_seqs = int(os.environ.get("EVAL_BATCH_SEQS", 256))
-    max_wallclock_seconds = float(os.environ.get("MAX_WALLCLOCK_SECONDS", 600.0))
+    mws = float(os.environ.get("MAX_WALLCLOCK_SECONDS", 600.0))
     qk_gain_init = float(os.environ.get("QK_GAIN_INIT", 1.5))
     vocab_size = int(os.environ.get("VOCAB_SIZE", 1024))
     num_layers = int(os.environ.get("NUM_LAYERS", 11))
@@ -67,7 +67,7 @@ class Hyperparameters:
     swa_interval = int(os.environ.get("SWA_INTERVAL", 50))
     warmdown_iters = int(os.environ.get("WARMDOWN_ITERS", 3500))
     late_qat_threshold = float(os.environ.get("LATE_QAT_THRESHOLD", 0.15))
-    bigram_vocab_size = int(os.environ.get("BIGRAM_VOCAB_SIZE", 2048))
+    bgvs = int(os.environ.get("BIGRAM_VOCAB_SIZE", 2048))
     bigram_dim = int(os.environ.get("BIGRAM_DIM", 128))
     xsa_last_n = int(os.environ.get("XSA_LAST_N", 11))
     rope_dims = int(os.environ.get("ROPE_DIMS", 16))
@@ -79,10 +79,10 @@ class Hyperparameters:
     gptq_block_size = int(os.environ.get("GPTQ_BLOCK_SIZE", 128))
     qat_clip_pct = float(os.environ.get("QAT_CLIP_PCT", 0.9995))
     prune_pct = float(os.environ.get("PRUNE_PCT", 0.02))  # post-quant magnitude pruning
-    save_pre_export_checkpoint = os.environ.get("SAVE_PRE_EXPORT_CHECKPOINT", "")
-    export_only_checkpoint = os.environ.get("EXPORT_ONLY_CHECKPOINT", "")
+    spc = os.environ.get("SAVE_PRE_EXPORT_CHECKPOINT", "")
+    eoc = os.environ.get("EXPORT_ONLY_CHECKPOINT", "")
 
-def zeropower_via_newtonschulz5(G: Tensor, steps: int = 10, eps: float = 1e-7) -> Tensor:
+def z5(G: Tensor, steps: int = 10, eps: float = 1e-7) -> Tensor:
     a, b, c = (3.4445, -4.7750, 2.0315)
     X = G.bfloat16(); X /= X.norm() + eps
     transposed = G.size(0) > G.size(1)
@@ -116,7 +116,7 @@ class Muon(torch.optim.Optimizer):
                     if "momentum_buffer" not in state: state["momentum_buffer"] = torch.zeros_like(g)
                     buf = state["momentum_buffer"]; buf.mul_(momentum).add_(g)
                     if nesterov: g = g.add(buf, alpha=momentum)
-                    g = zeropower_via_newtonschulz5(g, steps=ns_steps)
+                    g = z5(g, steps=ns_steps)
                     g *= max(1, g.size(0) / g.size(1)) ** 0.5
                     updates_flat[curr : curr + p.numel()] = g.reshape(-1)
                 curr += p.numel()
@@ -155,7 +155,7 @@ def load_validation_tokens(pattern, seq_len):
 def eval_val(args, model, rank, ws, device, gas,
              vt, bb, hs, ib, eval_seq_len=0):
     seq_len = eval_seq_len if eval_seq_len > 0 else args.train_seq_len
-    local_batch_seqs = args.val_batch_size // (ws * gas) // seq_len
+    local_batch_seqs = args.vbs // (ws * gas) // seq_len
     total_seqs = (vt.numel() - 1) // seq_len
     seq_start = (total_seqs * rank) // ws; seq_end = (total_seqs * (rank + 1)) // ws
     val_loss_sum = torch.zeros((), device=device, dtype=torch.float64)
@@ -577,7 +577,7 @@ class TokenStream:
             k = min(remaining, avail); chunks.append(self.tokens[self.pos:self.pos+k]); self.pos += k; remaining -= k
         return chunks[0] if len(chunks) == 1 else torch.cat(chunks)
 
-class DistributedTokenLoader:
+class DTL:
     def __init__(self, pattern, rank, world_size, device):
         self.rank, self.world_size, self.device = rank, world_size, device; self.stream = TokenStream(pattern)
     def next_batch(self, global_tokens, seq_len, grad_accum_steps):
@@ -591,15 +591,15 @@ class RMSNorm(nn.Module):
     def __init__(self, eps=None): super().__init__(); self.eps = eps
     def forward(self, x): return F.rms_norm(x, (x.size(-1),), eps=self.eps)
 
-class CastedLinear(nn.Linear):
+class CL(nn.Linear):
     _qat_enabled: bool = False
     _qat_clip_pct: float = 0.9995  # v41: QAT-export alignment — match STE to GPTQ export
     def forward(self, x):
         w = self.weight.to(x.dtype)
-        if CastedLinear._qat_enabled and self.training and w.ndim == 2:
+        if CL._qat_enabled and self.training and w.ndim == 2:
             with torch.no_grad():
                 w32 = self.weight.float()
-                row_clip = torch.quantile(w32.abs(), CastedLinear._qat_clip_pct, dim=1)
+                row_clip = torch.quantile(w32.abs(), CL._qat_clip_pct, dim=1)
                 scale = (row_clip / 31.0).clamp_min(1.0 / 31.0)  # int6: clip_range=31
                 w_q = (torch.clamp(torch.round(w32 / scale[:, None]), -31, 31) * scale[:, None]).to(x.dtype)
             w = w + (w_q - w).detach()  # STE: straight-through estimator
@@ -643,13 +643,13 @@ def apply_rotary_emb(x, cos, sin, rope_dims=0):
     x1, x2 = x[..., :half], x[..., half:]
     return torch.cat((x1 * cos + x2 * sin, x1 * (-sin) + x2 * cos), dim=-1)
 
-class CausalSelfAttention(nn.Module):
+class CSA(nn.Module):
     def __init__(self, dim, num_heads, num_kv_heads, rope_base, qk_gain_init):
         super().__init__()
         self.num_heads, self.num_kv_heads = num_heads, num_kv_heads; self.head_dim = dim // num_heads
         kv_dim = num_kv_heads * self.head_dim
-        self.c_q = CastedLinear(dim, dim, bias=False); self.c_k = CastedLinear(dim, kv_dim, bias=False)
-        self.c_v = CastedLinear(dim, kv_dim, bias=False); self.proj = CastedLinear(dim, dim, bias=False)
+        self.c_q = CL(dim, dim, bias=False); self.c_k = CL(dim, kv_dim, bias=False)
+        self.c_v = CL(dim, kv_dim, bias=False); self.proj = CL(dim, dim, bias=False)
         self.proj._zero_init = True
         self.q_gain = nn.Parameter(torch.full((num_heads,), qk_gain_init, dtype=torch.float32))
         self.rope_dims = 0
@@ -687,8 +687,8 @@ class CausalSelfAttention(nn.Module):
 class MLP(nn.Module):
     def __init__(self, dim, mlp_mult):
         super().__init__()
-        self.fc = CastedLinear(dim, int(mlp_mult * dim), bias=False)
-        self.proj = CastedLinear(int(mlp_mult * dim), dim, bias=False)
+        self.fc = CL(dim, int(mlp_mult * dim), bias=False)
+        self.proj = CL(int(mlp_mult * dim), dim, bias=False)
         self.proj._zero_init = True
     def forward(self, x):
         return self.proj(F.leaky_relu(self.fc(x), negative_slope=0.5).square())
@@ -701,17 +701,17 @@ class SmearGate(nn.Module):
         x_prev = torch.cat([torch.zeros_like(x[:, :1]), x[:, :-1]], dim=1)
         return (1 - g) * x + g * x_prev
 
-class BigramHashEmbedding(nn.Module):
-    def __init__(self, bigram_vocab_size, bigram_dim, model_dim):
+class BHE(nn.Module):
+    def __init__(self, bgvs, bigram_dim, model_dim):
         super().__init__()
-        self.bigram_vocab_size = bigram_vocab_size
-        self.embed = nn.Embedding(bigram_vocab_size, bigram_dim)
+        self.bgvs = bgvs
+        self.embed = nn.Embedding(bgvs, bigram_dim)
         nn.init.zeros_(self.embed.weight)
-        self.proj = CastedLinear(bigram_dim, model_dim, bias=False) if bigram_dim != model_dim else None
+        self.proj = CL(bigram_dim, model_dim, bias=False) if bigram_dim != model_dim else None
         if self.proj is not None: nn.init.zeros_(self.proj.weight)
         self.scale = nn.Parameter(torch.tensor(0.05, dtype=torch.float32))
     def bigram_hash(self, tokens):
-        t = tokens.to(torch.int32); mod = self.bigram_vocab_size - 1
+        t = tokens.to(torch.int32); mod = self.bgvs - 1
         out = torch.empty_like(t); out[..., 0] = mod
         out[..., 1:] = torch.bitwise_xor(36313 * t[..., 1:], 27191 * t[..., :-1]) % mod
         return out.long()
@@ -720,12 +720,12 @@ class BigramHashEmbedding(nn.Module):
         if self.proj is not None: h = self.proj(h)
         return h * self.scale.to(dtype=h.dtype)
 
-class ValueEmbedding(nn.Module):
+class VE(nn.Module):
     def __init__(self, vocab_size, ve_dim, kv_dim):
         super().__init__()
         self.embed = nn.Embedding(vocab_size, ve_dim)
         nn.init.normal_(self.embed.weight, std=0.01)
-        self.proj = CastedLinear(ve_dim, kv_dim, bias=False) if ve_dim != kv_dim else None
+        self.proj = CL(ve_dim, kv_dim, bias=False) if ve_dim != kv_dim else None
         if self.proj is not None: nn.init.zeros_(self.proj.weight)
         self.scale = nn.Parameter(torch.tensor(0.1, dtype=torch.float32))
     def forward(self, token_ids):
@@ -737,7 +737,7 @@ class Block(nn.Module):
     def __init__(self, dim, num_heads, num_kv_heads, mlp_mult, rope_base, qk_gain_init, layer_idx=0, ln_scale=False):
         super().__init__()
         self.attn_norm, self.mlp_norm = RMSNorm(), RMSNorm()
-        self.attn = CausalSelfAttention(dim, num_heads, num_kv_heads, rope_base, qk_gain_init)
+        self.attn = CSA(dim, num_heads, num_kv_heads, rope_base, qk_gain_init)
         self.mlp = MLP(dim, mlp_mult)
         self.attn_scale = nn.Parameter(torch.ones(dim, dtype=torch.float32))
         self.mlp_scale = nn.Parameter(torch.ones(dim, dtype=torch.float32))
@@ -755,7 +755,7 @@ class GPT(nn.Module):
     def __init__(self, vocab_size, num_layers, model_dim, num_heads, num_kv_heads,
                  mlp_mult, tie_embeddings, tied_embed_init_std, logit_softcap,
                  rope_base, qk_gain_init, smear_enabled=True, backout_enabled=True, backout_init=0.2,
-                 bigram_vocab_size=0, bigram_dim=128, xsa_last_n=0,
+                 bgvs=0, bigram_dim=128, xsa_last_n=0,
                  rope_dims=0, ln_scale=False,
                  ve_enabled=False, ve_dim=128, ve_layers="9,10"):
         super().__init__()
@@ -763,7 +763,7 @@ class GPT(nn.Module):
         self.logit_softcap = logit_softcap
         self.smear_enabled, self.backout_enabled, self.num_layers = smear_enabled, backout_enabled, num_layers
         self.tok_emb = nn.Embedding(vocab_size, model_dim)
-        self.bigram = BigramHashEmbedding(bigram_vocab_size, bigram_dim, model_dim) if bigram_vocab_size > 0 else None
+        self.bigram = BHE(bgvs, bigram_dim, model_dim) if bgvs > 0 else None
         self.smear = SmearGate(model_dim) if smear_enabled else None
         self.backout_lambda = nn.Parameter(backout_init * torch.ones(1)) if backout_enabled else None
         self.num_encoder_layers = num_layers // 2
@@ -786,7 +786,7 @@ class GPT(nn.Module):
         kv_dim = num_kv_heads * (model_dim // num_heads)
         self.ve_layer_indices = [int(x) for x in ve_layers.split(",") if x.strip()] if ve_enabled else []
         if self.ve_layer_indices:
-            self.ve_shared = ValueEmbedding(vocab_size, ve_dim, kv_dim)
+            self.ve_shared = VE(vocab_size, ve_dim, kv_dim)
             self.ve_layer_scales = nn.ParameterList([nn.Parameter(torch.ones(1, dtype=torch.float32)) for _ in self.ve_layer_indices])
         else:
             self.ve_shared = None; self.ve_layer_scales = nn.ParameterList()
@@ -798,7 +798,7 @@ class GPT(nn.Module):
             ])
         else:
             self.vrl_alphas = nn.ParameterList()
-        self.lm_head = None if tie_embeddings else CastedLinear(model_dim, vocab_size, bias=False)
+        self.lm_head = None if tie_embeddings else CL(model_dim, vocab_size, bias=False)
         if self.lm_head is not None: self.lm_head._zero_init = True
         self._init_weights()
     def _init_weights(self):
@@ -872,13 +872,13 @@ class GPT(nn.Module):
         logits = F.linear(x, self.tok_emb.weight.to(x.dtype)) if self.tie_embeddings else self.lm_head(x)
         return self.logit_softcap * torch.tanh(logits / self.logit_softcap)
 
-def collect_hessians(bm, tl, args, device, gas, num_batches=256):
-    """Run calibration batches through the model, collecting H = X^T X for each CastedLinear."""
+def chs(bm, tl, args, device, gas, num_batches=256):
+    """Run calibration batches through the model, collecting H = X^T X for each CL."""
     hessians = {}  # param_name -> H matrix (cols x cols)
     hooks = []
     param_to_name = {}
     for name, module in bm.named_modules():
-        if isinstance(module, CastedLinear):
+        if isinstance(module, CL):
             param_name = name + ".weight"
             param_to_name[id(module)] = param_name
             cols = module.weight.shape[1]
@@ -898,7 +898,7 @@ def collect_hessians(bm, tl, args, device, gas, num_batches=256):
     bm.eval()
     with torch.inference_mode(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
         for _ in range(num_batches):
-            x, y = tl.next_batch(args.train_batch_tokens, args.train_seq_len, gas)
+            x, y = tl.next_batch(args.tbt, args.train_seq_len, gas)
             _ = bm(x, y)
     for h in hooks: h.remove()
     for name in hessians:
@@ -944,15 +944,15 @@ def eval_val_sliding(logits_fn, rank, ws, device, vt,
     vl = (loss_sum / tok_count).item()
     return vl, vl / math.log(2.0) * (tok_count.item() / byte_count.item())
 
-def resolve_checkpoint_path(spec: str) -> str:
+def rcp(spec: str) -> str:
     if not spec:
         return ""
     if spec == "1":
         return str(Path(os.environ.get("OUT_DIR", ".")) / "pre_export_model.pt")
     return spec
 
-def maybe_save_pre_export_checkpoint(path_spec: str, state_dict: dict[str, torch.Tensor], log0):
-    ckpt_path = resolve_checkpoint_path(path_spec)
+def mspc(path_spec: str, state_dict: dict[str, torch.Tensor], log0):
+    ckpt_path = rcp(path_spec)
     if not ckpt_path:
         return ""
     ckpt = {"model_state": {k: v.detach().cpu() for k, v in state_dict.items()}}
@@ -964,15 +964,15 @@ def maybe_save_pre_export_checkpoint(path_spec: str, state_dict: dict[str, torch
     log0(f"save_ckpt:{path}")
     return str(path)
 
-def run_export_eval(args, bm, rank, ws, device, distributed, master,
+def ree(args, bm, rank, ws, device, distributed, master,
                     code, vt, bb, hs, ib, log0):
     log0(f"gptq:calib {args.gptq_calib_batches} batches")
-    calib_loader = DistributedTokenLoader(args.train_files, rank, ws, device)
-    hessians = collect_hessians(bm, calib_loader, args, device, 8 // ws,
+    calib_loader = DTL(args.train_files, rank, ws, device)
+    hessians = chs(bm, calib_loader, args, device, 8 // ws,
                                 num_batches=args.gptq_calib_batches)
     hessian_map = {}
     for name, module in bm.named_modules():
-        if isinstance(module, CastedLinear):
+        if isinstance(module, CL):
             sd_name = name + ".weight"
             h_name = name + ".weight"
             if h_name in hessians:
@@ -1115,9 +1115,9 @@ def run_export_eval(args, bm, rank, ws, device, distributed, master,
     if distributed: dist.destroy_process_group()
 
 def main():
-    global zeropower_via_newtonschulz5
-    code = Path(__file__).read_text(encoding="utf-8"); args = Hyperparameters()
-    zeropower_via_newtonschulz5 = torch.compile(zeropower_via_newtonschulz5)
+    global z5
+    code = Path(__file__).read_text(encoding="utf-8"); args = H()
+    z5 = torch.compile(z5)
     distributed = "RANK" in os.environ and "WORLD_SIZE" in os.environ
     rank = int(os.environ.get("RANK", "0")); ws = int(os.environ.get("WORLD_SIZE", "1"))
     local_rank = int(os.environ.get("LOCAL_RANK", "0"))
@@ -1147,30 +1147,30 @@ def main():
     bb, hs, ib = build_sentencepiece_luts(sp, args.vocab_size, device)
     log0(f"train_loader:dataset:{dataset_dir.name} train_shards:{actual_train_files}")
     log0(f"val_tokens:{vt.numel()-1}")
-    CastedLinear._qat_enabled = False
-    CastedLinear._qat_clip_pct = args.qat_clip_pct  # v41: QAT-export alignment
+    CL._qat_enabled = False
+    CL._qat_clip_pct = args.qat_clip_pct  # v41: QAT-export alignment
     bm = GPT(
         vocab_size=args.vocab_size, num_layers=args.num_layers, model_dim=args.model_dim,
         num_heads=args.num_heads, num_kv_heads=args.num_kv_heads, mlp_mult=args.mlp_mult,
         tie_embeddings=args.tie_embeddings, tied_embed_init_std=args.tied_embed_init_std,
         logit_softcap=args.logit_softcap, rope_base=args.rope_base, qk_gain_init=args.qk_gain_init,
         smear_enabled=args.smear_enabled, backout_enabled=args.backout_enabled, backout_init=args.backout_init,
-        bigram_vocab_size=args.bigram_vocab_size, bigram_dim=args.bigram_dim,
+        bgvs=args.bgvs, bigram_dim=args.bigram_dim,
         xsa_last_n=args.xsa_last_n, rope_dims=args.rope_dims, ln_scale=args.ln_scale,
         ve_enabled=args.ve_enabled, ve_dim=args.ve_dim, ve_layers=args.ve_layers,
     ).to(device).bfloat16()
     for m in bm.modules():
-        if isinstance(m, CastedLinear): m.float()
+        if isinstance(m, CL): m.float()
     restore_low_dim_params_to_fp32(bm)
     compiled_model = torch.compile(bm, dynamic=False, fullgraph=True) if not bool(int(os.environ.get("TORCH_COMPILE_DISABLE", "0"))) else bm
     model = DDP(compiled_model, device_ids=[local_rank], broadcast_buffers=False) if distributed else compiled_model
-    export_only_checkpoint = resolve_checkpoint_path(args.export_only_checkpoint)
-    if export_only_checkpoint:
-        ckpt = torch.load(export_only_checkpoint, map_location="cpu")
+    eoc = rcp(args.eoc)
+    if eoc:
+        ckpt = torch.load(eoc, map_location="cpu")
         model_state = ckpt["model_state"] if isinstance(ckpt, dict) and "model_state" in ckpt else ckpt
         bm.load_state_dict(model_state, strict=True)
-        log0(f"export_only:ckpt:{export_only_checkpoint}")
-        run_export_eval(args, bm, rank, ws, device, distributed, master,
+        log0(f"export_only:ckpt:{eoc}")
+        ree(args, bm, rank, ws, device, distributed, master,
                         code, vt, bb, hs, ib, log0)
         return
     block_named_params = list(bm.blocks.named_parameters())
@@ -1206,13 +1206,13 @@ def main():
     n_params = sum(p.numel() for p in bm.parameters())
     xsa_layers = [i for i in range(args.num_layers) if i >= args.num_layers - args.xsa_last_n] if args.xsa_last_n > 0 else []
     log0(f"model_params:{n_params}"); log0(f"world:{ws} ga:{gas}")
-    log0(f"cfg:v42 lqat={args.late_qat_threshold} ema={args.ema_decay} xsa={args.xsa_last_n} rope={args.rope_dims} bg={args.bigram_vocab_size} qat={args.qat_clip_pct} prune={args.prune_pct}")
+    log0(f"cfg:v42 lqat={args.late_qat_threshold} ema={args.ema_decay} xsa={args.xsa_last_n} rope={args.rope_dims} bg={args.bgvs} qat={args.qat_clip_pct} prune={args.prune_pct}")
     log0(f"xsa_layers:{xsa_layers}")
     log0(f"fa3:{HAS_FA3} swa:{args.swa_enabled} wd:{args.warmdown_iters} adam_wd:{args.adam_wd}")
-    tl = DistributedTokenLoader(args.train_files, rank, ws, device)
+    tl = DTL(args.train_files, rank, ws, device)
     def zero_grad_all():
         for opt in opts: opt.zero_grad(set_to_none=True)
-    max_wallclock_ms = 1000.0 * args.max_wallclock_seconds if args.max_wallclock_seconds > 0 else None
+    max_wallclock_ms = 1000.0 * args.mws if args.mws > 0 else None
     def lr_mul(step, elapsed_ms):
         if args.warmdown_iters <= 0: return 1.0
         if max_wallclock_ms is None:
@@ -1230,7 +1230,7 @@ def main():
             zero_grad_all()
             for ms in range(gas):
                 if distributed: model.require_backward_grad_sync = ms == gas - 1
-                x, y = tl.next_batch(args.train_batch_tokens, args.train_seq_len, gas)
+                x, y = tl.next_batch(args.tbt, args.train_seq_len, gas)
                 with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=True): wl = model(x, y)
                 (wl * grad_scale).backward()
             for opt in opts: opt.step()
@@ -1240,7 +1240,7 @@ def main():
         for opt, state in zip(opts, initial_optimizer_states, strict=True): opt.load_state_dict(state)
         zero_grad_all()
         if distributed: model.require_backward_grad_sync = True
-        tl = DistributedTokenLoader(args.train_files, rank, ws, device)
+        tl = DTL(args.train_files, rank, ws, device)
     ema_state = {name: t.detach().float().clone() for name, t in bm.state_dict().items()}
     ttms, stop_after_step = 0.0, None
     swa_state, swa_count = None, 0
@@ -1260,13 +1260,13 @@ def main():
             break
         elapsed_ms = ttms + 1000.0 * (time.perf_counter() - t0)
         scale = lr_mul(step, elapsed_ms)
-        if args.late_qat_threshold > 0 and scale < args.late_qat_threshold and not CastedLinear._qat_enabled:
-            CastedLinear._qat_enabled = True
+        if args.late_qat_threshold > 0 and scale < args.late_qat_threshold and not CL._qat_enabled:
+            CL._qat_enabled = True
             log0(f"late_qat:enabled step:{step} scale:{scale:.4f}")
         zero_grad_all(); train_loss = torch.zeros((), device=device)
         for ms in range(gas):
             if distributed: model.require_backward_grad_sync = ms == gas - 1
-            x, y = tl.next_batch(args.train_batch_tokens, args.train_seq_len, gas)
+            x, y = tl.next_batch(args.tbt, args.train_seq_len, gas)
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=True): loss = model(x, y)
             train_loss += loss.detach(); (loss * grad_scale).backward()
         train_loss /= gas
@@ -1302,8 +1302,8 @@ def main():
     current_state = bm.state_dict()
     avg_state = {name: t.to(dtype=current_state[name].dtype) for name, t in ema_state.items()}
     bm.load_state_dict(avg_state, strict=True)
-    maybe_save_pre_export_checkpoint(args.save_pre_export_checkpoint, bm.state_dict(), log0)
-    run_export_eval(args, bm, rank, ws, device, distributed, master,
+    mspc(args.spc, bm.state_dict(), log0)
+    ree(args, bm, rank, ws, device, distributed, master,
                     code, vt, bb, hs, ib, log0)
 
 if __name__ == "__main__":
