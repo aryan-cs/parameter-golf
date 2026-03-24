@@ -357,6 +357,48 @@ def dequantize_state_dict_mixed(result, meta, template_sd):
             out[name] = (q.float() * float(s.item())).to(orig_dtype)
     return out
 
+def pack_int6_tensor(t: torch.Tensor) -> bytes:
+    q = t.detach().cpu().contiguous()
+    if q.dtype != torch.int8:
+        raise TypeError(f"expected int8 tensor for int6 packing, got {q.dtype}")
+    arr = q.numpy().reshape(-1).astype(np.int16, copy=False)
+    if arr.size == 0:
+        return b""
+    if arr.min() < -31 or arr.max() > 31:
+        raise ValueError("int6 tensor contains values outside [-31, 31]")
+    u = (arr + 31).astype(np.uint8, copy=False)
+    pad = (-u.size) % 4
+    if pad:
+        u = np.pad(u, (0, pad), constant_values=0)
+    groups = u.reshape(-1, 4).astype(np.uint32, copy=False)
+    packed = (groups[:, 0]
+              | (groups[:, 1] << 6)
+              | (groups[:, 2] << 12)
+              | (groups[:, 3] << 18))
+    out = np.empty(packed.size * 3, dtype=np.uint8)
+    out[0::3] = (packed & 0xFF).astype(np.uint8)
+    out[1::3] = ((packed >> 8) & 0xFF).astype(np.uint8)
+    out[2::3] = ((packed >> 16) & 0xFF).astype(np.uint8)
+    return out.tobytes()
+
+def unpack_int6_tensor(raw: bytes | memoryview, shape: list[int]) -> torch.Tensor:
+    numel = int(np.prod(shape, dtype=np.int64))
+    if numel == 0:
+        return torch.empty(shape, dtype=torch.int8)
+    packed_u8 = np.frombuffer(raw, dtype=np.uint8)
+    groups = (numel + 3) // 4
+    if packed_u8.size != groups * 3:
+        raise ValueError(f"bad packed int6 size: expected {groups * 3}, got {packed_u8.size}")
+    triplets = packed_u8.reshape(-1, 3).astype(np.uint32, copy=False)
+    packed = triplets[:, 0] | (triplets[:, 1] << 8) | (triplets[:, 2] << 16)
+    u = np.empty(groups * 4, dtype=np.uint8)
+    u[0::4] = (packed & 0x3F).astype(np.uint8)
+    u[1::4] = ((packed >> 6) & 0x3F).astype(np.uint8)
+    u[2::4] = ((packed >> 12) & 0x3F).astype(np.uint8)
+    u[3::4] = ((packed >> 18) & 0x3F).astype(np.uint8)
+    arr = u[:numel].astype(np.int16, copy=False) - 31
+    return torch.from_numpy(arr.astype(np.int8, copy=False).reshape(shape))
+
 # ── DATA LOADING ──
 def load_data_shard(file):
     header_bytes = 256 * np.dtype("<i4").itemsize
@@ -823,10 +865,19 @@ def run_export_eval(args, base_model, rank, world_size, device, distributed, mas
     for tname in tensor_order:
         t = quant_result[tname]
         name_bytes = tname.encode("utf-8")
+        base_name = tname[:-2] if tname.endswith(".q") else ""
+        pack_int6 = (
+            tname.endswith(".q")
+            and isinstance(quant_meta.get(base_name), dict)
+            and quant_meta[base_name].get("type") == "int6"
+        )
         dtype_map = {torch.int8: 0, torch.float16: 1, torch.float32: 2, torch.bfloat16: 3}
-        dt = dtype_map.get(t.dtype, 2)
-        t_np = t.contiguous().numpy() if t.dtype != torch.bfloat16 else t.contiguous().view(torch.uint16).numpy()
-        raw = t_np.tobytes()
+        dt = 4 if pack_int6 else dtype_map.get(t.dtype, 2)
+        if pack_int6:
+            raw = pack_int6_tensor(t)
+        else:
+            t_np = t.contiguous().numpy() if t.dtype != torch.bfloat16 else t.contiguous().view(torch.uint16).numpy()
+            raw = t_np.tobytes()
         parts.append(struct.pack("<H", len(name_bytes)))
         parts.append(name_bytes)
         parts.append(struct.pack("<BB", dt, t.ndim))
@@ -859,14 +910,21 @@ def run_export_eval(args, base_model, rank, world_size, device, distributed, mas
         shape = []
         for _ in range(ndim):
             shape.append(struct.unpack_from("<I", raw_data, offset)[0]); offset += 4
-        torch_dt, np_dt = dtype_rmap[dt]
-        numel = 1
-        for s in shape: numel *= s
-        nbytes = numel * np.dtype(np_dt).itemsize
-        arr = np.frombuffer(raw_data, dtype=np_dt, count=numel, offset=offset).copy()
-        offset += nbytes
-        t = torch.from_numpy(arr).reshape(shape)
-        if torch_dt == torch.bfloat16: t = t.view(torch.bfloat16)
+        if dt == 4:
+            numel = int(np.prod(shape, dtype=np.int64))
+            nbytes = ((numel + 3) // 4) * 3
+            raw = memoryview(raw_data)[offset:offset+nbytes]
+            offset += nbytes
+            t = unpack_int6_tensor(raw, shape)
+        else:
+            torch_dt, np_dt = dtype_rmap[dt]
+            numel = 1
+            for s in shape: numel *= s
+            nbytes = numel * np.dtype(np_dt).itemsize
+            arr = np.frombuffer(raw_data, dtype=np_dt, count=numel, offset=offset).copy()
+            offset += nbytes
+            t = torch.from_numpy(arr).reshape(shape)
+            if torch_dt == torch.bfloat16: t = t.view(torch.bfloat16)
         loaded_result[tname] = t
     deq_state = dequantize_state_dict_mixed(loaded_result, loaded_meta, sd_cpu)
     base_model.load_state_dict(deq_state, strict=True)

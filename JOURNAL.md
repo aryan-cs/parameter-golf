@@ -527,3 +527,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: Recovery now needs only one local command once a new pod exists. The wrapper targets the exact current plan: `prune14` training plus export-only `prune17 -> prune20 -> prune23 -> prune26`.
 - Decision: Use the new local wrapper as the default restart path for the next pod instead of manually issuing sync, bootstrap, and chain-launch commands separately.
 - Next step: When a replacement pod is available, run the new wrapper against its SSH target and resume the validity-focused export ladder immediately.
+
+- Timestamp: 2026-03-24 01:34 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL export compression
+- Objective: Find a byte-cap win that can be implemented locally while Runpod is down, without changing model quality.
+- Command or config: Inspected `candidates/non_ttt_vrl_gptq/train_gpt.py` export serialization and patched it so int6 `.q` tensors are serialized as packed 6-bit payloads instead of raw int8 bytes; also updated the loader to unpack the new dtype code during round-trip evaluation. Verified syntax with `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`.
+- Result: The active candidate now has a materially denser int6 export format. This should reduce artifact size without changing training or quantization behavior. A full runtime round-trip test is still pending because the local environment currently lacks `torch`, but the patch compiles cleanly and targets the exact part of the pipeline that is causing the validity failure.
+- Decision: Keep this serializer improvement in the main lane; it is a direct size win and pairs naturally with the staged prune ladder once we have a fresh pod.
+- Next step: Push the serializer change, then rerun the VRL recovery chain on the next pod so we can measure whether packed int6 plus staged pruning clears the 16 MB cap.
