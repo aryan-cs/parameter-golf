@@ -134,7 +134,7 @@ class Muon(th.optim.Optimizer):
                 p.add_(g, alpha=-lr); curr += p.numel()
         return loss
 
-def build_sentencepiece_luts(sp, vs, device):
+def bsl(sp, vs, device):
     sp_vocab_size = int(sp.vocab_size()); table_size = max(sp_vocab_size, vs)
     base_bytes_np = np.zeros((table_size,), dtype=np.int16)
     has_leading_space_np = np.zeros((table_size,), dtype=np.bool_)
@@ -150,10 +150,10 @@ def build_sentencepiece_luts(sp, vs, device):
             TT(has_leading_space_np, dtype=BO, device=device),
             TT(is_boundary_token_np, dtype=BO, device=device))
 
-def load_validation_tokens(pattern, seq_len):
+def lvt(pattern, seq_len):
     files = [Path(p) for p in sorted(glob.glob(pattern))]
     if not files: raise FileNotFoundError(f"no:{pattern}")
-    tokens = CAT([load_data_shard(file) for file in files]).contiguous()
+    tokens = CAT([lds(file) for file in files]).contiguous()
     usable = ((tokens.numel() - 1) // seq_len) * seq_len
     if usable <= 0: raise ValueError(f"val<{seq_len}")
     return tokens[:usable + 1]
@@ -211,7 +211,7 @@ LF = [{
     "depth": 0,
 }]
 
-def _classify_param(name):
+def cpm(name):
     if "tok_emb" in name or "lm_head" in name: return "embed"
     if ".mlp." in name: return "mlp"
     if "bigram" in name: return "bigram"
@@ -219,7 +219,7 @@ def _classify_param(name):
     if "ve_shared" in name: return "ve"
     return "other"
 
-def _meta_kind(info):
+def mk(info):
     if info == MP or info == "passthrough":
         return "passthrough"
     if info == MC or info == "passthrough_ctrl":
@@ -245,7 +245,7 @@ def eqm(meta: dict[str, object]) -> tuple[bytes, list[str]]:
         kind = meta[name]
         kind_code = kind_map.get(kind)
         if kind_code is None:
-            kind_name = _meta_kind(kind)
+            kind_name = mk(kind)
             if kind_name == "int6": kind_code = 2
             elif kind_name == "int8": kind_code = 3
             else: raise ValueError(f"bad meta {name}:{kind!r}")
@@ -290,10 +290,10 @@ def dtr(name_idx: int, suffix: int, names: list[str]) -> str:
     if suffix == 2: return base_name + ".scale"
     return base_name
 
-def quantize_int6_gptq(weight, hessian=None, clip_range=31, block_size=128):
+def qi6g(weight, hessian=None, clip_range=31, block_size=128):
     t32 = weight.float()
     if t32.ndim != 2 or hessian is None:
-        return _quantize_int6_percentile(t32, clip_range)
+        return qi6p(t32, clip_range)
     rows, cols = t32.shape
     H = hessian.float().clone()
     dead = DG(H) == 0
@@ -310,7 +310,7 @@ def quantize_int6_gptq(weight, hessian=None, clip_range=31, block_size=128):
         Hinv = th.cholesky_inverse(Hinv)
         Hinv = th.linalg.cholesky(Hinv, upper=True)
     except th.linalg.LinAlgError:
-        return _quantize_int6_percentile(t32, clip_range)
+        return qi6p(t32, clip_range)
     best_q = None; best_scale = None; best_err = float('inf')
     for pct in [0.9990, 0.9995, 0.9999, 0.99999, 1.0]:
         if pct < 1.0:
@@ -346,7 +346,7 @@ def quantize_int6_gptq(weight, hessian=None, clip_range=31, block_size=128):
     best_q = best_q[:, inv_perm]
     return best_q, best_scale
 
-def _quantize_int6_percentile(t32, clip_range=31):
+def qi6p(t32, clip_range=31):
     if t32.ndim == 2:
         best_q, best_s, best_err = None, None, float('inf')
         for pct in [0.9990, 0.9995, 0.9999, 0.99999, 1.0]:
@@ -366,7 +366,7 @@ def _quantize_int6_percentile(t32, clip_range=31):
     q = CLP(th.round(t32 / scale.float()), -clip_range, clip_range).to(I8)
     return q, scale
 
-def quantize_float_tensor(t):
+def qft(t):
     t32 = t.float()
     if t32.ndim == 2:
         clip_q = 99.99984 / 100.0
@@ -386,7 +386,7 @@ def qsd(sd, hessians=None):
     int6_cats = {"mlp", "attn", "bigram", "ve"}
     for name, tensor in sd.items():
         t = tensor.detach().cpu().contiguous()
-        cat = _classify_param(name)
+        cat = cpm(name)
         if not t.is_floating_point() or t.numel() <= I8K:
             result[name] = t.to(F16) if t.is_floating_point() else t
             meta[name] = MP; continue
@@ -394,10 +394,10 @@ def qsd(sd, hessians=None):
             result[name] = t.float(); meta[name] = MC; continue
         if cat in int6_cats and t.ndim >= 1:
             H = hessians.get(name) if hessians else None
-            q, s = quantize_int6_gptq(t, hessian=H)
+            q, s = qi6g(t, hessian=H)
             result[name + ".q"] = q; result[name + ".scale"] = s
             meta[name] = M6; continue
-        q, s = quantize_float_tensor(t)
+        q, s = qft(t)
         result[name + ".q"] = q; result[name + ".scale"] = s
         meta[name] = M8
     return result, meta
@@ -408,7 +408,7 @@ def dsd(result, meta, template_sd):
         info = meta.get(name)
         if info is None: continue
         orig_dtype = orig.dtype
-        if _meta_kind(info) in {"passthrough", "passthrough_ctrl"}:
+        if mk(info) in {"passthrough", "passthrough_ctrl"}:
             t = result[name]
             if t.dtype == F16 and orig_dtype in (F32, BF): t = t.to(orig_dtype)
             out[name] = t; continue
@@ -554,7 +554,7 @@ def dmb(blob: bytes) -> tuple[bytes, str]:
             pass
     return zlib.decompress(blob), "legacy_zlib9"
 
-def load_data_shard(file):
+def lds(file):
     header_bytes = 256 * np.dtype("<i4").itemsize
     header = np.fromfile(file, dtype="<i4", count=256)
     if header.size != 256 or int(header[0]) != 20240520 or int(header[1]) != 1: raise ValueError(f"bad hdr {file}")
@@ -566,9 +566,9 @@ class TokenStream:
     def __init__(self, pattern):
         self.files = [Path(p) for p in sorted(glob.glob(pattern))]
         if not self.files: raise FileNotFoundError(f"no:{pattern}")
-        self.file_idx = 0; self.tokens = load_data_shard(self.files[0]); self.pos = 0
+        self.file_idx = 0; self.tokens = lds(self.files[0]); self.pos = 0
     def _advance_file(self):
-        self.file_idx = (self.file_idx + 1) % len(self.files); self.tokens = load_data_shard(self.files[self.file_idx]); self.pos = 0
+        self.file_idx = (self.file_idx + 1) % len(self.files); self.tokens = lds(self.files[self.file_idx]); self.pos = 0
     def take(self, n):
         chunks, remaining = [], n
         while remaining > 0:
@@ -605,7 +605,7 @@ class CL(nn.Linear):
             w = w + (w_q - w).detach()
         return F.linear(x, w, self.bias.to(x.dtype) if self.bias is not None else None)
 
-def restore_low_dim_params_to_fp32(module):
+def rf32(module):
     with NG():
         for name, param in module.named_parameters():
             if (param.ndim < 2 or any(p in name for p in CP)) and param.dtype != F32:
@@ -632,7 +632,7 @@ class Rotary(M):
             self._seq_len_cached = seq_len
         return self._cos_cached.to(dtype=dtype), self._sin_cached.to(dtype=dtype)
 
-def apply_rotary_emb(x, cos, sin, rd=0):
+def are(x, cos, sin, rd=0):
     if rd > 0 and rd < x.size(-1):
         x_rope, x_pass = x[..., :rd], x[..., rd:]
         half = rd // 2
@@ -671,8 +671,8 @@ class CSA(M):
         v = v.reshape(bsz, seqlen, self.num_kv_heads, self.head_dim)
         q, k = F.rms_norm(q, (q.size(-1),)), F.rms_norm(k, (k.size(-1),))
         cos, sin = self.rotary(seqlen, x.device, q.dtype)
-        q = apply_rotary_emb(q, cos, sin, self.rope_dims)
-        k = apply_rotary_emb(k, cos, sin, self.rope_dims)
+        q = are(q, cos, sin, self.rope_dims)
+        k = are(k, cos, sin, self.rope_dims)
         q = q * self.q_gain.to(dtype=q.dtype)[None, None, :, None]
         if HAS_FA3:
             y = _fa3_func(q, k, v, causal=True)
@@ -980,7 +980,7 @@ def ree(a, bm, rank, ws, device, dd, master,
     if a.pp > 0:
         ai6 = []
         for name, info in qm.items():
-            if _meta_kind(info) == "int6":
+            if mk(info) == "int6":
                 qname = name + ".q"
                 if qname in qr:
                     ai6.append(qr[qname].flatten().abs().float())
@@ -990,13 +990,13 @@ def ree(a, bm, rank, ws, device, dd, master,
             threshold = all_vals.kthvalue(k).values.item()
             prc = 0
             for name, info in qm.items():
-                if _meta_kind(info) == "int6":
+                if mk(info) == "int6":
                     qname = name + ".q"
                     if qname in qr:
                         mask = qr[qname].abs() <= int(threshold)
                         prc += mask.sum().item()
                         qr[qname][mask] = 0
-            ti6 = sum(qr[n + ".q"].numel() for n, i in qm.items() if _meta_kind(i) == "int6" and n + ".q" in qr)
+            ti6 = sum(qr[n + ".q"].numel() for n, i in qm.items() if mk(i) == "int6" and n + ".q" in qr)
             log0(f"prune:{prc}/{ti6} ({100*prc/max(ti6,1):.1f}%) thr={threshold:.0f}")
     meta_blob, meta_names = eqm(qm)
     name_to_idx = {name: idx for idx, name in enumerate(meta_names)}
@@ -1012,7 +1012,7 @@ def ree(a, bm, rank, ws, device, dd, master,
         base_name = tname[:-2] if tname.endswith(".q") else ""
         pack_int6 = (
             tname.endswith(".q")
-            and _meta_kind(qm.get(base_name)) == "int6"
+            and mk(qm.get(base_name)) == "int6"
         )
         dtype_map = {I8: 0, F16: 1, F32: 2, BF: 3}
         dt = 5 if pack_int6 else dtype_map.get(t.dtype, 2)
@@ -1094,7 +1094,7 @@ def ree(a, bm, rank, ws, device, dd, master,
     deq_state = dsd(lr, lm, sd_cpu)
     bm.load_state_dict(deq_state, strict=True)
     eval_sl = a.esl if a.esl > 0 else a.tsl
-    vte = load_validation_tokens(a.val_files, eval_sl) if eval_sl != a.tsl else vt
+    vte = lvt(a.val_files, eval_sl) if eval_sl != a.tsl else vt
     raw_logits_fn = CMP(bm.forward_logits, dynamic=False) if not bool(int(EG("TORCH_COMPILE_DISABLE", "0"))) else bm.forward_logits
     warmup_x = Z(a.ebs, eval_sl, dtype=I64, device=device)
     bm.eval()
@@ -1134,8 +1134,8 @@ def main():
             with open(logfile, "a", encoding="utf-8") as f: print(msg, file=f)
     random.seed(a.sd); np.random.seed(a.sd); th.manual_seed(a.sd); th.cuda.manual_seed_all(a.sd)
     sp = spm.SentencePieceProcessor(model_file=a.tp)
-    vt = load_validation_tokens(a.vf, a.tsl)
-    bb, hs, ib = build_sentencepiece_luts(sp, a.vs, device)
+    vt = lvt(a.vf, a.tsl)
+    bb, hs, ib = bsl(sp, a.vs, device)
     CL._qat_enabled = False
     CL._qat_clip_pct = a.qcp
     bm = GPT(
@@ -1150,7 +1150,7 @@ def main():
     ).to(device).bfloat16()
     for m in bm.modules():
         if isinstance(m, CL): m.float()
-    restore_low_dim_params_to_fp32(bm)
+    rf32(bm)
     compiled_model = CMP(bm, dynamic=False, fullgraph=True) if not bool(int(EG("TORCH_COMPILE_DISABLE", "0"))) else bm
     model = DDP(compiled_model, device_ids=[local_rank], broadcast_buffers=False) if dd else compiled_model
     eoc = rcp(a.eoc)
