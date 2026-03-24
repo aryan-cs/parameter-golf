@@ -8,7 +8,15 @@ fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export PATH="$HOME/.local/bin:$PATH"
-VENV_DIR="${VENV_DIR:-/root/.venvs/golf}"
+DEFAULT_VENV_DIR="${ROOT}/.venv"
+LEGACY_VENV_DIR="/root/.venvs/golf"
+if [[ -z "${VENV_DIR:-}" ]]; then
+  if [[ -x "${DEFAULT_VENV_DIR}/bin/python" ]]; then
+    VENV_DIR="${DEFAULT_VENV_DIR}"
+  else
+    VENV_DIR="${LEGACY_VENV_DIR}"
+  fi
+fi
 CANDIDATE="$1"
 SEED="$2"
 CONFIG_PATH="${3:-$ROOT/configs/runpod/${CANDIDATE}.env}"

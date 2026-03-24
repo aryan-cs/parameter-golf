@@ -374,3 +374,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The active pod process set is now simpler and matches the intended plan: the long VRL baseline is still running as PID `129473`, and the only queued successor is the prune-focused watcher PID `167816`.
 - Decision: Keep the baseline and the prune11 queue intact; remove only obsolete helper processes so the next transition is easier to inspect.
 - Next step: Continue monitoring the baseline for a final `final_int6_zstd_roundtrip` metric or process exit, then let the prune11 follow-up take over automatically.
+
+- Timestamp: 2026-03-24 00:21 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL long-run
+- Objective: Capture the finished baseline export result and immediately hand the GPU to the prune-focused follow-up.
+- Command or config: Monitored the completed baseline log to the end and then attempted a detached launch of `configs/runpod/non_ttt_vrl_gptq_1gpu_long_prune11.env`.
+- Result: The finished baseline produced `final_int6_zstd_roundtrip val_loss:1.8842 val_bpb:1.1159 eval_time:624877ms`, which is a strong quantized score but still invalid because the artifact is `16,333,801` bytes. The immediate prune11 relaunch attempt failed because `runpod/pod_run.sh` was still looking for `/root/.venvs/golf/bin/python` even though this pod is using `/workspace/golf/.venv`.
+- Decision: Patch the launcher to prefer the repo-local `.venv` so future detached launches and queued follow-ups use the same working Python environment as the successful baseline run.
+- Next step: Update `runpod/pod_run.sh`, push the fix, sync it to the pod, and relaunch the prune11 follow-up immediately so the GPU does not sit idle.
