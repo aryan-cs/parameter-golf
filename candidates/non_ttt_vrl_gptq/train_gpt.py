@@ -155,12 +155,12 @@ LF = [{
     "id": lzma.FILTER_LZMA2,
     "dict_size": 9<<21,
     "lc": 0,
-    "lp": 1,
-    "pb": 0,
+    "lp": 0,
+    "pb": 1,
     "mode": lzma.MODE_NORMAL,
     "nice_len": 76,
     "mf": lzma.MF_HC3,
-    "depth": 2,
+    "depth": 1,
 }]
 
 def cpm(name):
