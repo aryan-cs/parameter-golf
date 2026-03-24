@@ -1904,3 +1904,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The salvage run is live and healthy. Early checkpoints match the original TTT curve closely: `ttt_chunk [1/1893] bpb=1.208063`, `ttt_chunk [11/1893] bpb=1.110716`, `ttt_chunk [21/1893] bpb=1.119648`.
 - Decision: Keep the H200 on this salvage eval until it finishes. Recovering the missing `legal_ttt_exact` on the best completed under-cap artifact is a higher-signal use of the GPU than starting another long training run immediately.
 - Next step: Let the resumed TTT eval finish, record the recovered `legal_ttt_exact`, and only then resume the corrected H100-step proxy training queue if further improvement is still needed.
+
+- Timestamp: 2026-03-24 21:25 UTC
+- Commit: `0cdf91d`
+- Lane: H200 legal-TTT salvage monitoring
+- Objective: Confirm that the resumed legal-TTT evaluation remains numerically aligned with the original interrupted TTT curve and make sure the next corrected proxy lane will start automatically if the recovered score is still not strong enough.
+- Command or config: Read the live salvage log `records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs/h200_ttt_recordstack_80shard_seed1337_resume_ttt.txt` through the first `201` TTT chunks and launched `scripts/queue_h200_followups_after_current.sh` with `CURRENT_PID` set to the salvage process so the corrected H100-step proxy queue is armed behind the current eval.
+- Result: The resumed TTT pass is healthy and still matches the original curve closely through the early chunks: `ttt_chunk [151/1893] bpb=1.116239`, `ttt_chunk [191/1893] bpb=1.121589`, `ttt_chunk [201/1893] bpb=1.121089`. The H200 is now covered in both directions: continue salvaging the best under-cap artifact now, then automatically hand off to the corrected H100-step proxy chain if the final recovered `legal_ttt_exact` still does not meet the challenge bar.
+- Decision: Keep the salvage pass running. It remains the fastest route to a completed score from our strongest artifact, and the automatic fallback queue means we do not lose momentum afterward.
+- Next step: Harvest the final `legal_ttt_exact` from the resumed eval, then compare it against the challenge acceptance bar and either package the lane or let the corrected proxy queue take over.
