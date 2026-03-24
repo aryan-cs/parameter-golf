@@ -153,7 +153,7 @@ def load_validation_tokens(pattern, seq_len):
     return tokens[:usable + 1]
 
 def eval_val(args, model, rank, ws, device, gas,
-             vt, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut, eval_seq_len=0):
+             vt, bb, hs, ib, eval_seq_len=0):
     seq_len = eval_seq_len if eval_seq_len > 0 else args.train_seq_len
     local_batch_seqs = args.val_batch_size // (ws * gas) // seq_len
     total_seqs = (vt.numel() - 1) // seq_len
@@ -171,8 +171,8 @@ def eval_val(args, model, rank, ws, device, gas,
                 batch_loss = model(x, y).detach()
             val_loss_sum += batch_loss.to(torch.float64) * float(y.numel())
             val_token_count += float(y.numel())
-            tb = base_bytes_lut[y.reshape(-1)].to(dtype=torch.int16)
-            tb += (has_leading_space_lut[y.reshape(-1)] & ~is_boundary_token_lut[x.reshape(-1)]).to(dtype=torch.int16)
+            tb = bb[y.reshape(-1)].to(dtype=torch.int16)
+            tb += (hs[y.reshape(-1)] & ~ib[x.reshape(-1)]).to(dtype=torch.int16)
             val_byte_count += tb.to(torch.float64).sum()
     if dist.is_available() and dist.is_initialized():
         for t in [val_loss_sum, val_token_count, val_byte_count]: dist.all_reduce(t, op=dist.ReduceOp.SUM)
@@ -911,7 +911,7 @@ def collect_hessians(bm, train_loader, args, device, gas, num_batches=256):
     return hessians
 
 def eval_val_sliding(logits_fn, rank, ws, device, vt,
-                     base_bytes_lut, has_leading_space_lut, is_boundary_token_lut,
+                     bb, hs, ib,
                      seq_len, stride, eval_batch_seqs=256):
     total = vt.numel() - 1; windows, p = [], 0
     while p + seq_len <= total:
@@ -936,8 +936,8 @@ def eval_val_sliding(logits_fn, rank, ws, device, vt,
                 loss_sum += F.cross_entropy(sl.float(), st, reduction="sum").to(torch.float64)
                 ns = st.numel(); tok_count += ns
                 prev, tgt = x[b, s:s+ns], st
-                tb = base_bytes_lut[tgt].to(torch.int16)
-                tb += (has_leading_space_lut[tgt] & ~is_boundary_token_lut[prev]).to(torch.int16)
+                tb = bb[tgt].to(torch.int16)
+                tb += (hs[tgt] & ~ib[prev]).to(torch.int16)
                 byte_count += tb.to(torch.float64).sum()
     if dist.is_available() and dist.is_initialized():
         for t in [loss_sum, tok_count, byte_count]: dist.all_reduce(t, op=dist.ReduceOp.SUM)
@@ -965,7 +965,7 @@ def maybe_save_pre_export_checkpoint(path_spec: str, state_dict: dict[str, torch
     return str(path)
 
 def run_export_eval(args, bm, rank, ws, device, distributed, master,
-                    code, vt, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut, log0):
+                    code, vt, bb, hs, ib, log0):
     log0(f"gptq:calib {args.gptq_calib_batches} batches")
     calib_loader = DistributedTokenLoader(args.train_files, rank, ws, device)
     hessians = collect_hessians(bm, calib_loader, args, device, 8 // ws,
@@ -1107,7 +1107,7 @@ def run_export_eval(args, bm, rank, ws, device, distributed, master,
     with torch.inference_mode(), torch.autocast(device_type="cuda", dtype=torch.bfloat16): _ = raw_logits_fn(warmup_x)
     torch.cuda.synchronize(); t_eval = time.perf_counter()
     q_vl, q_vb = eval_val_sliding(raw_logits_fn, rank, ws, device,
-        val_tokens_eval, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut,
+        val_tokens_eval, bb, hs, ib,
         eval_sl, args.eval_stride, eval_batch_seqs=args.eval_batch_seqs)
     torch.cuda.synchronize(); eval_time = time.perf_counter() - t_eval
     log0(f"final_int6 val_loss:{q_vl:.4f} val_bpb:{q_vb:.4f} eval_time:{eval_time*1000:.0f}ms")
@@ -1144,7 +1144,7 @@ def main():
     dataset_dir = Path(args.data_path).resolve()
     actual_train_files = len(list(dataset_dir.glob("fineweb_train_*.bin")))
     vt = load_validation_tokens(args.val_files, args.train_seq_len)
-    base_bytes_lut, has_leading_space_lut, is_boundary_token_lut = build_sentencepiece_luts(sp, args.vocab_size, device)
+    bb, hs, ib = build_sentencepiece_luts(sp, args.vocab_size, device)
     log0(f"train_loader:dataset:{dataset_dir.name} train_shards:{actual_train_files}")
     log0(f"val_tokens:{vt.numel()-1}")
     CastedLinear._qat_enabled = False
@@ -1171,7 +1171,7 @@ def main():
         bm.load_state_dict(model_state, strict=True)
         log0(f"export_only:ckpt:{export_only_checkpoint}")
         run_export_eval(args, bm, rank, ws, device, distributed, master,
-                        code, vt, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut, log0)
+                        code, vt, bb, hs, ib, log0)
         return
     block_named_params = list(bm.blocks.named_parameters())
     matrix_params = [p for n, p in block_named_params if p.ndim == 2 and not any(pat in n for pat in CP)]
@@ -1242,23 +1242,23 @@ def main():
         if distributed: model.require_backward_grad_sync = True
         train_loader = DistributedTokenLoader(args.train_files, rank, ws, device)
     ema_state = {name: t.detach().float().clone() for name, t in bm.state_dict().items()}
-    training_time_ms, stop_after_step = 0.0, None
+    ttms, stop_after_step = 0.0, None
     swa_state, swa_count = None, 0
     torch.cuda.synchronize(); t0 = time.perf_counter(); step = 0
     while True:
         last_step = step == args.iterations or (stop_after_step is not None and step >= stop_after_step)
         should_validate = last_step or (args.val_loss_every > 0 and step % args.val_loss_every == 0)
         if should_validate:
-            torch.cuda.synchronize(); training_time_ms += 1000.0 * (time.perf_counter() - t0)
+            torch.cuda.synchronize(); ttms += 1000.0 * (time.perf_counter() - t0)
             vl, vb = eval_val(args, model, rank, ws, device, gas,
-                              vt, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut)
-            log0(f"step:{step}/{args.iterations} val_loss:{vl:.4f} val_bpb:{vb:.4f} train_time:{training_time_ms:.0f}ms step_avg:{training_time_ms/max(step,1):.2f}ms")
+                              vt, bb, hs, ib)
+            log0(f"step:{step}/{args.iterations} val_loss:{vl:.4f} val_bpb:{vb:.4f} train_time:{ttms:.0f}ms step_avg:{ttms/max(step,1):.2f}ms")
             torch.cuda.synchronize(); t0 = time.perf_counter()
         if last_step:
             if stop_after_step is not None and step < args.iterations:
-                log0(f"stopping_early: wallclock_cap train_time:{training_time_ms:.0f}ms step:{step}/{args.iterations}")
+                log0(f"stopping_early: wallclock_cap train_time:{ttms:.0f}ms step:{step}/{args.iterations}")
             break
-        elapsed_ms = training_time_ms + 1000.0 * (time.perf_counter() - t0)
+        elapsed_ms = ttms + 1000.0 * (time.perf_counter() - t0)
         scale = lr_mul(step, elapsed_ms)
         if args.late_qat_threshold > 0 and scale < args.late_qat_threshold and not CastedLinear._qat_enabled:
             CastedLinear._qat_enabled = True
@@ -1282,7 +1282,7 @@ def main():
             for name, t in bm.state_dict().items():
                 ema_state[name].mul_(args.ema_decay).add_(t.detach().float(), alpha=1.0 - args.ema_decay)
         step += 1
-        approx_ms = training_time_ms + 1000.0 * (time.perf_counter() - t0)
+        approx_ms = ttms + 1000.0 * (time.perf_counter() - t0)
         if args.swa_enabled and scale < 0.2 and step % args.swa_interval == 0:
             if swa_state is None:
                 swa_state = {n: t.detach().cpu().clone() for n, t in bm.state_dict().items()}
@@ -1304,7 +1304,7 @@ def main():
     bm.load_state_dict(avg_state, strict=True)
     maybe_save_pre_export_checkpoint(args.save_pre_export_checkpoint, bm.state_dict(), log0)
     run_export_eval(args, bm, rank, ws, device, distributed, master,
-                    code, vt, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut, log0)
+                    code, vt, bb, hs, ib, log0)
 
 if __name__ == "__main__":
     main()
