@@ -545,3 +545,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The pure-Python packing check passed for lengths `1, 2, 3, 4, 5, 7, 16, 17, 31, 64, 127, 1024`, which gives us confidence that the bit layout itself is sound. Full runtime verification inside `train_gpt.py` is still pending the next CUDA pod because the local environment does not have `torch`.
 - Decision: Keep the packed-int6 serializer patch in place; we now have both a syntax check and an independent bit-layout sanity check.
 - Next step: Resume the VRL recovery chain on the next pod and measure the real post-quant artifact size improvement from packed int6 plus the staged prune ladder.
+
+- Timestamp: 2026-03-24 01:43 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL export compression
+- Objective: Remove additional bookkeeping overhead from the export bundle while preserving compatibility with already-written metadata.
+- Command or config: Patched `candidates/non_ttt_vrl_gptq/train_gpt.py` so quantization metadata now uses compact codes (`'p'`, `'c'`, `6`, `8`) instead of verbose JSON strings and dicts, and switched `json.dumps(...)` to compact separators. Added a small pure-Python compatibility check covering both old and new metadata encodings.
+- Result: The export format now wastes fewer bytes on metadata while still accepting older encodings such as `"passthrough"` and `{\"type\":\"int6\"}`. Syntax check passed with `uv run python -m py_compile ...`, and the compatibility check reported `meta kind compatibility ok`.
+- Decision: Keep the metadata compaction patch in the main lane; it is low-risk, backward-compatible on load, and directly aligned with the byte-cap problem.
+- Next step: Resume the recovery chain on the next pod and measure the combined effect of packed int6 payloads, compact metadata, and staged pruning on final artifact size.

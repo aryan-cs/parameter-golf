@@ -203,6 +203,10 @@ CONTROL_TENSOR_NAME_PATTERNS = tuple(
     p for p in "attn_scale,attn_scales,mlp_scale,mlp_scales,resid_mix,resid_mixes,q_gain,skip_weight,skip_weights,smear,backout_lambda,bigram.scale,ve_layer_scales,ve_shared.scale,vrl_alphas".split(",") if p)
 INT8_KEEP_FLOAT_MAX_NUMEL = 65_536
 INT8_PER_ROW_SCALE_DTYPE = torch.float16
+META_PASSTHROUGH = "p"
+META_PASSTHROUGH_CTRL = "c"
+META_INT6 = 6
+META_INT8 = 8
 
 def _classify_param(name):
     if "tok_emb" in name or "lm_head" in name: return "embed"
@@ -211,6 +215,17 @@ def _classify_param(name):
     if ".attn." in name or (".proj." in name and ".mlp." not in name): return "attn"
     if "ve_shared" in name: return "ve"
     return "other"
+
+def _meta_kind(info):
+    if info == META_PASSTHROUGH or info == "passthrough":
+        return "passthrough"
+    if info == META_PASSTHROUGH_CTRL or info == "passthrough_ctrl":
+        return "passthrough_ctrl"
+    if info == META_INT6 or (isinstance(info, dict) and info.get("type") == "int6"):
+        return "int6"
+    if info == META_INT8 or (isinstance(info, dict) and info.get("type") == "int8"):
+        return "int8"
+    return None
 
 def quantize_int6_gptq(weight, hessian=None, clip_range=31, block_size=128):
     """Full GPTQ: Hessian-aware int6 quantization with Cholesky error compensation.
@@ -327,17 +342,17 @@ def quantize_state_dict_mixed(state_dict, hessians=None):
         cat = _classify_param(name)
         if not t.is_floating_point() or t.numel() <= INT8_KEEP_FLOAT_MAX_NUMEL:
             result[name] = t.to(torch.float16) if t.is_floating_point() else t
-            meta[name] = "passthrough"; continue
+            meta[name] = META_PASSTHROUGH; continue
         if any(p in name for p in CONTROL_TENSOR_NAME_PATTERNS):
-            result[name] = t.float(); meta[name] = "passthrough_ctrl"; continue
+            result[name] = t.float(); meta[name] = META_PASSTHROUGH_CTRL; continue
         if cat in int6_cats and t.ndim >= 1:
             H = hessians.get(name) if hessians else None
             q, s = quantize_int6_gptq(t, hessian=H)
             result[name + ".q"] = q; result[name + ".scale"] = s
-            meta[name] = {"type": "int6"}; continue
+            meta[name] = META_INT6; continue
         q, s = quantize_float_tensor(t)
         result[name + ".q"] = q; result[name + ".scale"] = s
-        meta[name] = {"type": "int8"}
+        meta[name] = META_INT8
     return result, meta
 
 def dequantize_state_dict_mixed(result, meta, template_sd):
@@ -346,7 +361,7 @@ def dequantize_state_dict_mixed(result, meta, template_sd):
         info = meta.get(name)
         if info is None: continue
         orig_dtype = orig.dtype
-        if isinstance(info, str) and info.startswith("passthrough"):
+        if _meta_kind(info) in {"passthrough", "passthrough_ctrl"}:
             t = result[name]
             if t.dtype == torch.float16 and orig_dtype in (torch.float32, torch.bfloat16): t = t.to(orig_dtype)
             out[name] = t; continue
@@ -841,7 +856,7 @@ def run_export_eval(args, base_model, rank, world_size, device, distributed, mas
     if args.prune_pct > 0:
         all_int6_vals = []
         for name, info in quant_meta.items():
-            if isinstance(info, dict) and info.get("type") == "int6":
+            if _meta_kind(info) == "int6":
                 qname = name + ".q"
                 if qname in quant_result:
                     all_int6_vals.append(quant_result[qname].flatten().abs().float())
@@ -851,15 +866,15 @@ def run_export_eval(args, base_model, rank, world_size, device, distributed, mas
             threshold = all_vals.kthvalue(k).values.item()
             pruned_count = 0
             for name, info in quant_meta.items():
-                if isinstance(info, dict) and info.get("type") == "int6":
+                if _meta_kind(info) == "int6":
                     qname = name + ".q"
                     if qname in quant_result:
                         mask = quant_result[qname].abs() <= int(threshold)
                         pruned_count += mask.sum().item()
                         quant_result[qname][mask] = 0
-            total_int6 = sum(quant_result[n + ".q"].numel() for n, i in quant_meta.items() if isinstance(i, dict) and i.get("type") == "int6" and n + ".q" in quant_result)
+            total_int6 = sum(quant_result[n + ".q"].numel() for n, i in quant_meta.items() if _meta_kind(i) == "int6" and n + ".q" in quant_result)
             log0(f"prune:zeroed {pruned_count}/{total_int6} int6 weights ({100*pruned_count/max(total_int6,1):.1f}%) threshold={threshold:.0f}")
-    meta_json = json.dumps(quant_meta).encode("utf-8")
+    meta_json = json.dumps(quant_meta, separators=(",", ":")).encode("utf-8")
     parts = [struct.pack("<I", len(meta_json)), meta_json]
     tensor_order = sorted(quant_result.keys())
     for tname in tensor_order:
@@ -868,8 +883,7 @@ def run_export_eval(args, base_model, rank, world_size, device, distributed, mas
         base_name = tname[:-2] if tname.endswith(".q") else ""
         pack_int6 = (
             tname.endswith(".q")
-            and isinstance(quant_meta.get(base_name), dict)
-            and quant_meta[base_name].get("type") == "int6"
+            and _meta_kind(quant_meta.get(base_name)) == "int6"
         )
         dtype_map = {torch.int8: 0, torch.float16: 1, torch.float32: 2, torch.bfloat16: 3}
         dt = 4 if pack_int6 else dtype_map.get(t.dtype, 2)
