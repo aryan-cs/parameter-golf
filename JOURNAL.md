@@ -284,3 +284,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The repo now has a ready-to-launch no-prune follow-up for both the long 1xH100 proxy lane and the eventual 8xH100 validation lane.
 - Decision: If the current long VRL run still loses too much quality during post-quant export, test the no-prune variant next before changing the architecture or optimizer.
 - Next step: Let the active baseline long run finish first, then compare its final quantized score and artifact size against this no-prune contingency plan.
+
+- Timestamp: 2026-03-23 23:12 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL long-run
+- Objective: Check whether the promoted long VRL proxy continues improving at the third validation checkpoint.
+- Command or config: Waited for `runs/non_ttt_vrl_gptq/seed1337/20260324T033051Z/train.log` to reach `step:3000/20000 val_loss`.
+- Result: The full-80-shard run improved again to `step:3000/20000 val_loss:2.0758 val_bpb:1.2294 train_time:2339071ms`, with the intermediate training log also confirming `step:2500/20000 train_loss:2.0976`.
+- Decision: Keep the current baseline run untouched; it remains the strongest live training signal in the repo and is still improving on schedule.
+- Next step: Let the run continue toward its full 5400-second budget, then compare the final quantized output against the prepared no-prune follow-up if export degradation is still the bottleneck.
