@@ -47,4 +47,4 @@ until [[ -f "$CKPT_PATH" ]]; do
 done
 
 printf '%s launching export-only sweep from %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$CKPT_PATH" >> "$LOG"
-EXPORT_ONLY_CHECKPOINT="$CKPT_PATH" bash "${ROOT}/runpod/pod_run.sh" "$CANDIDATE" "$SEED" "$CONFIG_PATH" >> "$LOG" 2>&1
+EOC="$CKPT_PATH" bash "${ROOT}/runpod/pod_run.sh" "$CANDIDATE" "$SEED" "$CONFIG_PATH" >> "$LOG" 2>&1

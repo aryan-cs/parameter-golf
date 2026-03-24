@@ -55,7 +55,7 @@ resolve_checkpoint_path() {
   fi
   if [[ -f "${run_dir}/env.txt" ]]; then
     local env_ckpt
-    env_ckpt="$(grep -E '^EXPORT_ONLY_CHECKPOINT=' "${run_dir}/env.txt" | tail -n 1 | cut -d= -f2- || true)"
+    env_ckpt="$(grep -E '^EOC=' "${run_dir}/env.txt" | tail -n 1 | cut -d= -f2- || true)"
     if [[ -n "$env_ckpt" && -f "$env_ckpt" ]]; then
       printf '%s\n' "$env_ckpt"
       return 0
@@ -89,7 +89,7 @@ done
 for config_path in "$@"; do
   run_name_prefix="$(resolve_run_name_prefix "$config_path")"
   printf '%s launching %s from %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$run_name_prefix" "$CKPT_PATH" >> "$LOG"
-  EXPORT_ONLY_CHECKPOINT="$CKPT_PATH" bash "${ROOT}/runpod/pod_run.sh" "$CANDIDATE" "$SEED" "$config_path" >> "$LOG" 2>&1
+  EOC="$CKPT_PATH" bash "${ROOT}/runpod/pod_run.sh" "$CANDIDATE" "$SEED" "$config_path" >> "$LOG" 2>&1
   RUN_DIR=""
   until RUN_DIR="$(find_latest_run_dir "$run_name_prefix")"; [[ -n "$RUN_DIR" ]]; do
     printf '%s waiting for completed run dir for %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$run_name_prefix" >> "$LOG"

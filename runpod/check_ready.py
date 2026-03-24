@@ -76,22 +76,22 @@ def main() -> int:
             continue
         if env.get("TRAIN_SCRIPT") != "candidates/non_ttt_vrl_gptq/train_gpt.py":
             errors.append(f"{ladder_name}: unexpected TRAIN_SCRIPT {env.get('TRAIN_SCRIPT')!r}")
-        if "PRUNE_PCT" not in env:
-            errors.append(f"{ladder_name}: missing PRUNE_PCT")
+        if "PP" not in env:
+            errors.append(f"{ladder_name}: missing PP")
 
     train_cfg = configs.get("non_ttt_vrl_gptq_1gpu_long_prune14.env")
     if train_cfg is None:
         errors.append("missing non_ttt_vrl_gptq_1gpu_long_prune14.env")
     else:
-        if train_cfg.get("SAVE_PRE_EXPORT_CHECKPOINT") != "1":
-            errors.append("non_ttt_vrl_gptq_1gpu_long_prune14.env: SAVE_PRE_EXPORT_CHECKPOINT must be 1")
+        if train_cfg.get("SPC") != "1":
+            errors.append("non_ttt_vrl_gptq_1gpu_long_prune14.env: SPC must be 1")
 
     train_cfg_8 = configs.get("non_ttt_vrl_gptq_8gpu_prune14.env")
     if train_cfg_8 is None:
         errors.append("missing non_ttt_vrl_gptq_8gpu_prune14.env")
     else:
-        if train_cfg_8.get("SAVE_PRE_EXPORT_CHECKPOINT") != "1":
-            errors.append("non_ttt_vrl_gptq_8gpu_prune14.env: SAVE_PRE_EXPORT_CHECKPOINT must be 1")
+        if train_cfg_8.get("SPC") != "1":
+            errors.append("non_ttt_vrl_gptq_8gpu_prune14.env: SPC must be 1")
 
     if errors:
         print("runpod readiness check: FAILED")
