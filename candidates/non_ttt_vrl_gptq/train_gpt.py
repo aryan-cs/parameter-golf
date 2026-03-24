@@ -1137,15 +1137,10 @@ def main():
         if console: print(msg)
         if logfile:
             with open(logfile, "a", encoding="utf-8") as f: print(msg, file=f)
-    log0(code, console=False); log0("=" * 100, console=False)
     random.seed(args.seed); np.random.seed(args.seed); th.manual_seed(args.seed); th.cuda.manual_seed_all(args.seed)
     sp = spm.SentencePieceProcessor(model_file=args.tokenizer_path)
-    dataset_dir = Path(args.data_path).resolve()
-    actual_train_files = len(list(dataset_dir.glob("fineweb_train_*.bin")))
     vt = load_validation_tokens(args.vf, args.tsl)
     bb, hs, ib = build_sentencepiece_luts(sp, args.vs, device)
-    log0(f"data:{dataset_dir.name} train:{actual_train_files}")
-    log0(f"val_tokens:{vt.numel()-1}")
     CL._qat_enabled = False
     CL._qat_clip_pct = args.qat_clip_pct
     bm = GPT(
@@ -1202,12 +1197,6 @@ def main():
         optimizer_head = th.optim.Adam([{"params": [bm.lm_head.weight], "lr": args.head_lr, "base_lr": args.head_lr}],
                                            betas=(args.beta1, args.beta2), eps=args.adam_eps, fused=True)
         opts.insert(1, optimizer_head)
-    n_params = sum(p.numel() for p in bm.parameters())
-    xsa_layers = [i for i in range(args.nl) if i >= args.nl - args.xsn] if args.xsn > 0 else []
-    log0(f"params:{n_params}"); log0(f"world:{ws} ga:{gas}")
-    log0(f"cfg:lqat={args.lqt} ema={args.ema_decay} xsa={args.xsn} rope={args.rd} bg={args.bgvs} qat={args.qat_clip_pct} prune={args.prune_pct}")
-    log0(f"xsa_layers:{xsa_layers}")
-    log0(f"fa3:{HAS_FA3} swa:{args.swa_enabled} wd:{args.wdi} awd:{args.adam_wd}")
     tl = DTL(args.tf, rank, ws, device)
     def zero_grad_all():
         for opt in opts: opt.zero_grad(set_to_none=True)

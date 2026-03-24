@@ -923,3 +923,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The candidate file shrank from `62,202` bytes to `61,768` bytes, another `434` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 61,768`, which is `-13,163` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
 - Decision: Keep the comment/log-trim pass in the main lane. It is another clean counted-size win with no observed exporter regression and no change to the markers used by our export ladder tooling.
 - Next step: Push the comment/log-trim pass so the next live export rerun uses the smaller counted candidate source together with the stronger bitplane + raw-LZMA exporter path.
+
+- Timestamp: 2026-03-24 03:37 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL code-size hygiene
+- Objective: Reclaim another larger block of counted source bytes by removing pure startup diagnostics and unused helper variables that do not affect training, export behavior, checkpoints, or artifact format.
+- Command or config: Removed the source-dump/separator log, removed the dataset-summary/value-token startup logs, removed the unused `dataset_dir`, `actual_train_files`, and `xsa_layers` helpers, and dropped several startup-only config summary logs from `candidates/non_ttt_vrl_gptq/train_gpt.py`; then reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, reran `python3 runpod/check_ready.py`, and reran the offline codec round-trip validator on the fixed-seed quantized VRL model skeleton.
+- Result: The candidate file shrank from `61,768` bytes to `61,000` bytes, another `768` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 61,000`, which is `-13,931` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
+- Decision: Keep the startup-diagnostics pruning pass in the main lane. It is one of the better counted-size wins from the offline hygiene phase and still shows no observed exporter regression.
+- Next step: Push the startup-diagnostics pruning pass so the next live export rerun uses the smaller counted candidate source together with the stronger bitplane + raw-LZMA exporter path.
