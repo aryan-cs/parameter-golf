@@ -707,3 +707,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: On the offline bakeoff, `lzma9e` beat the bitplane `zstd` path by another `~63 KB` (`lzma_9=4300364`, `zstd19=4363157`, `zstd22=4365593`). The chooser now automatically selected codec id `3` / `lzma9e` and produced a `4,301,197`-byte wrapped artifact blob while round-tripping exactly. Timing remained reasonable in the same bakeoff: `lzma9e` decompressed in about `161 ms`.
 - Decision: Keep the codec chooser in the main lane and let the exporter pick the smallest available codec automatically. With bitplane int6 already in place, `lzma9e` currently looks like the best default for the next live rerun.
 - Next step: Push the multi-codec chooser, then relaunch the baseline-first export ladder on the next H100 pod and see whether the real trained artifact now clears the `16,000,000`-byte cap without harsher pruning.
+
+- Timestamp: 2026-03-24 02:16 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL export compression
+- Objective: Remove benchmark noise from the new LZMA path and see whether a tuned filter really beats the generic `preset=9|extreme` setting on the exact same payload.
+- Command or config: Re-ran the codec comparison with fixed Python / NumPy / Torch seeds and compared `zstd19`, generic `lzma preset9e`, and a tuned `LZMA2` filter (`hc4`, `dict_size=32MB`, `nice_len=273`). Then updated `candidates/non_ttt_vrl_gptq/train_gpt.py` so codec id `3` now uses that tuned filter by default and logs the more accurate codec label `lzma_hc4_32mb`.
+- Result: The fixed-seed comparison confirmed the tuned filter is real, not noise: `hc4_32mb=4302268`, `preset9e=4303084`, `zstd19=4363365`. So the tuned filter wins by another `816` bytes over generic `preset9e` and stays about `61 KB` ahead of `zstd19` on the same payload.
+- Decision: Keep the tuned `lzma_hc4_32mb` filter in the main lane. The gain is small, but it is free, deterministic, and directly increases the odds that the first post-credit rerun lands under the cap.
+- Next step: Push the tuned-filter tweak so the next H100 relaunch uses the best codec settings we have measured offline.

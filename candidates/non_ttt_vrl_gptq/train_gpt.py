@@ -212,6 +212,17 @@ MODEL_BLOB_MAGIC = b"QCB1"
 MODEL_CODEC_ZSTD = 1
 MODEL_CODEC_ZLIB = 2
 MODEL_CODEC_LZMA = 3
+LZMA_FILTERS = [{
+    "id": lzma.FILTER_LZMA2,
+    "dict_size": 1 << 25,
+    "lc": 3,
+    "lp": 0,
+    "pb": 2,
+    "mode": lzma.MODE_NORMAL,
+    "nice_len": 273,
+    "mf": lzma.MF_HC4,
+    "depth": 0,
+}]
 
 def _classify_param(name):
     if "tok_emb" in name or "lm_head" in name: return "embed"
@@ -536,12 +547,12 @@ def _model_codec_name(codec_id: int) -> str:
     if codec_id == MODEL_CODEC_ZLIB:
         return "zlib9"
     if codec_id == MODEL_CODEC_LZMA:
-        return "lzma9e"
+        return "lzma_hc4_32mb"
     return f"unknown({codec_id})"
 
 def compress_model_blob(raw: bytes) -> tuple[bytes, int]:
     candidates = [
-        (MODEL_CODEC_LZMA, lzma.compress(raw, preset=9 | lzma.PRESET_EXTREME)),
+        (MODEL_CODEC_LZMA, lzma.compress(raw, format=lzma.FORMAT_XZ, check=lzma.CHECK_CRC64, filters=LZMA_FILTERS)),
         (MODEL_CODEC_ZLIB, zlib.compress(raw, level=9)),
     ]
     if HAS_ZSTD:
