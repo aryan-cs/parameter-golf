@@ -320,3 +320,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The run improved again to `step:5000/20000 val_loss:2.0080 val_bpb:1.1893 train_time:3897898ms`, which is the first time our live single-H100 long proxy has broken below `1.2`.
 - Decision: Keep the current baseline run untouched and let it run all the way through export; we now have direct evidence that this lane is strong enough to justify the queued no-prune export ablation and eventual multi-GPU promotion.
 - Next step: Let the baseline finish, capture the final quantized score, and compare it against the queued no-prune follow-up if post-quant degradation is still the main gap.
+
+- Timestamp: 2026-03-23 23:52 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL long-run
+- Objective: Measure whether the active long VRL baseline keeps improving past the first sub-`1.2` checkpoint.
+- Command or config: Waited for `runs/non_ttt_vrl_gptq/seed1337/20260324T033051Z/train.log` to reach `step:6000/20000 val_loss`.
+- Result: The run improved again to `step:6000/20000 val_loss:1.9647 val_bpb:1.1636 train_time:4677637ms`, which is our strongest live proxy result so far and materially below `1.2`.
+- Decision: Keep the baseline run untouched and let it reach final export/eval; this lane is now clearly strong enough to deserve an eventual 8xH100 promotion once we have the completed post-quant artifact.
+- Next step: Let the baseline finish its full wallclock budget, capture the final quantized score, and then compare it against the already-queued no-prune follow-up if export degradation remains the main gap.
