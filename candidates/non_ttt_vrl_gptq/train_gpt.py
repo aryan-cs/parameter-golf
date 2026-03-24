@@ -110,12 +110,12 @@ def lvt(pattern, sl):
     if usable <= 0: raise ER(f"val<{sl}")
     return tokens[:usable + 1]
 
-def evv(a, model, rank, ws, dv, gas,
+def evv(a, model, rk, ws, dv, gas,
              vt, bb, hs, ib, esl=0):
     sl = esl if esl > 0 else a.tsl
     lbs = a.vbs // (ws * gas) // sl
     tsq = (vt.numel() - 1) // sl
-    ss = (tsq * rank) // ws; se = (tsq * (rank + 1)) // ws
+    ss = (tsq * rk) // ws; se = (tsq * (rk + 1)) // ws
     vls = Z((), device=dv, dtype=F64)
     vtc = Z((), device=dv, dtype=F64)
     vbc = Z((), device=dv, dtype=F64)
@@ -530,8 +530,8 @@ class TS:
         return chunks[0] if len(chunks) == 1 else CAT(chunks)
 
 class DTL:
-    def __init__(self, pat, rank, ws, dv):
-        self.rk, self.ws, self.dv = rank, ws, dv; self.s = TS(pat)
+    def __init__(self, pat, rk, ws, dv):
+        self.rk, self.ws, self.dv = rk, ws, dv; self.s = TS(pat)
     def nb(self, gt, sl, gas):
         prs = gt // (self.ws * gas) + 1
         ck = self.s.tk(prs * self.ws)
@@ -859,14 +859,14 @@ def ch(bm, tl, args, dv, gas, nbc=256):
     bm.train()
     return hh
 
-def evl(logits_fn, rank, ws, dv, vt,
+def evl(logits_fn, rk, ws, dv, vt,
                      bb, hs, ib,
                      ql, stride, ebs=256):
     total = vt.numel() - 1; windows, p = [], 0
     while p + ql <= total:
         s = 0 if p == 0 else (ql - stride); windows.append((p, s)); p += stride
     n = len(windows); pr = (n + ws - 1) // ws
-    mw = windows[rank*pr:min((rank+1)*pr, n)]
+    mw = windows[rk*pr:min((rk+1)*pr, n)]
     ls = Z((), device=dv, dtype=F64)
     tc = Z((), device=dv, dtype=F64)
     bc = Z((), device=dv, dtype=F64)
@@ -912,9 +912,9 @@ def mspc(ps: str, sd: dict[str, th.Tensor]):
     os.replace(tp, path)
     return str(path)
 
-def ree(a, bm, rank, ws, dv, dd, m0,
+def ree(a, bm, rk, ws, dv, dd, m0,
                     code, vt, bb, hs, ib, log0):
-    cl = DTL(a.tf, rank, ws, dv)
+    cl = DTL(a.tf, rk, ws, dv)
     hh = ch(bm, cl, a, dv, 8 // ws,
                                 nbc=a.gcb)
     hm = {}
@@ -1042,15 +1042,15 @@ def ree(a, bm, rank, ws, dv, dd, m0,
     eval_sl = a.esl if a.esl > 0 else a.tsl
     vte = lvt(a.val_files, eval_sl) if eval_sl != a.tsl else vt
     rlf = CMP(bm.fwl, dynamic=False) if not GB(TD) else bm.fwl
-    warmup_x = Z(a.ebs, eval_sl, dtype=I64, device=dv)
+    wx = Z(a.ebs, eval_sl, dtype=I64, device=dv)
     bm.eval()
-    with IM(), AU(): _ = rlf(warmup_x)
-    SY(); t_eval = PC()
-    q_vl, q_vb = evl(rlf, rank, ws, dv,
+    with IM(), AU(): _ = rlf(wx)
+    SY(); te = PC()
+    q_vl, q_vb = evl(rlf, rk, ws, dv,
         vte, bb, hs, ib,
         eval_sl, a.evs, ebs=a.ebs)
-    SY(); eval_time = PC() - t_eval
-    log0(f"final_int6 val_loss:{q_vl:.4f} val_bpb:{q_vb:.4f} eval_time:{eval_time*1000:.0f}ms")
+    SY(); et = PC() - te
+    log0(f"final_int6 val_loss:{q_vl:.4f} val_bpb:{q_vb:.4f} eval_time:{et*1000:.0f}ms")
     log0(f"final_int6_exact val_loss:{q_vl:.8f} val_bpb:{q_vb:.8f}")
     if dd: DGP()
 
@@ -1059,14 +1059,14 @@ def main():
     code = PT(__file__).read_text(encoding=U); a = H()
     z5 = CMP(z5)
     dd = "RANK" in os.environ and "WORLD_SIZE" in os.environ
-    rank = GI("RANK"); ws = GI("WORLD_SIZE", 1)
+    rk = GI("RANK"); ws = GI("WORLD_SIZE", 1)
     lrk = GI("LOCAL_RANK")
     if ws <= 0 or 8 % ws != 0: raise ER(f"bad WS={ws}")
     gas = 8 // ws; grad_scale = 1.0 / gas
     if not th.cuda.is_available(): raise RE("cuda req")
     dv = th.device(CU, lrk); th.cuda.set_device(dv)
     if dd: IGP(backend="nccl", device_id=dv); BR()
-    m0 = rank == 0
+    m0 = rk == 0
     th.backends.cuda.matmul.allow_tf32 = True; th.backends.cudnn.allow_tf32 = True
     if not HAS_FA3:
         from th.backends.cuda import enable_cudnn_sdp, enable_flash_sdp, enable_math_sdp, enable_mem_efficient_sdp
@@ -1105,7 +1105,7 @@ def main():
         ckpt = th.load(eoc, map_location="cpu")
         ms = ckpt[MS] if isinstance(ckpt, dict) and MS in ckpt else ckpt
         ls(ms, 1)
-        ree(a, bm, rank, ws, dv, dd, m0,
+        ree(a, bm, rk, ws, dv, dd, m0,
                         code, vt, bb, hs, ib, log0)
         return
     bnp = list(bm.blocks.named_parameters())
@@ -1138,7 +1138,7 @@ def main():
         oh = th.optim.Adam([{PA: [bm.lm_head.weight], "lr": a.hlr, BL: a.hlr}],
                                            betas=(a.beta1, a.beta2), eps=a.aep, fused=True)
         opts.insert(1, oh)
-    tl = DTL(a.tf, rank, ws, dv)
+    tl = DTL(a.tf, rk, ws, dv)
     def zga():
         for opt in opts: opt.zero_grad(set_to_none=True)
     wm = 1000.0 * a.mws if a.mws > 0 else None
@@ -1168,17 +1168,17 @@ def main():
         for opt, state in zip(opts,os0,strict=1): opt.load_state_dict(state)
         zga()
         if dd: model.require_backward_grad_sync = True
-        tl = DTL(a.tf, rank, ws, dv)
+        tl = DTL(a.tf, rk, ws, dv)
     es = {name: t.detach().float().clone() for name, t in gs().items()}
     tm, ss = 0.0, None
-    swa_state, swa_count = None, 0
+    sws, swc = None, 0
     SY(); t0 = PC(); step = 0
     while True:
         last_step = step == a.it or (ss is not None and step >= ss)
         sv = last_step or (a.vle > 0 and step % a.vle == 0)
         if sv:
             SY(); tm += 1000.0 * (PC() - t0)
-            vl, vb = evv(a, model, rank, ws, dv, gas,
+            vl, vb = evv(a, model, rk, ws, dv, gas,
                               vt, bb, hs, ib)
             log0(f"step:{step}/{a.it} val_loss:{vl:.4f} val_bpb:{vb:.4f} train_time:{tm:.0f}ms step_avg:{tm/max(step,1):.2f}ms")
             SY(); t0 = PC()
@@ -1211,12 +1211,12 @@ def main():
         step += 1
         cms = tm + 1000.0 * (PC() - t0)
         if a.swe and scale < 0.2 and step % a.swi == 0:
-            if swa_state is None:
-                swa_state = {n: DL(t) for n, t in gs().items()}
-                swa_count = 1
+            if sws is None:
+                sws = {n: DL(t) for n, t in gs().items()}
+                swc = 1
             else:
-                for n, t in gs().items(): swa_state[n] += DC(t)
-                swa_count += 1
+                for n, t in gs().items(): sws[n] += DC(t)
+                swc += 1
         if a.tle > 0 and (step <= 10 or step % a.tle == 0):
             log0(f"step:{step}/{a.it} train_loss:{tls.item():.4f} train_time:{cms:.0f}ms step_avg:{cms/step:.2f}ms")
         rc = wm is not None and cms >= wm
@@ -1227,7 +1227,7 @@ def main():
     avs = {name: t.to(dtype=cs[name].dtype) for name, t in es.items()}
     ls(avs, 1)
     mspc(a.spc, gs())
-    ree(a, bm, rank, ws, dv, dd, m0,
+    ree(a, bm, rk, ws, dv, dd, m0,
                     code, vt, bb, hs, ib, log0)
 
 if __name__ == "__main__":
