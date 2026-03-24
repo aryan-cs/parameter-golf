@@ -24,6 +24,12 @@
 
 ## When Credits Land
 
+Run this first to verify the local restart plan is still consistent:
+
+```bash
+python3 runpod/check_ready.py
+```
+
 ### 1x H100 SXM recovery
 
 Use this first if we want to verify the new serializer and prune ladder before spending on `8x`:

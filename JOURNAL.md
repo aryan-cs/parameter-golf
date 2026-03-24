@@ -563,3 +563,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The repo now has both `1x` and `8x` recovery wrappers plus a single place to look up the current plan the moment credits land. That removes most of the operator friction from going back live.
 - Decision: Use the new `8x` wrapper and the runbook as the default restart path once Runpod credits are restored.
 - Next step: Wait for credits, then relaunch a pod and resume the validity-focused VRL export ladder immediately.
+
+- Timestamp: 2026-03-24 01:57 America/Chicago
+- Commit: uncommitted
+- Lane: runpod readiness
+- Objective: Add a cheap local guardrail that verifies the restart wrappers and prune ladder still reference a coherent set of configs before we spend fresh credits.
+- Command or config: Added `runpod/check_ready.py`, updated `RUNPOD_READY.md` to include the readiness check, and ran `python3 runpod/check_ready.py`.
+- Result: The readiness checker passed: both local recovery wrappers reference the expected five configs, the critical prune14 configs still have `SAVE_PRE_EXPORT_CHECKPOINT=1`, and all `1x` / `8x` export-ladder configs are present and point at the VRL trainer.
+- Decision: Use `python3 runpod/check_ready.py` as the first local preflight before relaunching any Runpod pod.
+- Next step: Wait for credits, run the readiness check, then use the recovery wrapper that matches the pod we bring up.
