@@ -419,3 +419,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The pod now has a three-stage queue. `prune11` is active, `prune14` is waiting behind it, and the export-only `prune17` sweep is waiting behind `prune14`. Export queue log: `/workspace/golf/logs/non_ttt_vrl_gptq_1gpu_long_prune14_export_queue_20260324T053401Z.log`.
 - Decision: Keep the active training lane unchanged and use the new export-only queue as the next low-latency byte-cap hedge if the saved checkpoint from `prune14` is needed.
 - Next step: Monitor `prune11` for its first validation checkpoint and let the staged queue continue automatically unless a clearly better manual intervention appears.
+
+- Timestamp: 2026-03-24 00:35 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL export ablation
+- Objective: Verify that the active `prune11` run is progressing normally and that the staged queue behind it is intact.
+- Command or config: Monitored `runs/non_ttt_vrl_gptq/seed1337/20260324T052254Z/train.log`, the active pod process table, and both queue logs for `prune14` and export-only `prune17`.
+- Result: `prune11` is healthy on GPU and has progressed through `step:500/20000 train_loss:2.3165 train_time:387941ms`. The pod queue chain is intact: `prune14` is still waiting on prune11 PID `168452`, and the export-only `prune17` helper is waiting for the eventual `prune14` run directory before it launches from the saved checkpoint.
+- Decision: Keep the current queue unchanged; there is no reason to interrupt `prune11`, and the staged handoffs now cover both a second full retrain (`prune14`) and a low-latency export-only hedge (`prune17`).
+- Next step: Wait for the first `prune11` validation checkpoint at `step:1000`, then compare its quality trend against the baseline to decide whether the byte-cap tradeoff still looks favorable.
