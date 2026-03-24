@@ -752,3 +752,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: On the same fixed-seed payload, `hc3_16mb` beat the current default by another `2,618` bytes while still round-tripping exactly (`current=4301682`, `candidate=4299064`, `delta=-2618`, `roundtrip=True`). That is small compared with the earlier bitplane win, but it is free, deterministic, and directly improves our odds of landing under the `16,000,000`-byte cap on the first post-credit rerun.
 - Decision: Keep `lzma_raw_hc3_16mb` as the new default codec path for the main lane. `HC4/32MB` is no longer the best measured raw `LZMA2` setting for this payload.
 - Next step: Re-run compile/readiness checks, push the filter update, and use the smaller `hc3_16mb` exporter on the next baseline-first export ladder relaunch.
+
+- Timestamp: 2026-03-24 02:45 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL code-size hygiene
+- Objective: Reclaim any remaining zero-risk counted bytes from verbose log strings now that the bigger export-format wins are already in place.
+- Command or config: Shortened several pure logging strings in `candidates/non_ttt_vrl_gptq/train_gpt.py` (`artifact_breakdown`, startup banner, export/load markers, final eval labels, size warnings, and GPTQ/prune progress lines), then re-measured file size, reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, and reran `python3 runpod/check_ready.py`.
+- Result: The candidate file shrank from `72,334` bytes to `71,982` bytes, a further `352` bytes of code-payload savings with no behavior change. Compile and readiness checks still passed.
+- Decision: Keep the log-string trim in the main lane. The savings are small, but they are free and directly improve submission headroom.
+- Next step: Push the trim so the next live rerun benefits from both the stronger exporter and the slightly smaller counted source file.

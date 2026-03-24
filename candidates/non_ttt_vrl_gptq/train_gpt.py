@@ -961,12 +961,12 @@ def maybe_save_pre_export_checkpoint(path_spec: str, state_dict: dict[str, torch
     tmp_path = path.with_suffix(path.suffix + ".tmp")
     torch.save(ckpt, tmp_path)
     os.replace(tmp_path, path)
-    log0(f"saved_pre_export_checkpoint:{path}")
+    log0(f"save_ckpt:{path}")
     return str(path)
 
 def run_export_eval(args, base_model, rank, world_size, device, distributed, master_process,
                     code, val_tokens, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut, log0):
-    log0(f"gptq:calibrating with {args.gptq_calib_batches} batches...")
+    log0(f"gptq:calib {args.gptq_calib_batches} batches")
     calib_loader = DistributedTokenLoader(args.train_files, rank, world_size, device)
     hessians = collect_hessians(base_model, calib_loader, args, device, 8 // world_size,
                                 num_batches=args.gptq_calib_batches)
@@ -977,7 +977,7 @@ def run_export_eval(args, base_model, rank, world_size, device, distributed, mas
             h_name = name + ".weight"
             if h_name in hessians:
                 hessian_map[sd_name] = hessians[h_name]
-    log0(f"gptq:collected hessians for {len(hessian_map)} layers")
+    log0(f"gptq:hessians {len(hessian_map)} layers")
 
     sd_cpu = {k: v.detach().cpu() for k, v in base_model.state_dict().items()}
     code_bytes = len(code.encode("utf-8")); size_limit = 16_000_000
@@ -1002,7 +1002,7 @@ def run_export_eval(args, base_model, rank, world_size, device, distributed, mas
                         pruned_count += mask.sum().item()
                         quant_result[qname][mask] = 0
             total_int6 = sum(quant_result[n + ".q"].numel() for n, i in quant_meta.items() if _meta_kind(i) == "int6" and n + ".q" in quant_result)
-            log0(f"prune:zeroed {pruned_count}/{total_int6} int6 weights ({100*pruned_count/max(total_int6,1):.1f}%) threshold={threshold:.0f}")
+            log0(f"prune:{pruned_count}/{total_int6} ({100*pruned_count/max(total_int6,1):.1f}%) thr={threshold:.0f}")
     meta_blob, meta_names = encode_quant_meta(quant_meta)
     name_to_idx = {name: idx for idx, name in enumerate(meta_names)}
     parts = [struct.pack("<I", len(meta_blob)), meta_blob]
@@ -1040,7 +1040,7 @@ def run_export_eval(args, base_model, rank, world_size, device, distributed, mas
     model_blob, model_codec_id = compress_model_blob(quant_raw)
     model_bytes = len(model_blob); total_size = code_bytes + model_bytes
     log0(
-        "artifact_breakdown:"
+        "ab:"
         f" meta={meta_bytes}"
         f" tensor_headers={tensor_header_bytes}"
         f" int6_payload={packed_int6_payload_bytes}"
@@ -1050,15 +1050,15 @@ def run_export_eval(args, base_model, rank, world_size, device, distributed, mas
         f" codec={_model_codec_name(model_codec_id)}"
         f" int6_tensors={packed_int6_tensors}"
     )
-    log0(f"model:{model_bytes} code:{code_bytes} total:{total_size} ({total_size/1e6:.2f} MB)")
-    if total_size > size_limit: log0(f"WARNING: Total size {total_size} exceeds 16MB limit by {total_size - size_limit} bytes!")
-    else: log0(f"Size OK: {total_size/1e6:.2f} MB")
+    log0(f"sizes:m={model_bytes} c={code_bytes} t={total_size} ({total_size/1e6:.2f} MB)")
+    if total_size > size_limit: log0(f"WARN:size {total_size} +{total_size - size_limit}")
+    else: log0(f"size_ok:{total_size/1e6:.2f} MB")
     if master_process:
         with open("final_model.int6.ptz", "wb") as f: f.write(model_blob)
     if distributed: dist.barrier()
     with open("final_model.int6.ptz", "rb") as f: model_blob_loaded = f.read()
     raw_data, loaded_codec_name = decompress_model_blob(model_blob_loaded)
-    log0(f"artifact_codec_loaded:{loaded_codec_name}")
+    log0(f"codec_loaded:{loaded_codec_name}")
     offset = 0
     meta_len = struct.unpack_from("<I", raw_data, offset)[0]; offset += 4
     loaded_meta, meta_names, compact_tensor_refs = decode_quant_meta(raw_data[offset:offset+meta_len]); offset += meta_len
@@ -1110,8 +1110,8 @@ def run_export_eval(args, base_model, rank, world_size, device, distributed, mas
         val_tokens_eval, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut,
         eval_sl, args.eval_stride, eval_batch_seqs=args.eval_batch_seqs)
     torch.cuda.synchronize(); eval_time = time.perf_counter() - t_eval
-    log0(f"final_int6_zstd_roundtrip val_loss:{q_vl:.4f} val_bpb:{q_vb:.4f} eval_time:{eval_time*1000:.0f}ms")
-    log0(f"final_int6_zstd_roundtrip_exact val_loss:{q_vl:.8f} val_bpb:{q_vb:.8f}")
+    log0(f"final_int6 val_loss:{q_vl:.4f} val_bpb:{q_vb:.4f} eval_time:{eval_time*1000:.0f}ms")
+    log0(f"final_int6_exact val_loss:{q_vl:.8f} val_bpb:{q_vb:.8f}")
     if distributed: dist.destroy_process_group()
 
 def main():
@@ -1169,7 +1169,7 @@ def main():
         ckpt = torch.load(export_only_checkpoint, map_location="cpu")
         model_state = ckpt["model_state"] if isinstance(ckpt, dict) and "model_state" in ckpt else ckpt
         base_model.load_state_dict(model_state, strict=True)
-        log0(f"export_only:loaded_checkpoint:{export_only_checkpoint}")
+        log0(f"export_only:ckpt:{export_only_checkpoint}")
         run_export_eval(args, base_model, rank, world_size, device, distributed, master_process,
                         code, val_tokens, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut, log0)
         return
@@ -1205,10 +1205,10 @@ def main():
         optimizers.insert(1, optimizer_head)
     n_params = sum(p.numel() for p in base_model.parameters())
     xsa_layers = [i for i in range(args.num_layers) if i >= args.num_layers - args.xsa_last_n] if args.xsa_last_n > 0 else []
-    log0(f"model_params:{n_params}"); log0(f"world_size:{world_size} grad_accum_steps:{grad_accum_steps}")
-    log0(f"v42: 11L LeakyReLU(0.5)² Late-QAT@{args.late_qat_threshold} int6-all FullGPTQ EMA({args.ema_decay}) TightSWA XSA-all({args.xsa_last_n}) PartialRoPE({args.rope_dims}/64) LNScale VE128 SmearGate BigramHash({args.bigram_vocab_size}) QATalign({args.qat_clip_pct}) VRL Prune({args.prune_pct}) RawBinary")
-    log0(f"XSA:last_{args.xsa_last_n} layers:{xsa_layers}")
-    log0(f"FA3:{HAS_FA3} SWA:{args.swa_enabled} warmdown:{args.warmdown_iters} adam_wd:{args.adam_wd}")
+    log0(f"model_params:{n_params}"); log0(f"world:{world_size} ga:{grad_accum_steps}")
+    log0(f"cfg:v42 lqat={args.late_qat_threshold} ema={args.ema_decay} xsa={args.xsa_last_n} rope={args.rope_dims} bg={args.bigram_vocab_size} qat={args.qat_clip_pct} prune={args.prune_pct}")
+    log0(f"xsa_layers:{xsa_layers}")
+    log0(f"fa3:{HAS_FA3} swa:{args.swa_enabled} wd:{args.warmdown_iters} adam_wd:{args.adam_wd}")
     train_loader = DistributedTokenLoader(args.train_files, rank, world_size, device)
     def zero_grad_all():
         for opt in optimizers: opt.zero_grad(set_to_none=True)
