@@ -329,3 +329,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The run improved again to `step:6000/20000 val_loss:1.9647 val_bpb:1.1636 train_time:4677637ms`, which is our strongest live proxy result so far and materially below `1.2`.
 - Decision: Keep the baseline run untouched and let it reach final export/eval; this lane is now clearly strong enough to deserve an eventual 8xH100 promotion once we have the completed post-quant artifact.
 - Next step: Let the baseline finish its full wallclock budget, capture the final quantized score, and then compare it against the already-queued no-prune follow-up if export degradation remains the main gap.
+
+- Timestamp: 2026-03-23 23:59 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL long-run
+- Objective: Track the active baseline through the start of its late training phase while waiting for final export.
+- Command or config: Monitored `runs/non_ttt_vrl_gptq/seed1337/20260324T033051Z/train.log` after the `step:6000` validation checkpoint.
+- Result: The run has now advanced to `step:6500/20000 train_loss:2.0328`, with `swa:start step:6250` and `late_qat:enabled step:6401 scale:0.1498` appearing in the log, confirming that the final late-training regime is now active.
+- Decision: Keep the current baseline untouched and continue waiting for the completed post-quant artifact, because the late-QAT/SWA phase is now in effect and is exactly the part of the recipe we most need to observe through export.
+- Next step: Capture the final quantized score from this run, then compare it against the already-queued no-prune follow-up if the export gap is still too large.
