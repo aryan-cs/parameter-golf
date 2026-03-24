@@ -662,3 +662,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The compact header work is real but small: `meta_savings=381` bytes, `tensor_header_savings=4691` bytes, `total_header_savings=5072` bytes for the full VRL model. The packed-int6 change is still the dominant size lever, with `26,345,472` int6 values corresponding to `6,586,368` raw-byte savings versus old int8-byte storage. The tensor-ref encoder bug is now fixed before the next live run.
 - Decision: Keep the compact header path because it is correct and free, but treat packed int6 plus pruning as the actual byte-cap solution. Stop spending offline time on ever-smaller header tweaks.
 - Next step: Push the bug fix + measured header findings, then wait for the next H100 pod so the live artifact can validate the packed-int6 path under real compression.
+
+- Timestamp: 2026-03-24 03:36 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL export compression
+- Objective: Quantify the full raw payload breakdown by tensor kind so we know whether any large non-int6 bucket is still worth targeting offline before the next pod comes up.
+- Command or config: Used `uv run --with torch` to import the VRL trainer, instantiate the default `GPT`, quantize its state dict without Hessians, and bucket the export tensors by `{int6_q, int8_q, passthrough_direct_float16, int6_scale, int8_scale}` while accounting for packed-int6 raw bytes.
+- Result: The raw payload is dominated by packed int6 weights: `int6_q=19,759,104` bytes, `int8_q=524,288`, `passthrough_direct_float16=248,008`, `int6_scale=84,992`, `int8_scale=2,048`, total raw payload `20,618,444` bytes. This confirms there is no other hidden payload class close to int6 in size; the remaining validity fight is overwhelmingly about the int6 block and pruning/compression behavior, not some overlooked float payload.
+- Decision: Treat the exporter work as complete for now. There is no new large offline size lever beyond the already-implemented packed-int6 path and the staged prune sweeps.
+- Next step: Wait for the next H100 pod and use the new `artifact_breakdown` logs to see how much of the packed-int6 raw win survives final compression in the real artifact.
