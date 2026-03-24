@@ -156,11 +156,11 @@ LF = [{
     "dict_size": 9<<21,
     "lc": 0,
     "lp": 1,
-    "pb": 1,
+    "pb": 0,
     "mode": lzma.MODE_NORMAL,
-    "nice_len": 68,
+    "nice_len": 76,
     "mf": lzma.MF_HC3,
-    "depth": 3,
+    "depth": 2,
 }]
 
 def cpm(name):
@@ -470,7 +470,7 @@ def mcn(cid: int) -> str:
     if cid == KG:
         return "zl9"
     if cid == KL:
-        return "l183"
+        return "l0762"
     return f"u{cid}"
 
 def cmb(raw: bytes) -> tuple[bytes, int]:
