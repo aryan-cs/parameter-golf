@@ -156,10 +156,10 @@ LF = [{
     "dict_size": 9<<21,
     "lc": 0,
     "lp": 0,
-    "pb": 2,
+    "pb": 1,
     "mode": lzma.MODE_NORMAL,
-    "nice_len": 74,
-    "mf": lzma.MF_HC3,
+    "nice_len": 72,
+    "mf": lzma.MF_HC4,
     "depth": 1,
 }]
 
