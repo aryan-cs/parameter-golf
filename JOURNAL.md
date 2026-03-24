@@ -1877,3 +1877,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: We now have a much more faithful single-H200 proxy plan for the public `8xH100` schedule. The exact current run remains useful for longer-run signal, but the next queued experiments will stop wasting time on a schedule that is structurally mismatched to the record-setting lane.
 - Decision: Keep the current exact run alive to completion, but promote the H100-step proxy to the front of the automatic follow-up queue because it is the highest-signal explanation for the remaining gap.
 - Next step: Restart the queue watcher so it uses the new H100-step proxy order, then let the current run finish and begin the corrected proxy lane automatically.
+
+- Timestamp: 2026-03-24 19:44 UTC
+- Commit: `1a79ed0`
+- Lane: H200 exact-TTT monitoring
+- Objective: Verify whether the current exact `80`-shard run is still improving strongly enough late in training to justify staying on it before the corrected H100-step proxy queue takes over.
+- Command or config: Let the live run advance to the `step:7500` validation interval and read the updated log from `records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs/h200_ttt_recordstack_80shard_seed1337.txt`. Restarted the queue watcher in a persistent shell session so the corrected follow-up order stays armed behind the current run.
+- Result: The exact run improved again to `step:7500/9000 val_loss:1.9820 val_bpb:1.1738 train_time:5574858ms step_avg:743.31ms`, which is our best reproduced H200 score so far. The corrected watcher is now live again and waiting on the current `torchrun` PID before launching the new H100-step proxy queue.
+- Decision: Keep the current run untouched to completion. The late-training curve is still improving materially, and we now have both the current lane and the next better-matched proxy lane covered.
+- Next step: Let this run finish, harvest the final exact metrics and bytes, then let the corrected H100-step proxy follow-ups begin automatically.
