@@ -1256,3 +1256,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The candidate file shrank from `52,804` bytes to `52,701` bytes, another `103` bytes of direct code-payload savings. The wrapped export blob remained exactly unchanged at `blob_size=4246542`, the chooser still selected the same codec path `lz_hc3_16_l2_n64`, and the CPU harness again reported exact `roundtrip=True` with the same SHA-256 `4bbb418b6d8265d42710b1cc6939d16e812ecfd150f5bae08b04dd32336fe3a6`.
 - Decision: Keep the repeated-literal aliases in the main lane. This is another free counted-size win with no measured effect on artifact bytes or recovery behavior.
 - Next step: Push this pass so the next live export-only resume uses the smallest counted candidate we have so far together with the unchanged best-known exporter path.
+
+- Timestamp: 2026-03-24 05:38 CDT
+- Commit: `158c719`
+- Lane: non-ttt VRL code-size hygiene
+- Objective: Reclaim another safe counted-size block by aliasing repeated optimizer dictionary keys that stay exactly the same at runtime.
+- Command or config: Added tiny aliases for the repeated `"params"` and `"base_lr"` string keys inside [train_gpt.py](/Users/aryan/Desktop/golf/candidates/non_ttt_vrl_gptq/train_gpt.py), then updated the Muon optimizer step path, the token-embedding/head optimizer param-group construction, the `base_lr` bookkeeping, and the late training-loop `group["base_lr"]` reads. Then reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, reran `python3 runpod/check_ready.py`, and reran the chooser-level CPU export round-trip harness under `uv`.
+- Result: The candidate file shrank from `52,701` bytes to `52,643` bytes, another `58` bytes of direct code-payload savings. The wrapped export blob again stayed exactly unchanged at `blob_size=4246542`, the chooser still selected `lz_hc3_16_l2_n64`, and the CPU harness again reported exact `roundtrip=True` with the same SHA-256 `4bbb418b6d8265d42710b1cc6939d16e812ecfd150f5bae08b04dd32336fe3a6`.
+- Decision: Keep the optimizer-key aliases in the main lane. This is another free counted-size win with no measured effect on artifact bytes, optimizer behavior, or recovery tooling.
+- Next step: Push this pass so the next live export-only resume uses the smallest counted candidate we currently have with the same best-known exporter path.
