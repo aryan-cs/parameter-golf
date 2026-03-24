@@ -725,3 +725,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: Raw `LZMA2` shaved another `62` bytes versus the wrapped `xz` stream on the same payload (`xz_size=4302268`, `raw_size=4302206`). After the patch, the chooser validated cleanly with `codec_name=lzma_raw_hc4_32mb` and `blob_size=4302211`.
 - Decision: Keep the raw `LZMA2` path as the default for codec id `3`. The gain is tiny, but it is free and backward-compatible, so there is no reason not to take it.
 - Next step: Push the raw-`LZMA2` tweak so the next live rerun uses the smallest artifact container we have measured offline.
+
+- Timestamp: 2026-03-24 02:16 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL code-size hygiene
+- Objective: Check whether the candidate source itself still contains removable prose now that the model blob is much smaller, and reclaim those bytes if possible without changing behavior.
+- Command or config: Removed the large top-of-file version/history docstring plus several section-banner and explanatory comments from `candidates/non_ttt_vrl_gptq/train_gpt.py`, then measured the exact file-size delta against `HEAD`, reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, and reran `python3 runpod/check_ready.py`.
+- Result: The candidate file shrank from `74,931` bytes to `73,185` bytes, a direct savings of `1,746` bytes on the counted code payload. Compile and readiness checks still passed unchanged.
+- Decision: Keep the code-size trim in the main lane. The savings are small compared with the model blob wins, but they are free and directly increase submission headroom.
+- Next step: Push the code-size trim so the next live rerun benefits from both the smaller model blob and the smaller counted source file.

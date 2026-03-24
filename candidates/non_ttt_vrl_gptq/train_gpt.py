@@ -1,16 +1,3 @@
-"""Parameter Golf v42: v41 + Value Residual Learning (VRL).
-11L + int6-all Late QAT@0.15 + Full GPTQ (Hessian-aware) + EMA(0.997) + Tight SWA
-+ XSA-all(11) + Partial RoPE(16/64) + LN Scale + VE128(9,10) + SmearGate
-+ BigramHash(2048) + Raw Binary Serialization + Prune(2%) + VRL.
-New in v42 (from arxiv:2410.17897, validated in #486/#490):
-  - Value Residual Learning: First layer's V output is added (scaled by learned alpha)
-    to every subsequent layer's V. Prevents attention concentration in deep layers.
-    Dev ablation: -0.015 BPB (#413). 11 extra scalar params. Zero throughput cost.
-Carried from v41:
-  - LeakyReLU(0.5)²: -0.0015 BPB.
-  - Full GPTQ: -0.0026 BPB.
-  - QAT-export alignment: -0.0005 BPB.
-"""
 from __future__ import annotations
 import copy, glob, io, json, lzma, math, os, random, struct, subprocess, sys, time, uuid, zlib
 try:
@@ -28,7 +15,6 @@ try:
 except ImportError:
     HAS_FA3 = False
 
-# ── HYPERPARAMETERS ──
 class Hyperparameters:
     data_path = os.environ.get("DATA_PATH", "./data/datasets/fineweb10B_sp1024")
     train_files = os.path.join(data_path, "fineweb_train_*.bin")
@@ -98,7 +84,6 @@ class Hyperparameters:
     save_pre_export_checkpoint = os.environ.get("SAVE_PRE_EXPORT_CHECKPOINT", "")
     export_only_checkpoint = os.environ.get("EXPORT_ONLY_CHECKPOINT", "")
 
-# ── SIMPLE MUON (Newton-Schulz5) ──
 def zeropower_via_newtonschulz5(G: Tensor, steps: int = 10, eps: float = 1e-7) -> Tensor:
     a, b, c = (3.4445, -4.7750, 2.0315)
     X = G.bfloat16(); X /= X.norm() + eps
@@ -145,7 +130,6 @@ class Muon(torch.optim.Optimizer):
                 p.add_(g, alpha=-lr); curr += p.numel()
         return loss
 
-# ── TOKENIZER-AGNOSTIC EVALUATION ──
 def build_sentencepiece_luts(sp, vocab_size, device):
     sp_vocab_size = int(sp.vocab_size()); table_size = max(sp_vocab_size, vocab_size)
     base_bytes_np = np.zeros((table_size,), dtype=np.int16)
@@ -198,7 +182,6 @@ def eval_val(args, model, rank, world_size, device, grad_accum_steps,
     bpt = val_loss.item() / math.log(2.0); tpb = val_token_count.item() / val_byte_count.item()
     model.train(); return float(val_loss.item()), float(bpt * tpb)
 
-# ── QUANTIZATION: Full GPTQ (Hessian-aware) + QAT-export alignment ──
 CONTROL_TENSOR_NAME_PATTERNS = tuple(
     p for p in "attn_scale,attn_scales,mlp_scale,mlp_scales,resid_mix,resid_mixes,q_gain,skip_weight,skip_weights,smear,backout_lambda,bigram.scale,ve_layer_scales,ve_shared.scale,vrl_alphas".split(",") if p)
 INT8_KEEP_FLOAT_MAX_NUMEL = 65_536
@@ -585,7 +568,6 @@ def decompress_model_blob(blob: bytes) -> tuple[bytes, str]:
             pass
     return zlib.decompress(blob), "legacy_zlib9"
 
-# ── DATA LOADING ──
 def load_data_shard(file):
     header_bytes = 256 * np.dtype("<i4").itemsize
     header = np.fromfile(file, dtype="<i4", count=256)
@@ -619,7 +601,6 @@ class DistributedTokenLoader:
         x, y = local[:-1].reshape(-1, seq_len), local[1:].reshape(-1, seq_len)
         return x.to(self.device, non_blocking=True), y.to(self.device, non_blocking=True)
 
-# ── TRANSFORMER MODULES ──
 class RMSNorm(nn.Module):
     def __init__(self, eps=None): super().__init__(); self.eps = eps
     def forward(self, x): return F.rms_norm(x, (x.size(-1),), eps=self.eps)
@@ -632,7 +613,6 @@ class CastedLinear(nn.Linear):
         if CastedLinear._qat_enabled and self.training and w.ndim == 2:
             with torch.no_grad():
                 w32 = self.weight.float()
-                # v41: Use matched clip percentile for QAT-export alignment
                 row_clip = torch.quantile(w32.abs(), CastedLinear._qat_clip_pct, dim=1)
                 scale = (row_clip / 31.0).clamp_min(1.0 / 31.0)  # int6: clip_range=31
                 w_q = (torch.clamp(torch.round(w32 / scale[:, None]), -31, 31) * scale[:, None]).to(x.dtype)
@@ -725,7 +705,6 @@ class MLP(nn.Module):
         self.proj = CastedLinear(int(mlp_mult * dim), dim, bias=False)
         self.proj._zero_init = True
     def forward(self, x):
-        # v41: LeakyReLU(0.5)² — preserves negative gradient flow, doubles effective MLP capacity
         return self.proj(F.leaky_relu(self.fc(x), negative_slope=0.5).square())
 
 class SmearGate(nn.Module):
@@ -826,7 +805,6 @@ class GPT(nn.Module):
         else:
             self.ve_shared = None; self.ve_layer_scales = nn.ParameterList()
         self.final_norm = RMSNorm()
-        # v42: VRL — per-layer alpha for value residual from layer 0
         self.vrl_enabled = num_layers > 1
         if self.vrl_enabled:
             self.vrl_alphas = nn.ParameterList([
@@ -861,8 +839,6 @@ class GPT(nn.Module):
     def _run_layers(self, x, x0, input_ids):
         skips, backout_layer, x_backout = [], self.num_layers // 2, None
         ve_cache = {}
-        # v42: VRL — precompute layer 0's V projection
-        # At layer 0, x == x0, so x_in = mix[0]*x0 + mix[1]*x0
         v0_raw = None
         if self.vrl_enabled:
             blk0 = self.blocks[0]
@@ -910,7 +886,6 @@ class GPT(nn.Module):
         logits = F.linear(x, self.tok_emb.weight.to(x.dtype)) if self.tie_embeddings else self.lm_head(x)
         return self.logit_softcap * torch.tanh(logits / self.logit_softcap)
 
-# ── GPTQ CALIBRATION: Collect Hessian H = X^T X per linear layer ──
 def collect_hessians(base_model, train_loader, args, device, grad_accum_steps, num_batches=256):
     """Run calibration batches through the model, collecting H = X^T X for each CastedLinear."""
     hessians = {}  # param_name -> H matrix (cols x cols)
@@ -951,7 +926,6 @@ def collect_hessians(base_model, train_loader, args, device, grad_accum_steps, n
     base_model.train()
     return hessians
 
-# ── SLIDING WINDOW EVAL ──
 def eval_val_sliding(logits_fn, rank, world_size, device, val_tokens,
                      base_bytes_lut, has_leading_space_lut, is_boundary_token_lut,
                      seq_len, stride, eval_batch_seqs=256):
@@ -1062,8 +1036,6 @@ def run_export_eval(args, base_model, rank, world_size, device, distributed, mas
             and _meta_kind(quant_meta.get(base_name)) == "int6"
         )
         dtype_map = {torch.int8: 0, torch.float16: 1, torch.float32: 2, torch.bfloat16: 3}
-        # dt=4 stays reserved for the legacy 3-byte/4-value int6 codec so
-        # older artifacts remain loadable; new exports use the bitplane codec.
         dt = 5 if pack_int6 else dtype_map.get(t.dtype, 2)
         if pack_int6:
             raw = pack_int6_tensor(t)
@@ -1158,7 +1130,6 @@ def run_export_eval(args, base_model, rank, world_size, device, distributed, mas
     log0(f"final_int6_zstd_roundtrip_exact val_loss:{q_vl:.8f} val_bpb:{q_vb:.8f}")
     if distributed: dist.destroy_process_group()
 
-# ── MAIN ──
 def main():
     global zeropower_via_newtonschulz5
     code = Path(__file__).read_text(encoding="utf-8"); args = Hyperparameters()
@@ -1218,7 +1189,6 @@ def main():
         run_export_eval(args, base_model, rank, world_size, device, distributed, master_process,
                         code, val_tokens, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut, log0)
         return
-    # Optimizer setup
     block_named_params = list(base_model.blocks.named_parameters())
     matrix_params = [p for n, p in block_named_params if p.ndim == 2 and not any(pat in n for pat in CONTROL_TENSOR_NAME_PATTERNS)]
     scalar_params = [p for n, p in block_named_params if p.ndim < 2 or any(pat in n for pat in CONTROL_TENSOR_NAME_PATTERNS)]
@@ -1229,7 +1199,6 @@ def main():
     if base_model.ve_shared is not None:
         scalar_params.append(base_model.ve_shared.scale)
         for s in base_model.ve_layer_scales: scalar_params.append(s)
-    # v42: VRL alphas
     if base_model.vrl_enabled:
         for a in base_model.vrl_alphas: scalar_params.append(a)
     token_lr = args.tied_embed_lr if args.tie_embeddings else args.embed_lr
@@ -1269,7 +1238,6 @@ def main():
         rem_ms = max(max_wallclock_ms - elapsed_ms, 0.0)
         return rem_ms / max(wd_ms, 1e-9) if rem_ms <= wd_ms else 1.0
 
-    # WARMUP
     if args.warmup_steps > 0:
         initial_model_state = {n: t.detach().cpu().clone() for n, t in base_model.state_dict().items()}
         initial_optimizer_states = [copy.deepcopy(opt.state_dict()) for opt in optimizers]
@@ -1290,7 +1258,6 @@ def main():
         if distributed: model.require_backward_grad_sync = True
         train_loader = DistributedTokenLoader(args.train_files, rank, world_size, device)
     ema_state = {name: t.detach().float().clone() for name, t in base_model.state_dict().items()}
-    # MAIN TRAINING LOOP
     training_time_ms, stop_after_step = 0.0, None
     swa_state, swa_count = None, 0
     torch.cuda.synchronize(); t0 = time.perf_counter(); step = 0
@@ -1347,7 +1314,6 @@ def main():
         if stop_after_step is None and reached_cap: stop_after_step = step
     log0(f"peak memory allocated: {torch.cuda.max_memory_allocated()//1024//1024} MiB reserved: {torch.cuda.max_memory_reserved()//1024//1024} MiB")
 
-    # Apply EMA weights
     log0("ema:applying EMA weights")
     current_state = base_model.state_dict()
     avg_state = {name: t.to(dtype=current_state[name].dtype) for name, t in ema_state.items()}
