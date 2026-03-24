@@ -1,184 +1,216 @@
-# Parameter Golf Workspace
+<img width="3840" height="1280" alt="1920x640-discord" src="https://github.com/user-attachments/assets/90607b26-171f-476a-90ae-69b9dbb7cb30" />
 
-This repository is our working repo for the OpenAI Parameter Golf challenge. The goal is not just to train a strong tiny model, but to produce a **valid** submission:
+<br>
+<br>
 
-- total artifact size under `16,000,000` bytes
-- training and evaluation compatible with the challenge rules
-- competitive `val_bpb` on the FineWeb validation split
+**OpenAI Model Craft Challenge: Parameter Golf** is a challenge to train the best language model that fits in a 16MB artifact and trains in under 10 minutes on 8xH100s, evaluated by compression on the FineWeb validation set (tokenizer-agnostic, bits per byte).
 
-At the moment, the main bottleneck is **artifact size**, not model quality.
+This challenge is heavily inspired by the [NanoGPT Speedrunning](https://github.com/KellerJordan/modded-nanogpt) challenge, where participants compete to train a model that reaches 3.28 FineWeb validation loss as quickly as possible. We're excited to see how optimizing for a parameter-constrained setting pushes people toward unique architectures (test-time compute, aggressive parameter tying, depth recurrence, low-rank training, ...), compression schemes (low precision, QAT, bitnets, novel tokenizers, ...), and other creative submissions (test-time training, long context, megakernels ...). 
 
-## Current State
+If you're familiar with [neural scaling laws](https://arxiv.org/abs/2001.08361), you can consider this challenge a form of L(N) optimization, where the objective is to optimize the lowest loss given a fixed number of parameters (N) unconstrained by data, compute, steps, or architecture. Challenges like the [NanoGPT Speedrun](https://github.com/KellerJordan/modded-nanogpt), which optimizes for a form of L(T) (~lowest time given constrained loss) or the [NanoGPT Slowrun](https://github.com/qlabs-eng/slowrun), which optimizes for L(D) (lowest loss given constrained dataset size), can be thought of as equivalent challenges in this family.
 
-- Best completed quantized score so far: `1.1159 val_bpb`
-- Current validity status: **invalid**
-- Why invalid: the artifact was `16,333,801` bytes, which is `333,801` bytes over the cap
-- Primary active lane: `VRL + Full GPTQ`
+Ideally, we'd allow for submissions to use arbitrary computational resources. But in order to make the challenge not inaccessibly expensive, we're limiting *leaderboard submissions* to 10 minutes on 8xH100s. However, we'd still love to see submissions that don't meet the compute limitation requirements in our 'Non-record Submissions' section: We're excited to see people push the infinite frontier of parameter limited performance as well.
 
-If you want the detailed experimental history, read [JOURNAL.md](/Users/aryan/Desktop/golf/JOURNAL.md).
+We also know compute is expensive, so **OpenAI is sponsoring $1,000,000 in compute credits** to help people get started training their models. To request a compute grant, use this form: [Request a Compute Grant](https://openai.com/index/parameter-golf/#credit-form).
+When requesting compute, please make sure you choose the appropriate level, write sufficient justification, and **submit with an email tied to a OpenAI / ChatGPT account**.
 
-## How To Navigate The Repo
+## Participant Form
 
-### Root files
+If you enjoy solving very difficult technical problems, please introduce yourself via the [Challenge Participant Form](https://jobs.ashbyhq.com/openai/form/open-ai-challenge-parameter-golf). It helps us attribute challenge submissions and reach out about opportunities with OpenAI. _Completing the form is not required to participate._
 
-- [README.md](/Users/aryan/Desktop/golf/README.md)
-  - This file. Start here for repo orientation.
-- [JOURNAL.md](/Users/aryan/Desktop/golf/JOURNAL.md)
-  - The lab notebook. Every meaningful code change, run, result, and decision should land here.
-- [PLAN.md](/Users/aryan/Desktop/golf/PLAN.md)
-  - The execution plan for the multi-day search process.
-- [RUNPOD_READY.md](/Users/aryan/Desktop/golf/RUNPOD_READY.md)
-  - The “credits just landed, launch now” runbook.
-- [pyproject.toml](/Users/aryan/Desktop/golf/pyproject.toml)
-  - Project dependencies and `uv` setup.
+Many researchers at OpenAI first distinguished themselves through elite mathematics and programming competitions. The Model Craft Challenge is designed in that spirit: testing the ability to tackle unfamiliar problems with creativity and rigor, qualities we believe are essential for frontier AI research.
 
-### Training code
+In June, we plan to hire a small cohort of early-career researchers, targeting current undergraduate students and recent graduates, including Olympiad medalists and elite competitors. For exceptional participants, the challenge may also serve as a way to stand out to OpenAI researchers and recruiters.
 
-- [train_gpt.py](/Users/aryan/Desktop/golf/train_gpt.py)
-  - Root baseline / reference entry point.
-- [train_gpt_mlx.py](/Users/aryan/Desktop/golf/train_gpt_mlx.py)
-  - Apple Silicon / MLX path for local proxy experiments.
-- [candidates](/Users/aryan/Desktop/golf/candidates)
-  - Active working model lanes.
+The challenge runs from March 18th to April 30th. 
 
-### Active candidate lanes
+Happy training!
 
-- [candidates/non_ttt_vrl_gptq/train_gpt.py](/Users/aryan/Desktop/golf/candidates/non_ttt_vrl_gptq/train_gpt.py)
-  - Main lane right now.
-  - This is the code that produced the strong but currently invalid `1.1159` result.
-  - It now includes:
-    - packed int6 export payloads
-    - compact metadata encoding
-    - export-only checkpoint/restart support
-- [candidates/non_ttt_m22_base/train_gpt.py](/Users/aryan/Desktop/golf/candidates/non_ttt_m22_base/train_gpt.py)
-  - March 22 merged-record reference lane.
-- [candidates/ttt_lora/train_gpt.py](/Users/aryan/Desktop/golf/candidates/ttt_lora/train_gpt.py)
-  - TTT lane reference. Not the current priority.
+## Leaderboard
 
-### Experiment configs
+| Run | Score | Author | Summary | Date | Info |
+|-----|------:|--------|---------|------|------|
+| LeakyReLU² + Legal Score-First TTT + Parallel Muon | 1.1194 | sanjeevmadhav | On PR #549: LeakyReLU(0.5)^2 + TTT + Parallel Muon on the PR #414 stack | 2026-03-23 | [info](records/track_10min_16mb/2026-03-23_LeakyReLU_LegalTTT_ParallelMuon/README.md) |
+| 11L EMA + GPTQ-lite + warmdown3500 | 1.1228 | signalrush | On PR #374: GPTQ-lite clip search + EMA, plus warmdown3500 and QAT@0.15 | 2026-03-22 | [info](records/track_10min_16mb/2026-03-22_11L_EMA_GPTQ-lite_warmdown3500_QAT015_1.1233/README.md) |
+| 11L Partial RoPE + LN Scale + EMA + XSA4 | 1.1248 | jfprincz | On PR #287: Partial RoPE (16/64) + layerwise LN scale | 2026-03-21 | [info](records/track_10min_16mb/2026-03-21_11L_XSA4_EMA_PartialRoPE_LateQAT_1.1248/README.md) |
+| 11L XSA4 + EMA + Int6 MLP3x | 1.1271 | jfprincz | On PR #198: XSA on the last 4 layers + EMA replacing SWA | 2026-03-20 | [info](records/track_10min_16mb/2026-03-20_11L_XSA4_EMA_Int6_MLP3x_WD04_1.1271/README.md) |
+| 11L Efficient Partial XSA | 1.1307 | unnir | On PR #198: Efficient Partial XSA on the deepest 3 layers | 2026-03-20 | [info](records/track_10min_16mb/2026-03-20_11L_EfficientPartialXSA_FA3_SWA120/README.md) |
+| 10L Int5-MLP + BigramHash(10240) | 1.1428 | thwu1 | 10 layers, mixed int5/int6 quantization, BigramHash(10240), SWA(0.4), WD=0.04 | 2026-03-20 | [info](records/track_10min_16mb/2026-03-20_10L_Int5MLP_MuonWD04_SWA50/README.md) |
+| Int6 MLP3x + SmearGate + BigramHash | 1.1458 | Raahil Shah | 3x MLP + SmearGate + BigramHash + OrthoInit + Muon WD + SWA | 2026-03-20 | [info](records/track_10min_16mb/2026-03-20_Int6_MLP3x_SmearGate_BigramHash_MuonWD_SWA/README.md) |
+| 11L MLP3x + Int6 QAT | 1.1502 | aruniyer | 11 layers, 3x MLP, int6 QAT, zstd-22, WD=0.04, sliding eval | 2026-03-20 | [info](records/track_10min_16mb/2026-03-19_MLP3x_QAT_Int6_SlidingWindow/README.md) |
+| SmearGate + OrthoInit + Muon WD | 1.1556 | aquariouseworkman | SmearGate + BigramHash + 3x MLP + int6 STE QAT + sliding eval | 2026-03-19 | [info](records/track_10min_16mb/2026-03-19_smeargate_orthoinit_muonwd/README.md) |
+| 10L Int6 QAT + Zstd MLP2.6x | 1.1586 | yahya010 | 10 layers, int6 QAT + zstd-22, MLP 1344, Muon 0.99, sliding eval | 2026-03-19 | [info](records/track_10min_16mb/2026-03-19_Seq2048_FP16Emb_TunedLR/README.md) |
+| Mixed Quant + Sliding Window Eval | 1.1630 | aquariouseworkman | Int6 block weights + int8 embeddings + 3x MLP + sliding eval | 2026-03-19 | [info](records/track_10min_16mb/2026-03-19_MixedQuant_Int6Int8_SlidingWindow/README.md) |
+| Muon WD + 10 layer | 1.1748 | notapplica | Includes prev. wins + Spectral embed init + resid mix | 2026-03-19 | [info](records/track_10min_16mb/2026-03-19_SlidingWindow_FP16Emb_10L_MuonWD_OvertoneInit/README.md) |
+| Sliding Window Eval | 1.1925 | Matthew Li | Sliding window evaluation at stride=64, increasing context for eval | 2026-03-19 | [info](records/track_10min_16mb/2026-03-19_SlidingWindowEval/README.md) |
+| Lora TTT | 1.1928 | samacqua | Test-time training with LORAs | 2026-03-19 | [info](records/track_10min_16mb/2026-03-17_LoRA_TTT/README.md) |
+| 4k seq length| 1.2014 | Spokane Way | 4k seq length + better hypers | 2026-03-19 | [info](records/track_10min_16mb/2026-03-19_TrainingOptSeq4096/README.md) |
+| 2048 seq length | 1.206 | Spokane Way | 2048 seq length (train + val) | 2026-03-18 | [info](records/track_10min_16mb/2026-03-18_LongContextSeq2048/README.md) |
+| int6 mixed precision | 1.2147 | Nan Liu | 10 layers, mixed int8/int6 | 2026-03-18 | [info](records/track_10min_16mb/2026-03-19_10L_MixedPrecision/README.md) |
+| fp16 Embed | 1.2197 | Renier Velazco | FP16 Tied Embedding + LR/Warmdown Tuning | 2026-03-18 | [info](records/track_10min_16mb/2026-03-18_FP16Embed_WD3600/README.md) |
+| Naive Baseline | 1.2244 | Baseline | 9layer 512dim 1024vocab TiedEmbeddings 4 KV heads | 2026-03-18 | [info](records/track_10min_16mb/2026-03-17_NaiveBaseline/README.md) |
 
-- [configs/runpod](/Users/aryan/Desktop/golf/configs/runpod)
-  - Run configs for local promotion, 1x H100 recovery, 8x H100 recovery, and export-only prune sweeps.
+#### Notable Non-Record Runs
 
-Important files there:
+| Run | Score | Author | Summary | Date | Info |
+|-----|------:|--------|---------|------|------|
+| 4-Hour Baseline | 1.2074 | Will DePue | Testing unlimited compute, 4 hours on 8xH100 | 2026-03-18 | [info](records/track_non_record_16mb/2026-03-18_Quasi10Bfrom50B_SP1024_9x512_KV4_4h_pgut3/README.md) |
 
-- [configs/runpod/non_ttt_vrl_gptq_1gpu_long_prune14.env](/Users/aryan/Desktop/golf/configs/runpod/non_ttt_vrl_gptq_1gpu_long_prune14.env)
-  - Main 1x H100 restart config.
-- [configs/runpod/non_ttt_vrl_gptq_1gpu_export_prune17.env](/Users/aryan/Desktop/golf/configs/runpod/non_ttt_vrl_gptq_1gpu_export_prune17.env)
-- [configs/runpod/non_ttt_vrl_gptq_1gpu_export_prune20.env](/Users/aryan/Desktop/golf/configs/runpod/non_ttt_vrl_gptq_1gpu_export_prune20.env)
-- [configs/runpod/non_ttt_vrl_gptq_1gpu_export_prune23.env](/Users/aryan/Desktop/golf/configs/runpod/non_ttt_vrl_gptq_1gpu_export_prune23.env)
-- [configs/runpod/non_ttt_vrl_gptq_1gpu_export_prune26.env](/Users/aryan/Desktop/golf/configs/runpod/non_ttt_vrl_gptq_1gpu_export_prune26.env)
-  - Export-only prune ladder used to recover validity without paying for more full retrains.
+## Getting Started
 
-### Runpod automation
+### Training Your First Model (Mac with Apple Silicon)
 
-- [runpod](/Users/aryan/Desktop/golf/runpod)
-  - Everything needed to sync to a pod, bootstrap it, launch runs, queue export sweeps, monitor progress, and fetch artifacts back.
+If you have an Apple laptop or desktop with Apple Silicon, we've set up a simple MLX training script to help you start iterating locally.
 
-The most important scripts are:
+If you don't have a Mac with Apple Silicon, you can run an adapted version of this script without MLX support. Just ask [Codex](https://openai.com/codex/) to refactor it; the change is straightforward. It may still be fairly slow, so we recommend jumping straight to cloud GPUs with Runpod.
 
-- [runpod/local_sync_to_pod.sh](/Users/aryan/Desktop/golf/runpod/local_sync_to_pod.sh)
-  - Sync local repo state to the pod.
-- [runpod/pod_bootstrap.sh](/Users/aryan/Desktop/golf/runpod/pod_bootstrap.sh)
-  - Install deps with `uv` and prepare the pod.
-- [runpod/pod_run.sh](/Users/aryan/Desktop/golf/runpod/pod_run.sh)
-  - Run a single config.
-- [runpod/pod_launch_export_chain.sh](/Users/aryan/Desktop/golf/runpod/pod_launch_export_chain.sh)
-  - Launch the main run and immediately stage export-only sweeps behind it.
-- [runpod/local_recover_export_chain.sh](/Users/aryan/Desktop/golf/runpod/local_recover_export_chain.sh)
-  - One-command `1x H100` recovery.
-- [runpod/local_recover_export_chain_8gpu.sh](/Users/aryan/Desktop/golf/runpod/local_recover_export_chain_8gpu.sh)
-  - One-command `8x H100` recovery.
-- [runpod/local_watch_latest.sh](/Users/aryan/Desktop/golf/runpod/local_watch_latest.sh)
-  - Watch the latest run log from your laptop.
-- [runpod/check_ready.py](/Users/aryan/Desktop/golf/runpod/check_ready.py)
-  - Local preflight check before spending credits.
-
-### Reference material
-
-- [records](/Users/aryan/Desktop/golf/records)
-  - Historical challenge records and non-records.
-  - Treat these as references, not as the active lane.
-- [data](/Users/aryan/Desktop/golf/data)
-  - Dataset tooling and notes.
-
-## What We Are Doing
-
-We are optimizing for one thing: a **valid leaderboard-worthy artifact**.
-
-That breaks into two subproblems:
-
-1. Train a recipe that reaches leaderboard-level quality.
-2. Compress/export that recipe so it actually fits under the `16,000,000` byte cap.
-
-We have already solved most of subproblem 1. The active VRL lane reaches strong pre-export and post-quant quality. The current work is focused on subproblem 2.
-
-## How We Are Doing It
-
-### Training strategy
-
-- Use `VRL + Full GPTQ` as the primary lane.
-- Use `1x H100` for recovery, bring-up, and cheaper checks.
-- Keep `8x H100 SXM` ready for final real runs once credits are available.
-
-### Export strategy
-
-- Prefer changes that do **not** disturb the training curve.
-- Save a pre-export checkpoint at the end of a strong run.
-- Run export-only prune sweeps from that checkpoint instead of paying for more full retrains.
-
-Current export-side tactics:
-
-- packed int6 payloads
-- compact metadata
-- export-only prune ladder `17 -> 20 -> 23 -> 26`
-
-### Process strategy
-
-- Use `uv` everywhere.
-- Keep [JOURNAL.md](/Users/aryan/Desktop/golf/JOURNAL.md) as the source of truth.
-- Commit and push often so the remote repo is always restartable.
-- Treat `README` as orientation, `JOURNAL` as history, and `RUNPOD_READY` as the live operator runbook.
-
-## What To Run Next
-
-Before launching a new pod:
+First, clone the repository, create a fresh Python environment, and install the packages needed for the MLX path plus dataset download:
 
 ```bash
-python3 runpod/check_ready.py
+git clone https://github.com/openai/parameter-golf.git
+cd parameter-golf
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install mlx numpy sentencepiece huggingface-hub datasets tqdm
 ```
 
-When credits land and you have a fresh `1x H100` pod:
+Download our cached version of FineWeb with the 1024-token vocabulary:
 
 ```bash
-bash runpod/local_recover_export_chain.sh root@HOST /workspace/golf PORT 80
+python3 data/cached_challenge_fineweb.py --variant sp1024 --train-shards 10
 ```
 
-When you want the real `8x H100 SXM` path:
+This populates `./data/datasets/fineweb10B_sp1024/` and `./data/tokenizers/`.
+By default this downloads the full validation split plus 80 training shards (8B tokens). For a smaller local smoke subset, pass `--train-shards 1`, for example `python3 data/cached_challenge_fineweb.py --variant sp1024 --train-shards 1`.
+
+Then run a small MLX training job:
 
 ```bash
-bash runpod/local_recover_export_chain_8gpu.sh root@HOST /workspace/golf PORT 80
+RUN_ID=mlx_smoke \
+ITERATIONS=200 \
+TRAIN_BATCH_TOKENS=8192 \
+VAL_LOSS_EVERY=0 \
+VAL_BATCH_SIZE=8192 \
+python3 train_gpt_mlx.py
 ```
 
-To watch the latest run:
+Validation always runs on the full `fineweb_val_*` split, which is the fixed first-50k-document set. The smoke command above skips periodic validation and just prints the final `val_loss` and `val_bpb` once at the end.
+
+### Scaling Up to a Remote Machine
+
+Once you're happy with your local tests, or you want more compute, switch to a remote CUDA machine.
+
+You can rent GPUs from anywhere, but OpenAI is partnering with Runpod to make setup as easy as possible.  
+
+#### Launching a 1xH100 Pod
+
+1. First, [create a Runpod account](https://console.runpod.io/deploy). You should also set up an SSH key in the Settings tab on the left so you can connect to your remote machine. If you're new to this, ask Codex to help you set it up.
+
+2. Once you've set up your account, create a new GPU Cloud Pod. You can choose whichever GPU SKU you'd like. Final leaderboard submissions must run in under 10 minutes on 8xH100s (specifically the SXM variant), but we strongly recommend testing and running experiments on cheaper SKUs first, since an 8xH100 box can cost around $20/hour.
+
+3. Let's start with a 1xH100 pod. Deploy using the official Parameter Golf template: [Launch Template](https://console.runpod.io/deploy?template=y5cejece4j&ref=nl2r56th). Enable SSH terminal access, leaving the other settings at their defaults. Deploy your pod and SSH into it once it's up. You should land in `/workspace/`.
+
+On your remote machine, clone the repo onto local disk. All Python dependencies are already pre-installed in the image.
 
 ```bash
-bash runpod/local_watch_latest.sh root@HOST /workspace/golf PORT non_ttt_vrl_gptq 1337
+cd /workspace
+git clone https://github.com/openai/parameter-golf.git
+cd parameter-golf
 ```
 
-## Source Of Truth
+Download our cached version of FineWeb. We'll use the 1024-token vocabulary for now.
 
-If there is ever a disagreement between files:
+```bash
+python3 data/cached_challenge_fineweb.py --variant sp1024
+```
 
-- use [JOURNAL.md](/Users/aryan/Desktop/golf/JOURNAL.md) for what actually happened
-- use [RUNPOD_READY.md](/Users/aryan/Desktop/golf/RUNPOD_READY.md) for what to do next on Runpod
-- use [candidates/non_ttt_vrl_gptq/train_gpt.py](/Users/aryan/Desktop/golf/candidates/non_ttt_vrl_gptq/train_gpt.py) for the current primary model/export logic
+This defaults to the full validation split plus 80 training shards (8B tokens). If you only want a smaller subset while iterating, pass `--train-shards N`, for example `--train-shards 1`.
 
-## What “Done” Looks Like
+Launch your first training run. Note that we're passing `nproc_per_node=1` because we're running on a single H100 GPU in this case.
 
-This project is not done when we have a pretty score in a log. It is done when we have:
+```bash
+RUN_ID=baseline_sp1024 \
+DATA_PATH=./data/datasets/fineweb10B_sp1024/ \
+TOKENIZER_PATH=./data/tokenizers/fineweb_1024_bpe.model \
+VOCAB_SIZE=1024 \
+torchrun --standalone --nproc_per_node=1 train_gpt.py
+```
 
-- a score that is leaderboard-worthy
-- an artifact under `16,000,000` bytes
-- a run that follows the challenge rules
-- and enough reproducible tooling in the repo that we can rerun it cleanly
+By default, `train_gpt.py` keeps its ~10 minute wallclock cap. If you want a longer run, override it explicitly, for example `MAX_WALLCLOCK_SECONDS=0`.
+
+By default, this command prints `train_loss` step logs during training and prints `val_loss`, `val_bpb`, and compressed model size in the final `final_int8_zlib_roundtrip` lines at the end. If you want periodic validation logs during the run, set `VAL_LOSS_EVERY`, for example `VAL_LOSS_EVERY=200`. For the baseline config, the final `val_bpb` should land around ~1.2 with a compressed model size under 16MB.
+
+For dataset export, tokenizer export, and docs-cache rebuild instructions, see [data/README.md](data/README.md).
+
+Evaluation will be in the RunPod environment with all packages installed. `requirements.txt` is provided as a reference if you want to self-setup.
+
+## FAQ
+
+**What exactly counts toward the 16MB artifact size?**
+
+The submission artifact is computed as code bytes plus compressed model bytes. All counted code should live in the `train_gpt.py` script.
+The cap is decimal 16MB, i.e. 16,000,000 total bytes, not 16 MiB / 16,777,216 bytes.
+No external downloads, training dataset access, or network calls are allowed during evaluation. The artifact must be fully self-contained and reproducible.
+
+**Are scores independently verified by OpenAI?**
+
+We're not automatically verifying every submission, but we will verify the top leaderboard entries over time. Any non-reproducible results can be disqualified, and issues reproducing submissions should be raised on the PR. If you find an issue with a record on the leaderboard or find a record isn't reproducible, please let us know and add an Github Issue describing your findings.
+
+**What counts as 'external compute'? For example, is it fair to tune my hyperparameters offline?**
+
+There's no perfectly clear answer here and it's hard to draw a clean line around what does or does not count as external compute. For now, we're reserving the right to disqualify runs that are not in the spirit of the challenge. Tuning your Adam hyperparameters across a bunch of runs is fine, but if there's evidence that you're sneaking in additional compute unfairly, such as brute-forcing ridiculous seeds, we won't allow it. Use your best judgment and there's no penalty for asking questions.
+
+**What are the restrictions on evaluation?**
+
+We won't accept submissions that take more than 10 minutes on 8xH100 to evaluate (Note: This limit is in addition to the 10 minutes of training time allowed!), but otherwise you're free to evaluate however. As with modded-nanogpt, we allow evaluation at any sequence length. And, obviously, you aren't allowed to access any training data during evaluation, unless you pay for those bits in the <16MB limit. We encourage competitors to push the bounds of evaluation methods as aggressively as with training methods. You CANNOT access validation data during training, e.g. by compressing it into your 16mb with "paid prefix".
+
+If it isn't abundantly obvious: You can't cheat on your test loss. You can't cheat by training on the validation set before you evaluate on the validation set. The validation language around test-time training has been confusing people: you are only allowed to test-time train on validation set tokens _you've already evaluated your model on_, since those tokens have already been graded!
+
+**What is the process for accepting new submissions?**
+
+Since all submissions are public, we're accepting record submissions chronologically depending on their PR creation time. The leaderboard may take time to update due to verification and review of submissions, so pay consideration to what the current SOTA PR is when submitting. As explained below, submissions should exceed the SOTA record with sufficient statistical significance in order to be accepted for the leaderboard. Otherwise, submissions may be accepted as 'non-record submissions' given they are sufficiently unique or interesting.
+
+**Can I import XYZ package or library?**
+
+Yes, you're free to import any package or library you want, so long as it does not unjustly violate the rules on evaluation, compute, training time, code size or otherwise. Just include a requirements.txt in your records folder and mention setup instructions in your README.md. Since you don't pay for bits imported in Python libraries, limitations clearly apply: You can't sneak in extra compute, capabilities, or massively increase effective code size with custom libraries, but importing FlashAttention, etc. is completely fine.
+
+
+## Submission Process
+
+New SOTA records must fulfill the following criteria:
+
+1. They must beat the existing SOTA by at least 0.005 nats. As in modded-nanogpt, because of inter-run variance all submissions must provide enough run logs to show at `p < 0.01` that they achieved the required 0.005-nat improvement. For submissions that improve speed through systems optimization without changing the ML, this requirement is waived.
+
+2. If changes are made to the tokenizer or dataset, prove with certainty that the val_bpb is correctly calculated. Submissions that edit the tokenizer will be examined much more carefully, since bugs may unjustly improve your score.
+
+3. Reproducibly run in under 10 minutes on 8xH100s.
+
+All submissions should be made as a pull request that only adds a new folder to the appropriate `/records` subfolder and includes the following files. Submissions without the full set of requirements will not be accepted.
+
+1. A README.md file that explains the submission in reasonable detail.
+
+2. A `submission.json` file (see the example runs) that includes your name, GitHub ID, `val_bpb`, and related metadata.
+
+3. A train log, automatically produced by your script. Please demonstrate a statistically significant win. Most often, submitting an average over 3 training runs is sufficient.
+
+4. A `train_gpt.py` script and any other dependencies. Note: this must successfully compile and run within the records folder. Broken scripts will not be accepted.
+
+### Non-record Submissions
+
+Submissions are also open to unique and interesting approaches that might not beat the existing SOTA, but still satisfy the 16MB artifact limit. We strongly encourage participants to submit implementations for weird or out-of-the-box ideas, in-progress or unoptimized solutions, so long as they run successfully, or even interesting negative results. We're excited to see what you come up with. We'll still maintain a high bar for non-record submissions, so be sure to justify your ideas and results in detail when submitting.
+
+We also accept non-record submissions to an unlimited compute track for runs that are not intended to meet the 10-minute cutoff. Just note as such in your README file.
+
+Non-record submissions should be made in the same fashion as SOTA records, as described above.
+
+#### PRs on Core Code
+
+The `train_gpt.py` and `train_gpt_mlx.py` scripts are intended as good launching-off points for new participants, not SOTA configs. We'll accept PRs that tune, improve, or simplify these scripts without significantly increasing complexity, but the best models should stay in the `/records` folder.
+
+## Support
+
+
+Join the [OpenAI Discord server](https://discord.com/invite/openai) and visit the Parameter Golf channels (#parameter-golf-discussions, #parameter-golf-announcements) and ask questions.
+
+This repository adapts code from `modded-nanogpt`, see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for attribution.

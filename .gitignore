@@ -1,32 +1,11 @@
-# Python / local environments
+data/tokenizers
 __pycache__/
-*.py[cod]
-.venv/
-.venv-*/
-.mypy_cache/
-.pytest_cache/
-.ruff_cache/
-.ipynb_checkpoints/
-*.egg-info/
-
-# Local machine / editor
 .DS_Store
-.env
-*.swp
-*.swo
-
-# Dataset caches and generated artifacts
-data/datasets/
-data/tokenizers/
+modded-nanogpt/
+modded-nanogpt
+data/datasets
 data/manifest.json
 data/docs_selected.jsonl
+.mypy_cache/
+.venv
 logs/
-runs/
-cache/
-.cache/
-workbench/
-
-# Runpod / export leftovers
-.sync_commit
-final_model.int6.ptz
-pre_export_model.pt
