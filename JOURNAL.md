@@ -16,7 +16,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 ## Entries
 
 - Timestamp: 2026-03-23 15:55 America/Chicago
-- Commit: uncommitted
+- Commit: `7c60955`
 - Lane: repo
 - Objective: Normalize the repo around `uv`, add a durable lab notebook, and wire in the Runpod execution path.
 - Command or config: `uv` project setup, Runpod helper scripts, candidate imports, and `PLAN.md` operating rules.
