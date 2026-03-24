@@ -88,7 +88,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Next step: Push the path fix, re-sync the repo to `/workspace/golf`, and relaunch `bash runpod/pod_run.sh non_ttt_m22_base 1337`.
 
 - Timestamp: 2026-03-23 17:16 America/Chicago
-- Commit: uncommitted
+- Commit: `e73078a`
 - Lane: runpod bring-up
 - Objective: Recover from the first training-process failure after the launcher reached `torchrun`.
 - Command or config: Inspected the failing command path and found that `uv run torchrun` executed the system `torchrun`, which in turn used `/usr/bin/python` outside the synced virtual environment.
@@ -97,7 +97,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Next step: Push the launcher fix, re-sync the repo, and relaunch `bash runpod/pod_run.sh non_ttt_m22_base 1337`.
 
 - Timestamp: 2026-03-23 17:22 America/Chicago
-- Commit: uncommitted
+- Commit: `7d1d3ce`
 - Lane: runpod bring-up
 - Objective: Recover from the next launcher failure after switching away from the system `torchrun`.
 - Command or config: Inspected the new failure and found that `uv run python ...` rebuilt a default environment that did not include the `cuda` extra, so `torch` was absent despite bootstrap succeeding earlier.
@@ -106,7 +106,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Next step: Push the launcher fix, re-sync the repo, and relaunch `bash runpod/pod_run.sh non_ttt_m22_base 1337`.
 
 - Timestamp: 2026-03-23 17:28 America/Chicago
-- Commit: uncommitted
+- Commit: `b5a8431`
 - Lane: runpod bring-up
 - Objective: Recover from the launch failure that still reported `torch` missing even after switching to the bootstrapped `.venv`.
 - Command or config: Traced the behavior across successive syncs and found that the tar fallback path was deleting `/workspace/golf` before extraction, which erased the pod-side `.venv` and downloaded dataset on every re-sync.
@@ -1040,3 +1040,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The candidate file shrank from `56,091` bytes to `55,504` bytes, another `587` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 55,504`, which is `-19,427` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
 - Decision: Keep the short private env-key scheme in the main lane. It is a larger validated counted-size win than the last few local-only rename passes, and the runpod orchestration still passes readiness after the synchronized config/script update.
 - Next step: Push the short env-key pass so the next live export rerun uses the smallest counted candidate source we have so far together with the stronger bitplane + raw-LZMA exporter path.
+
+- Timestamp: 2026-03-24 04:16 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL code-size hygiene
+- Objective: Reclaim another solid counted-size block by shortening repeated internal `device`, `seq_len`, and decode `offset` locals in validation, loader, rotary-cache, export, and main-loop paths without changing external interfaces.
+- Command or config: Renamed the internal `device` locals to `dv`, shortened several local `seq_len` parameters to short in-file aliases, and collapsed decode offsets to `o` inside `candidates/non_ttt_vrl_gptq/train_gpt.py`; then reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, reran `python3 runpod/check_ready.py`, and reran the fixed-seed offline codec round-trip validator on the quantized VRL model skeleton.
+- Result: The candidate file shrank from `55,504` bytes to `55,017` bytes, another `487` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 55,017`, which is `-19,914` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
+- Decision: Keep the internal device/seq-len/offset shortening pass in the main lane. It is another validated counted-size win with no observed exporter, wrapper, or round-trip regression.
+- Next step: Push this pass so the next live export rerun uses the smallest counted candidate source we have so far together with the stronger bitplane + raw-LZMA exporter path.
