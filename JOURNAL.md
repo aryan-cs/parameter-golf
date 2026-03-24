@@ -194,3 +194,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: Future March 22 smoke runs no longer pay for the forced extra stride-64 tail eval, and the VRL smoke lane will no longer hang at final evaluation because of a zero stride.
 - Decision: Push the smoke-eval fixes immediately, then kill the already-launched VRL smoke process and relaunch it with the corrected config.
 - Next step: Commit and push these changes, sync them to the pod, restart the VRL/GPTQ smoke run, and compare it against the March 22 smoke baseline.
+
+- Timestamp: 2026-03-23 18:49 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL/GPTQ smoke
+- Objective: Replace the first VRL smoke launch with a corrected one after fixing the invalid zero-stride final eval setting.
+- Command or config: Synced commit `24253ae` to the pod, stopped the earlier VRL smoke process, and relaunched `bash runpod/pod_run.sh non_ttt_vrl_gptq 1337 configs/runpod/non_ttt_vrl_gptq_smoke.env` under `nohup`.
+- Result: The corrected VRL smoke lane is now live at `runs/non_ttt_vrl_gptq/seed1337/20260324T025458Z`, using the updated smoke config with `EVAL_STRIDE=2048`.
+- Decision: Treat `20260324T025458Z` as the authoritative VRL smoke run and ignore the earlier `20260324T025035Z` attempt for comparisons.
+- Next step: Let the corrected run advance through warmup and first logged steps, then compare its pre-quant and post-quant behavior to the March 22 smoke run.
