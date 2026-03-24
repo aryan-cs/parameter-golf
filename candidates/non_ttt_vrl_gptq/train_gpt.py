@@ -152,10 +152,10 @@ def build_sentencepiece_luts(sp, vs, device):
 
 def load_validation_tokens(pattern, seq_len):
     files = [Path(p) for p in sorted(glob.glob(pattern))]
-    if not files: raise FileNotFoundError(f"No files: {pattern}")
+    if not files: raise FileNotFoundError(f"no:{pattern}")
     tokens = CAT([load_data_shard(file) for file in files]).contiguous()
     usable = ((tokens.numel() - 1) // seq_len) * seq_len
-    if usable <= 0: raise ValueError(f"Val too short for seq_len={seq_len}")
+    if usable <= 0: raise ValueError(f"val<{seq_len}")
     return tokens[:usable + 1]
 
 def eval_val(args, model, rank, ws, device, gas,
@@ -248,7 +248,7 @@ def eqm(meta: dict[str, object]) -> tuple[bytes, list[str]]:
             kind_name = _meta_kind(kind)
             if kind_name == "int6": kind_code = 2
             elif kind_name == "int8": kind_code = 3
-            else: raise ValueError(f"unsupported quant meta entry for {name}: {kind!r}")
+            else: raise ValueError(f"bad meta {name}:{kind!r}")
         name_bytes = name.encode("utf-8")
         parts.append(struct.pack("<HB", len(name_bytes), kind_code))
         parts.append(name_bytes)
@@ -424,7 +424,7 @@ def _zigzag_encode_int6(arr_i16: np.ndarray) -> np.ndarray:
     if arr.size == 0:
         return np.empty((0,), dtype=np.uint8)
     if arr.min() < -31 or arr.max() > 31:
-        raise ValueError("int6 tensor contains values outside [-31, 31]")
+        raise ValueError("int6 range")
     out = np.where(arr >= 0, arr * 2, (-arr) * 2 - 1)
     return out.astype(np.uint8, copy=False)
 
@@ -435,12 +435,12 @@ def _zigzag_decode_int6(u8: np.ndarray) -> np.ndarray:
 def pi6l(t: Tensor) -> bytes:
     q = t.detach().cpu().contiguous()
     if q.dtype != I8:
-        raise TypeError(f"expected int8 tensor for int6 packing, got {q.dtype}")
+        raise TypeError(f"need int8, got {q.dtype}")
     arr = q.numpy().reshape(-1).astype(np.int16, copy=False)
     if arr.size == 0:
         return b""
     if arr.min() < -31 or arr.max() > 31:
-        raise ValueError("int6 tensor contains values outside [-31, 31]")
+        raise ValueError("int6 range")
     u = (arr + 31).astype(np.uint8, copy=False)
     pad = (-u.size) % 4
     if pad:
@@ -463,7 +463,7 @@ def ui6l(raw: bytes | memoryview, shape: list[int]) -> Tensor:
     packed_u8 = np.frombuffer(raw, dtype=np.uint8)
     groups = (numel + 3) // 4
     if packed_u8.size != groups * 3:
-        raise ValueError(f"bad packed int6 size: expected {groups * 3}, got {packed_u8.size}")
+        raise ValueError(f"bad int6 sz {groups*3}!={packed_u8.size}")
     triplets = packed_u8.reshape(-1, 3).astype(np.uint32, copy=False)
     packed = triplets[:, 0] | (triplets[:, 1] << 8) | (triplets[:, 2] << 16)
     u = np.empty(groups * 4, dtype=np.uint8)
@@ -477,7 +477,7 @@ def ui6l(raw: bytes | memoryview, shape: list[int]) -> Tensor:
 def pi6(t: Tensor) -> bytes:
     q = t.detach().cpu().contiguous()
     if q.dtype != I8:
-        raise TypeError(f"expected int8 tensor for int6 packing, got {q.dtype}")
+        raise TypeError(f"need int8, got {q.dtype}")
     arr = q.numpy().reshape(-1).astype(np.int16, copy=False)
     if arr.size == 0:
         return b""
@@ -501,7 +501,7 @@ def ui6(raw: bytes | memoryview, shape: list[int]) -> Tensor:
     packed_u8 = np.frombuffer(raw, dtype=np.uint8)
     expected = plane_bytes * 6
     if packed_u8.size != expected:
-        raise ValueError(f"bad packed int6 size: expected {expected}, got {packed_u8.size}")
+        raise ValueError(f"bad int6 sz {expected}!={packed_u8.size}")
     u = np.zeros(padded, dtype=np.uint8)
     offset = 0
     for bit in range(6):
@@ -537,7 +537,7 @@ def dmb(blob: bytes) -> tuple[bytes, str]:
         payload = blob[len(QCB) + 1:]
         if codec_id == KZ:
             if not HAS_ZSTD:
-                raise RuntimeError("artifact uses zstd codec but zstandard is unavailable")
+                raise RuntimeError("zstd unavailable")
             return zstd.ZstdDecompressor().decompress(payload), mcn(codec_id)
         if codec_id == KG:
             return zlib.decompress(payload), mcn(codec_id)
@@ -546,7 +546,7 @@ def dmb(blob: bytes) -> tuple[bytes, str]:
                 return lzma.decompress(payload, format=lzma.FORMAT_RAW, filters=LF), mcn(codec_id)
             except lzma.LZMAError:
                 return lzma.decompress(payload), "legacy_lzma_hc4_32mb_xz"
-        raise ValueError(f"unknown model codec id: {codec_id}")
+        raise ValueError(f"bad codec {codec_id}")
     if HAS_ZSTD:
         try:
             return zstd.ZstdDecompressor().decompress(blob), "legacy_zstd22"
@@ -557,15 +557,15 @@ def dmb(blob: bytes) -> tuple[bytes, str]:
 def load_data_shard(file):
     header_bytes = 256 * np.dtype("<i4").itemsize
     header = np.fromfile(file, dtype="<i4", count=256)
-    if header.size != 256 or int(header[0]) != 20240520 or int(header[1]) != 1: raise ValueError(f"Bad header: {file}")
+    if header.size != 256 or int(header[0]) != 20240520 or int(header[1]) != 1: raise ValueError(f"bad hdr {file}")
     num_tokens = int(header[2])
-    if file.stat().st_size != header_bytes + num_tokens * np.dtype("<u2").itemsize: raise ValueError(f"Size mismatch: {file}")
+    if file.stat().st_size != header_bytes + num_tokens * np.dtype("<u2").itemsize: raise ValueError(f"bad size {file}")
     return FN(np.fromfile(file, dtype="<u2", count=num_tokens, offset=header_bytes).astype(np.uint16, copy=False))
 
 class TokenStream:
     def __init__(self, pattern):
         self.files = [Path(p) for p in sorted(glob.glob(pattern))]
-        if not self.files: raise FileNotFoundError(f"No files: {pattern}")
+        if not self.files: raise FileNotFoundError(f"no:{pattern}")
         self.file_idx = 0; self.tokens = load_data_shard(self.files[0]); self.pos = 0
     def _advance_file(self):
         self.file_idx = (self.file_idx + 1) % len(self.files); self.tokens = load_data_shard(self.files[self.file_idx]); self.pos = 0
@@ -1045,8 +1045,8 @@ def ree(args, bm, rank, ws, device, dd, master,
         f" codec={mcn(model_codec_id)}"
         f" int6_tensors={packed_int6_tensors}"
     )
-    log0(f"sizes:m={model_bytes} c={code_bytes} t={total_size} ({total_size/1e6:.2f} MB)")
-    if total_size > size_limit: log0(f"WARN:size {total_size} +{total_size - size_limit}")
+    log0(f"sz:m={model_bytes} c={code_bytes} t={total_size}({total_size/1e6:.2f}M)")
+    if total_size > size_limit: log0(f"warn:size {total_size}+{total_size - size_limit}")
     else: log0(f"size_ok:{total_size/1e6:.2f} MB")
     if master:
         with open("final_model.int6.ptz", "wb") as f: f.write(model_blob)
@@ -1115,9 +1115,9 @@ def main():
     dd = "RANK" in os.environ and "WORLD_SIZE" in os.environ
     rank = int(EG("RANK", "0")); ws = int(EG("WORLD_SIZE", "1"))
     local_rank = int(EG("LOCAL_RANK", "0"))
-    if ws <= 0 or 8 % ws != 0: raise ValueError(f"Bad WORLD_SIZE={ws}")
+    if ws <= 0 or 8 % ws != 0: raise ValueError(f"bad WS={ws}")
     gas = 8 // ws; grad_scale = 1.0 / gas
-    if not th.cuda.is_available(): raise RuntimeError("CUDA required")
+    if not th.cuda.is_available(): raise RuntimeError("cuda req")
     device = th.device("cuda", local_rank); th.cuda.set_device(device)
     if dd: IGP(backend="nccl", device_id=device); BR()
     master = rank == 0

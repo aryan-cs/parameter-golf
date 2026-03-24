@@ -941,3 +941,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The candidate file shrank from `61,000` bytes to `60,479` bytes, another `521` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 60,479`, which is `-14,452` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
 - Decision: Keep the extra diagnostics-removal pass in the main lane. It is another clean counted-size win and still preserves the markers the ladder tooling depends on.
 - Next step: Push the diagnostics-removal pass so the next live export rerun uses the smaller counted candidate source together with the stronger bitplane + raw-LZMA exporter path.
+
+- Timestamp: 2026-03-24 03:41 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL code-size hygiene
+- Objective: Reclaim another meaningful block of counted source bytes by shortening exception strings and a few one-off non-tooling diagnostic labels without changing runtime behavior or the ladder markers we depend on.
+- Command or config: Shortened the file/validation/codec/int6 error strings and compressed a couple of non-tooling size-warning labels inside `candidates/non_ttt_vrl_gptq/train_gpt.py`, then reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, reran `python3 runpod/check_ready.py`, and reran the offline codec round-trip validator on the fixed-seed quantized VRL model skeleton.
+- Result: The candidate file shrank from `60,479` bytes to `60,163` bytes, another `316` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 60,163`, which is `-14,768` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
+- Decision: Keep the exception/diagnostic shortening pass in the main lane. It is another safe counted-size win and still preserves the success markers the export ladder tooling watches.
+- Next step: Push the exception/diagnostic shortening pass so the next live export rerun uses the smaller counted candidate source together with the stronger bitplane + raw-LZMA exporter path.
