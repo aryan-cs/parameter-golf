@@ -365,3 +365,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The baseline process is still alive as PID `129473`, using `100%` GPU and about `33 GiB` of memory, while the log has not advanced past `WARNING: Total size 16333801 exceeds 16MB limit by 333801 bytes!`. The code confirms that this warning is printed before the final `final_int6_zstd_roundtrip` evaluation, so the silent tail is still the quantized round-trip eval path rather than a cleanly completed run.
 - Decision: Do not kill the baseline yet; let it continue until it either prints the final quantized metric or exits, because that metric is still the most valuable missing datapoint for calibrating the queued prune11 follow-up.
 - Next step: Keep monitoring the active baseline for the final quantized metric while leaving the queued `prune11` watcher in place to take over the GPU automatically when this run exits.
+
+- Timestamp: 2026-03-24 00:19 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL pod orchestration
+- Objective: Reduce confusion on the pod now that the no-prune path has been superseded by the prune11 follow-up.
+- Command or config: Killed the stale helper watchers that were still polling for the old no-prune queue path: remote PIDs `137077` and `140064`.
+- Result: The active pod process set is now simpler and matches the intended plan: the long VRL baseline is still running as PID `129473`, and the only queued successor is the prune-focused watcher PID `167816`.
+- Decision: Keep the baseline and the prune11 queue intact; remove only obsolete helper processes so the next transition is easier to inspect.
+- Next step: Continue monitoring the baseline for a final `final_int6_zstd_roundtrip` metric or process exit, then let the prune11 follow-up take over automatically.
