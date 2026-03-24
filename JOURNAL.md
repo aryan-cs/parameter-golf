@@ -167,3 +167,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: A fresh background run is active on the pod at `runs/non_ttt_m22_base/seed1337/20260323T221010Z`, and it has already emitted the standard startup lines through `seed:1337`.
 - Decision: Let this detached smoke run continue in the background while the local repo remains free for the next code changes and analysis.
 - Next step: Check back on `runs/non_ttt_m22_base/seed1337/20260323T221010Z/train.log` for the completed standard-eval result, then decide whether to move to full-shard repro or a VRL/GPTQ lane.
+
+- Timestamp: 2026-03-23 18:37 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL/GPTQ smoke
+- Objective: Open the strongest public non-TTT upside lane under the same single-H100 smoke constraints.
+- Command or config: Reviewed `candidates/non_ttt_vrl_gptq/README.upstream.md`, confirmed that the candidate already supports PyTorch SDPA fallback, and added `configs/runpod/non_ttt_vrl_gptq_smoke.env` with `VAL_LOSS_EVERY=0` and `EVAL_STRIDE=0` to keep the 1xH100 proxy run focused on train/final-standard-eval signal.
+- Result: The repo now has a fast smoke configuration for the `1.1175` VRL + Full GPTQ lane, ready for an apples-to-apples comparison against the March 22 base on the same Runpod pod and dataset subset.
+- Decision: Launch the VRL/GPTQ smoke run next on the existing pod as soon as the base smoke result is captured.
+- Next step: Commit and push the VRL smoke config, sync it to the pod, and start `bash runpod/pod_run.sh non_ttt_vrl_gptq 1337 configs/runpod/non_ttt_vrl_gptq_smoke.env`.
