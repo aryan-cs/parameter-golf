@@ -1157,3 +1157,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The candidate file shrank from `53,689` bytes to `53,304` bytes, another `385` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 53,304`, which is `-21,627` bytes. Compile and readiness checks still passed, and the config validation still reports `runpod readiness check: OK` with `7` config refs in each recovery wrapper and `30` verified config files.
 - Decision: Keep the env-helper and shorter `load_state_dict` pass in the main lane. It is a materially larger counted-size win than the last few micro-passes, and it does not change the intended runtime configuration semantics.
 - Next step: Push this pass so the next live export-only recovery rerun uses the smaller counted source alongside the already-banked bitplane int6 codec, auto codec chooser, and tuned raw `lzma_raw_hc3_16mb` path.
+
+- Timestamp: 2026-03-24 05:05 CDT
+- Commit: `ba04baf`
+- Lane: non-ttt VRL code-size hygiene
+- Objective: Reclaim another meaningful counted-size block by compacting the large `H` config class layout without changing any env keys, defaults, or runtime parsing behavior.
+- Command or config: Collapsed the repeated one-field-per-line assignments inside [train_gpt.py](/Users/aryan/Desktop/golf/candidates/non_ttt_vrl_gptq/train_gpt.py) into denser multi-assignment lines, removed unnecessary spacing in that class body, and kept the exact same env variable names and defaults. Then reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py` and reran `python3 runpod/check_ready.py`.
+- Result: The candidate file shrank from `53,304` bytes to `52,959` bytes, another `345` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 52,959`, which is `-21,972` bytes. Compile and readiness checks still passed, and the config validation still reports `runpod readiness check: OK` with `7` config refs in each recovery wrapper and `30` verified config files.
+- Decision: Keep the compact `H` class layout in the main lane. It is another solid counted-size win, and it preserves the exact same config surface for the next live export-only rerun.
+- Next step: Push this pass so the next live recovery rerun uses the smaller counted source together with the already-banked exporter improvements once the Runpod balance blocker is cleared.
