@@ -869,3 +869,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The candidate file shrank from `64,764` bytes to `64,110` bytes, another `654` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 64,110`, which is `-10,821` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
 - Decision: Keep the dtype/helper alias pass in the main lane. It is another meaningful counted-size win with no observed exporter regression.
 - Next step: Push the alias pass so the next live export rerun uses the smaller counted candidate source together with the stronger bitplane + raw-LZMA exporter path.
+
+- Timestamp: 2026-03-24 03:22 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL code-size hygiene
+- Objective: Reclaim another safe block of counted source bytes by aliasing a few still-hot tensor helpers and parameter container spellings without changing exporter behavior or checkpoint structure.
+- Command or config: Added short aliases inside `candidates/non_ttt_vrl_gptq/train_gpt.py` for repeated helpers such as `nn.Parameter -> P`, `nn.ParameterList -> PL`, `torch.zeros_like -> ZL`, `torch.empty_like -> EL`, `torch.arange -> AR`, `torch.sigmoid -> SG`, `torch.cat -> CAT`, `torch.ones -> ON`, `torch.full -> FUL`, and `torch.eye -> EYE`, then reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, reran `python3 runpod/check_ready.py`, and reran the offline codec round-trip validator on the fixed-seed quantized VRL model skeleton.
+- Result: The candidate file shrank from `64,110` bytes to `63,904` bytes, another `206` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 63,904`, which is `-11,027` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
+- Decision: Keep the helper-alias pass in the main lane. The gain is small, but it is free, safe, and keeps stacking counted headroom while we wait for the next live export rerun.
+- Next step: Push the helper-alias pass so the next live export rerun uses the smaller counted candidate source together with the stronger bitplane + raw-LZMA exporter path.

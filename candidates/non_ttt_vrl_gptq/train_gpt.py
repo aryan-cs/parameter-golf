@@ -11,6 +11,7 @@ from torch import Tensor, nn
 from torch.nn.parallel import DistributedDataParallel as DDP
 BF=th.bfloat16; F16=th.float16; F32=th.float32; F64=th.float64; I8=th.int8; I16=th.int16; I64=th.int64; BO=th.bool; U16=th.uint16
 AC=th.autocast; IM=th.inference_mode; Z=th.zeros; TT=th.tensor; QT=th.quantile; EM=th.empty; FN=th.from_numpy; SK=th.stack
+P=nn.Parameter; PL=nn.ParameterList; ZL=th.zeros_like; EL=th.empty_like; AR=th.arange; SG=th.sigmoid; CAT=th.cat; ON=th.ones; FUL=th.full; EYE=th.eye
 try:
     from flash_attn_interface import flash_attn_func as _fa3_func
     HAS_FA3 = True
@@ -115,7 +116,7 @@ class Muon(th.optim.Optimizer):
             for i, p in enumerate(params):
                 if i % ws == rk and p.grad is not None:
                     g = p.grad; state = self.state[p]
-                    if "momentum_buffer" not in state: state["momentum_buffer"] = th.zeros_like(g)
+                    if "momentum_buffer" not in state: state["momentum_buffer"] = ZL(g)
                     buf = state["momentum_buffer"]; buf.mul_(momentum).add_(g)
                     if nesterov: g = g.add(buf, alpha=momentum)
                     g = z5(g, steps=ns_steps)
@@ -149,7 +150,7 @@ def build_sentencepiece_luts(sp, vs, device):
 def load_validation_tokens(pattern, seq_len):
     files = [Path(p) for p in sorted(glob.glob(pattern))]
     if not files: raise FileNotFoundError(f"No files: {pattern}")
-    tokens = th.cat([load_data_shard(file) for file in files]).contiguous()
+    tokens = CAT([load_data_shard(file) for file in files]).contiguous()
     usable = ((tokens.numel() - 1) // seq_len) * seq_len
     if usable <= 0: raise ValueError(f"Val too short for seq_len={seq_len}")
     return tokens[:usable + 1]
@@ -298,7 +299,7 @@ def quantize_int6_gptq(weight, hessian=None, clip_range=31, block_size=128):
     dead = th.diag(H) == 0
     H[dead, dead] = 1
     damp = 0.01 * th.mean(th.diag(H))
-    H[th.arange(cols), th.arange(cols)] += damp
+    H[AR(cols), AR(cols)] += damp
     perm = th.argsort(th.diag(H), descending=True)
     inv_perm = th.argsort(perm)
     W = t32[:, perm].clone()
@@ -318,7 +319,7 @@ def quantize_int6_gptq(weight, hessian=None, clip_range=31, block_size=128):
             row_clip = t32.abs().amax(dim=1)
         s = (row_clip / clip_range).clamp_min(1.0 / clip_range).to(F16)
         sf = s.float()
-        Q = th.zeros_like(W, dtype=I8)
+        Q = ZL(W, dtype=I8)
         W_work = W.clone()
         for i1 in range(0, cols, block_size):
             i2 = min(i1 + block_size, cols)
@@ -577,7 +578,7 @@ class TokenStream:
             avail = self.tokens.numel() - self.pos
             if avail <= 0: self._advance_file(); continue
             k = min(remaining, avail); chunks.append(self.tokens[self.pos:self.pos+k]); self.pos += k; remaining -= k
-        return chunks[0] if len(chunks) == 1 else th.cat(chunks)
+        return chunks[0] if len(chunks) == 1 else CAT(chunks)
 
 class DTL:
     def __init__(self, pattern, rank, world_size, device):
@@ -618,7 +619,7 @@ class Rotary(nn.Module):
         super().__init__()
         self.dim = dim; self.base = base; self.tsl = tsl
         self.rope_dims = rd if rd > 0 else dim
-        inv_freq = 1.0 / (base ** (th.arange(0, self.rope_dims, 2, dtype=F32) / self.rope_dims))
+        inv_freq = 1.0 / (base ** (AR(0, self.rope_dims, 2, dtype=F32) / self.rope_dims))
         self.register_buffer("inv_freq", inv_freq, persistent=False)
         self._seq_len_cached = 0; self._cos_cached = self._sin_cached = None
     def forward(self, seq_len, device, dtype):
@@ -627,9 +628,9 @@ class Rotary(nn.Module):
             if seq_len > self.tsl:
                 scale = seq_len / self.tsl
                 new_base = self.base * (scale ** (rd / (rd - 2)))
-                inv_freq = 1.0 / (new_base ** (th.arange(0, rd, 2, dtype=F32, device=device) / rd))
+                inv_freq = 1.0 / (new_base ** (AR(0, rd, 2, dtype=F32, device=device) / rd))
             else: inv_freq = self.inv_freq.to(device)
-            freqs = th.outer(th.arange(seq_len, device=device, dtype=inv_freq.dtype), inv_freq)
+            freqs = th.outer(AR(seq_len, device=device, dtype=inv_freq.dtype), inv_freq)
             self._cos_cached = freqs.cos()[None, :, None, :]; self._sin_cached = freqs.sin()[None, :, None, :]
             self._seq_len_cached = seq_len
         return self._cos_cached.to(dtype=dtype), self._sin_cached.to(dtype=dtype)
@@ -639,11 +640,11 @@ def apply_rotary_emb(x, cos, sin, rd=0):
         x_rope, x_pass = x[..., :rd], x[..., rd:]
         half = rd // 2
         x1, x2 = x_rope[..., :half], x_rope[..., half:]
-        x_rope = th.cat((x1 * cos + x2 * sin, x1 * (-sin) + x2 * cos), dim=-1)
-        return th.cat((x_rope, x_pass), dim=-1)
+        x_rope = CAT((x1 * cos + x2 * sin, x1 * (-sin) + x2 * cos), dim=-1)
+        return CAT((x_rope, x_pass), dim=-1)
     half = x.size(-1) // 2
     x1, x2 = x[..., :half], x[..., half:]
-    return th.cat((x1 * cos + x2 * sin, x1 * (-sin) + x2 * cos), dim=-1)
+    return CAT((x1 * cos + x2 * sin, x1 * (-sin) + x2 * cos), dim=-1)
 
 class CSA(nn.Module):
     def __init__(self, dim, nh, nkh, rb, qgi):
@@ -653,7 +654,7 @@ class CSA(nn.Module):
         self.c_q = CL(dim, dim, bias=False); self.c_k = CL(dim, kv_dim, bias=False)
         self.c_v = CL(dim, kv_dim, bias=False); self.proj = CL(dim, dim, bias=False)
         self.proj._zero_init = True
-        self.q_gain = nn.Parameter(th.full((nh,), qgi, dtype=F32))
+        self.q_gain = P(FUL((nh,), qgi, dtype=F32))
         self.rope_dims = 0
         self.rotary = Rotary(self.head_dim, base=rb, tsl=1024)
         self.use_xsa = False
@@ -697,10 +698,10 @@ class MLP(nn.Module):
 
 class SmearGate(nn.Module):
     def __init__(self, dim):
-        super().__init__(); self.gate = nn.Parameter(Z(dim, dtype=F32))
+        super().__init__(); self.gate = P(Z(dim, dtype=F32))
     def forward(self, x):
-        g = th.sigmoid(self.gate.to(dtype=x.dtype))[None, None, :]
-        x_prev = th.cat([th.zeros_like(x[:, :1]), x[:, :-1]], dim=1)
+        g = SG(self.gate.to(dtype=x.dtype))[None, None, :]
+        x_prev = CAT([ZL(x[:, :1]), x[:, :-1]], dim=1)
         return (1 - g) * x + g * x_prev
 
 class BHE(nn.Module):
@@ -711,10 +712,10 @@ class BHE(nn.Module):
         nn.init.zeros_(self.embed.weight)
         self.proj = CL(bgd, dm, bias=False) if bgd != dm else None
         if self.proj is not None: nn.init.zeros_(self.proj.weight)
-        self.scale = nn.Parameter(TT(0.05, dtype=F32))
+        self.scale = P(TT(0.05, dtype=F32))
     def bigram_hash(self, tokens):
         t = tokens.to(th.int32); mod = self.bgvs - 1
-        out = th.empty_like(t); out[..., 0] = mod
+        out = EL(t); out[..., 0] = mod
         out[..., 1:] = th.bitwise_xor(36313 * t[..., 1:], 27191 * t[..., :-1]) % mod
         return out.long()
     def forward(self, token_ids):
@@ -729,7 +730,7 @@ class VE(nn.Module):
         nn.init.normal_(self.embed.weight, std=0.01)
         self.proj = CL(ve_dim, kv_dim, bias=False) if ve_dim != kv_dim else None
         if self.proj is not None: nn.init.zeros_(self.proj.weight)
-        self.scale = nn.Parameter(TT(0.1, dtype=F32))
+        self.scale = P(TT(0.1, dtype=F32))
     def forward(self, token_ids):
         h = self.embed(token_ids)
         if self.proj is not None: h = self.proj(h)
@@ -741,9 +742,9 @@ class Block(nn.Module):
         self.attn_norm, self.mlp_norm = RMSNorm(), RMSNorm()
         self.attn = CSA(dim, nh, nkh, rb, qgi)
         self.mlp = MLP(dim, mm)
-        self.attn_scale = nn.Parameter(th.ones(dim, dtype=F32))
-        self.mlp_scale = nn.Parameter(th.ones(dim, dtype=F32))
-        self.resid_mix = nn.Parameter(SK((th.ones(dim), Z(dim))).float())
+        self.attn_scale = P(ON(dim, dtype=F32))
+        self.mlp_scale = P(ON(dim, dtype=F32))
+        self.resid_mix = P(SK((ON(dim), Z(dim))).float())
         self.ln_scale_factor = 1.0 / math.sqrt(layer_idx + 1) if ln_scale else 1.0
     def forward(self, x, x0, v_embed=None, v_residual=None):
         mix = self.resid_mix.to(dtype=x.dtype)
@@ -767,11 +768,11 @@ class GPT(nn.Module):
         self.tok_emb = nn.Embedding(vs, dm)
         self.bigram = BHE(bgvs, bgd, dm) if bgvs > 0 else None
         self.smear = SmearGate(dm) if se else None
-        self.backout_lambda = nn.Parameter(backout_init * th.ones(1)) if be else None
+        self.backout_lambda = P(backout_init * ON(1)) if be else None
         self.num_encoder_layers = nl // 2
         self.num_decoder_layers = nl - self.num_encoder_layers
         self.num_skip_weights = min(self.num_encoder_layers, self.num_decoder_layers)
-        self.skip_weights = nn.Parameter(th.ones(self.num_skip_weights, dm, dtype=F32))
+        self.skip_weights = P(ON(self.num_skip_weights, dm, dtype=F32))
         self.blocks = nn.ModuleList([
             Block(dm, nh, nkh, mm, rb, qgi,
                   layer_idx=i, ln_scale=ln_scale)
@@ -789,17 +790,17 @@ class GPT(nn.Module):
         self.ve_layer_indices = [int(x) for x in vel.split(",") if x.strip()] if vee else []
         if self.ve_layer_indices:
             self.ve_shared = VE(vs, ved, kv_dim)
-            self.ve_layer_scales = nn.ParameterList([nn.Parameter(th.ones(1, dtype=F32)) for _ in self.ve_layer_indices])
+            self.ve_layer_scales = PL([P(ON(1, dtype=F32)) for _ in self.ve_layer_indices])
         else:
-            self.ve_shared = None; self.ve_layer_scales = nn.ParameterList()
+            self.ve_shared = None; self.ve_layer_scales = PL()
         self.final_norm = RMSNorm()
         self.vrl_enabled = nl > 1
         if self.vrl_enabled:
-            self.vrl_alphas = nn.ParameterList([
-                nn.Parameter(TT(0.0, dtype=F32)) for _ in range(nl - 1)
+            self.vrl_alphas = PL([
+                P(TT(0.0, dtype=F32)) for _ in range(nl - 1)
             ])
         else:
-            self.vrl_alphas = nn.ParameterList()
+            self.vrl_alphas = PL()
         self.lm_head = None if te else CL(dm, vs, bias=False)
         if self.lm_head is not None: self.lm_head._zero_init = True
         self._init_weights()
@@ -816,9 +817,9 @@ class GPT(nn.Module):
                         with th.no_grad(): module.weight.mul_(1.0 / math.sqrt(2 * nl))
         for i, block in enumerate(self.blocks):
             with th.no_grad():
-                phase = th.sigmoid(TT(3.0 * (i / max(nl-1, 1) - 0.5)))
-                block.resid_mix.data[0] = phase * th.ones(block.resid_mix.shape[1])
-                block.resid_mix.data[1] = (1-phase) * th.ones(block.resid_mix.shape[1])
+                phase = SG(TT(3.0 * (i / max(nl-1, 1) - 0.5)))
+                block.resid_mix.data[0] = phase * ON(block.resid_mix.shape[1])
+                block.resid_mix.data[1] = (1-phase) * ON(block.resid_mix.shape[1])
     def _get_ve(self, layer_idx, ids, ve_cache):
         if self.ve_shared is None or layer_idx not in self.ve_layer_indices: return None
         if 've' not in ve_cache: ve_cache['ve'] = self.ve_shared(ids)
@@ -838,7 +839,7 @@ class GPT(nn.Module):
             ve = self._get_ve(i, ids, ve_cache)
             v_res = None
             if i > 0 and v0_raw is not None:
-                alpha = th.sigmoid(self.vrl_alphas[vrl_idx].to(dtype=x.dtype))
+                alpha = SG(self.vrl_alphas[vrl_idx].to(dtype=x.dtype))
                 v_res = alpha * v0_raw
                 vrl_idx += 1
             x = self.blocks[i](x, x0, v_embed=ve, v_residual=v_res); skips.append(x)
@@ -849,7 +850,7 @@ class GPT(nn.Module):
             ve = self._get_ve(li, ids, ve_cache)
             v_res = None
             if v0_raw is not None:
-                alpha = th.sigmoid(self.vrl_alphas[vrl_idx].to(dtype=x.dtype))
+                alpha = SG(self.vrl_alphas[vrl_idx].to(dtype=x.dtype))
                 v_res = alpha * v0_raw
                 vrl_idx += 1
             x = self.blocks[li](x, x0, v_embed=ve, v_residual=v_res)
@@ -907,7 +908,7 @@ def chs(bm, tl, args, device, gas, num_batches=256):
         H = hessians[name]
         H /= num_batches  # average
         damp = 0.01 * th.diag(H).mean().clamp_min(1e-6)
-        H += damp * th.eye(H.shape[0])
+        H += damp * EYE(H.shape[0])
         hessians[name] = H
     bm.train()
     return hessians
@@ -992,7 +993,7 @@ def ree(args, bm, rank, ws, device, dd, master,
                 if qname in qr:
                     all_int6_vals.append(qr[qname].flatten().abs().float())
         if all_int6_vals:
-            all_vals = th.cat(all_int6_vals)
+            all_vals = CAT(all_int6_vals)
             k = max(1, int(args.prune_pct * all_vals.numel()))
             threshold = all_vals.kthvalue(k).values.item()
             pruned_count = 0
