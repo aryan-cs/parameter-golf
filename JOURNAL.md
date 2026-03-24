@@ -1778,3 +1778,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The exact proxy run reached `step:500/9000 val_loss:2.3480 val_bpb:1.3906 train_time:370388ms step_avg:740.78ms`, which matches the earlier `20`-shard no-TTT run's early behavior closely enough to keep confidence in the stack. The new helper compiles cleanly and already extracts the live run's latest step metric correctly (`last_step=500`, `last_val_bpb=1.3906`), so the later H100 submission path is now less manual.
 - Decision: Keep the `80`-shard TTT run alive; the early checkpoint does not show regression, and intermediate validation does not include the final legal TTT gain anyway. Keep building toward a submission-ready workflow instead of waiting until the end to wire metadata and packaging.
 - Next step: Let the run continue to later checkpoints, and once a completed run has final exact metrics plus total bytes, use the helper to generate a real `submission.json` candidate for the eventual H100 record folder.
+
+- Timestamp: 2026-03-24 18:07 UTC
+- Commit: `0f3d898`
+- Lane: H200 exact-TTT monitoring
+- Objective: Check whether the exact `80`-shard TTT reproduction continues to track the expected public-stack training curve at a more informative intermediate checkpoint.
+- Command or config: Read the live log `records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs/h200_ttt_recordstack_80shard_seed1337.txt` through the `step:1000` validation interval while the H200 stayed saturated (`100%` utilization, about `24.2 GiB`, about `570 W`).
+- Result: The exact proxy run reached `step:1000/9000 val_loss:2.2166 val_bpb:1.3128 train_time:740522ms step_avg:740.52ms`; by `step:1250` the train loss was `2.2515`. This is effectively on the same early curve as the earlier `20`-shard proxy (`1.3116` at `step:1000`), which is good news because the main difference we care about for this stack is the final legal TTT evaluation, not a large early-train divergence.
+- Decision: Keep the run untouched. The exact reproduction is numerically healthy, and the H200 is serving its intended purpose as a high-confidence proxy for the code path we will later move to `8xH100`.
+- Next step: Let the run advance to completion so we can inspect the final int6/sliding/legal-TTT metrics and total artifact bytes, then generate a candidate `submission.json` and freeze the exact handoff procedure for the eventual H100 record attempt.
