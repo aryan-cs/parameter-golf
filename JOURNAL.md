@@ -518,3 +518,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: We now have a one-command pod-side recovery entrypoint that can relaunch `prune14` and queue `prune17 -> prune20 -> prune23 -> prune26` in one shot after `pod_bootstrap.sh` completes.
 - Decision: Use the new launcher on the next pod instead of rebuilding the live run and watcher chain by hand.
 - Next step: Once a replacement pod exists, sync the repo, run `bash runpod/pod_bootstrap.sh`, then use the new chain launcher to resume the byte-cap sweep path immediately.
+
+- Timestamp: 2026-03-24 01:28 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL runpod recovery
+- Objective: Collapse fresh-pod recovery to a single local command so we can resume the active sweep path immediately after the next Runpod launch.
+- Command or config: Added `runpod/local_recover_export_chain.sh`, which syncs the repo, runs `pod_bootstrap.sh`, and launches `prune14` plus the full export-only ladder in one SSH session; validated it with `bash -n` and a usage-path invocation.
+- Result: Recovery now needs only one local command once a new pod exists. The wrapper targets the exact current plan: `prune14` training plus export-only `prune17 -> prune20 -> prune23 -> prune26`.
+- Decision: Use the new local wrapper as the default restart path for the next pod instead of manually issuing sync, bootstrap, and chain-launch commands separately.
+- Next step: When a replacement pod is available, run the new wrapper against its SSH target and resume the validity-focused export ladder immediately.
