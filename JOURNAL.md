@@ -203,3 +203,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The corrected VRL smoke lane is now live at `runs/non_ttt_vrl_gptq/seed1337/20260324T025458Z`, using the updated smoke config with `EVAL_STRIDE=2048`.
 - Decision: Treat `20260324T025458Z` as the authoritative VRL smoke run and ignore the earlier `20260324T025035Z` attempt for comparisons.
 - Next step: Let the corrected run advance through warmup and first logged steps, then compare its pre-quant and post-quant behavior to the March 22 smoke run.
+
+- Timestamp: 2026-03-23 19:07 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt comparison
+- Objective: Decide which non-TTT lane deserves promotion after both 1xH100 smoke runs completed.
+- Command or config: Compared the completed March 22 smoke run (`runs/non_ttt_m22_base/seed1337/20260323T221010Z`) against the completed corrected VRL/GPTQ smoke run (`runs/non_ttt_vrl_gptq/seed1337/20260324T025458Z`) on the same pod and 10-shard proxy setup, then added 8-GPU configs for both lanes.
+- Result: March 22 remained slightly better pre-quant (`1.4284` vs `1.4400`), but VRL/GPTQ was decisively better post-quant (`2.3924` vs `2.7577`) while still fitting easily under the size cap (`7.24 MB` vs `6.94 MB` total smoke artifact size).
+- Decision: Promote VRL + Full GPTQ to the primary non-TTT candidate for the eventual 8xH100 run, and keep March 22 as the backup lane.
+- Next step: Commit and push the 8-GPU run configs, then request an `8x H100 SXM` pod so the promoted VRL lane can be validated on leaderboard-relevant hardware.
