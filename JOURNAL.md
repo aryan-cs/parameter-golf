@@ -716,3 +716,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The fixed-seed comparison confirmed the tuned filter is real, not noise: `hc4_32mb=4302268`, `preset9e=4303084`, `zstd19=4363365`. So the tuned filter wins by another `816` bytes over generic `preset9e` and stays about `61 KB` ahead of `zstd19` on the same payload.
 - Decision: Keep the tuned `lzma_hc4_32mb` filter in the main lane. The gain is small, but it is free, deterministic, and directly increases the odds that the first post-credit rerun lands under the cap.
 - Next step: Push the tuned-filter tweak so the next H100 relaunch uses the best codec settings we have measured offline.
+
+- Timestamp: 2026-03-24 02:16 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL export compression
+- Objective: Check whether the `xz` container around the tuned `LZMA2` stream is still wasting bytes now that we already wrap the artifact in our own custom header.
+- Command or config: Benchmarked tuned `LZMA2` with `FORMAT_XZ` versus `FORMAT_RAW` using the same fixed-seed quantized VRL payload. Then patched `candidates/non_ttt_vrl_gptq/train_gpt.py` so codec id `3` now writes raw `LZMA2` streams by default, while the loader first tries raw decode and then falls back to legacy wrapped-`xz` decode for backward compatibility. Re-verified syntax, readiness, and offline round-trip.
+- Result: Raw `LZMA2` shaved another `62` bytes versus the wrapped `xz` stream on the same payload (`xz_size=4302268`, `raw_size=4302206`). After the patch, the chooser validated cleanly with `codec_name=lzma_raw_hc4_32mb` and `blob_size=4302211`.
+- Decision: Keep the raw `LZMA2` path as the default for codec id `3`. The gain is tiny, but it is free and backward-compatible, so there is no reason not to take it.
+- Next step: Push the raw-`LZMA2` tweak so the next live rerun uses the smallest artifact container we have measured offline.

@@ -547,12 +547,12 @@ def _model_codec_name(codec_id: int) -> str:
     if codec_id == MODEL_CODEC_ZLIB:
         return "zlib9"
     if codec_id == MODEL_CODEC_LZMA:
-        return "lzma_hc4_32mb"
+        return "lzma_raw_hc4_32mb"
     return f"unknown({codec_id})"
 
 def compress_model_blob(raw: bytes) -> tuple[bytes, int]:
     candidates = [
-        (MODEL_CODEC_LZMA, lzma.compress(raw, format=lzma.FORMAT_XZ, check=lzma.CHECK_CRC64, filters=LZMA_FILTERS)),
+        (MODEL_CODEC_LZMA, lzma.compress(raw, format=lzma.FORMAT_RAW, filters=LZMA_FILTERS)),
         (MODEL_CODEC_ZLIB, zlib.compress(raw, level=9)),
     ]
     if HAS_ZSTD:
@@ -571,7 +571,12 @@ def decompress_model_blob(blob: bytes) -> tuple[bytes, str]:
         if codec_id == MODEL_CODEC_ZLIB:
             return zlib.decompress(payload), _model_codec_name(codec_id)
         if codec_id == MODEL_CODEC_LZMA:
-            return lzma.decompress(payload), _model_codec_name(codec_id)
+            try:
+                return lzma.decompress(payload, format=lzma.FORMAT_RAW, filters=LZMA_FILTERS), _model_codec_name(codec_id)
+            except lzma.LZMAError:
+                # Backward compatibility for earlier wrapped-XZ artifacts written
+                # before the raw LZMA2 switch.
+                return lzma.decompress(payload), "legacy_lzma_hc4_32mb_xz"
         raise ValueError(f"unknown model codec id: {codec_id}")
     if HAS_ZSTD:
         try:
