@@ -743,3 +743,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The candidate file shrank from `73,185` bytes to `72,334` bytes, an additional `851` bytes of code-payload savings with no behavior change. Compile and readiness checks still passed.
 - Decision: Keep the extra comment trim in the main lane. It is pure headroom.
 - Next step: Push the final comment-only trim so the next live rerun uses the smallest safe candidate source we have.
+
+- Timestamp: 2026-03-24 02:41 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL export compression
+- Objective: Check whether the current raw `LZMA2` default (`hc4`, `dict_size=32MB`) is still locally optimal on the new bitplane payload, or whether a different match finder / dictionary pair can buy a few more free bytes before the next H100 rerun.
+- Command or config: Rebuilt the fixed-seed quantized VRL model skeleton offline via `uv run --with torch --with sentencepiece --with zstandard --with numpy`, compared the current raw `LZMA2` filter against a small sweep of `HC3`, `HC4`, and `BT4` with multiple dictionary sizes, then patched `candidates/non_ttt_vrl_gptq/train_gpt.py` to switch the default raw codec filter from `hc4_32mb` to `hc3_16mb` and updated the logged codec name accordingly.
+- Result: On the same fixed-seed payload, `hc3_16mb` beat the current default by another `2,618` bytes while still round-tripping exactly (`current=4301682`, `candidate=4299064`, `delta=-2618`, `roundtrip=True`). That is small compared with the earlier bitplane win, but it is free, deterministic, and directly improves our odds of landing under the `16,000,000`-byte cap on the first post-credit rerun.
+- Decision: Keep `lzma_raw_hc3_16mb` as the new default codec path for the main lane. `HC4/32MB` is no longer the best measured raw `LZMA2` setting for this payload.
+- Next step: Re-run compile/readiness checks, push the filter update, and use the smaller `hc3_16mb` exporter on the next baseline-first export ladder relaunch.

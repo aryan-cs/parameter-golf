@@ -195,13 +195,13 @@ MODEL_CODEC_ZLIB = 2
 MODEL_CODEC_LZMA = 3
 LZMA_FILTERS = [{
     "id": lzma.FILTER_LZMA2,
-    "dict_size": 1 << 25,
+    "dict_size": 1 << 24,
     "lc": 3,
     "lp": 0,
     "pb": 2,
     "mode": lzma.MODE_NORMAL,
     "nice_len": 273,
-    "mf": lzma.MF_HC4,
+    "mf": lzma.MF_HC3,
     "depth": 0,
 }]
 
@@ -518,7 +518,7 @@ def _model_codec_name(codec_id: int) -> str:
     if codec_id == MODEL_CODEC_ZLIB:
         return "zlib9"
     if codec_id == MODEL_CODEC_LZMA:
-        return "lzma_raw_hc4_32mb"
+        return "lzma_raw_hc3_16mb"
     return f"unknown({codec_id})"
 
 def compress_model_blob(raw: bytes) -> tuple[bytes, int]:
