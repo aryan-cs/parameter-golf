@@ -84,7 +84,7 @@ class H:
     gptq_calib_batches = int(EG("GPTQ_CALIB_BATCHES", 256))
     gptq_block_size = int(EG("GPTQ_BLOCK_SIZE", 128))
     qat_clip_pct = float(EG("QAT_CLIP_PCT", 0.9995))
-    prune_pct = float(EG("PRUNE_PCT", 0.02))  # post-quant magnitude pruning
+    prune_pct = float(EG("PRUNE_PCT", 0.02))
     spc = EG("SAVE_PRE_EXPORT_CHECKPOINT", "")
     eoc = EG("EXPORT_ONLY_CHECKPOINT", "")
 
@@ -593,16 +593,16 @@ class RMSNorm(M):
 
 class CL(nn.Linear):
     _qat_enabled: bool = False
-    _qat_clip_pct: float = 0.9995  # v41: QAT-export alignment — match STE to GPTQ export
+    _qat_clip_pct: float = 0.9995
     def forward(self, x):
         w = self.weight.to(x.dtype)
         if CL._qat_enabled and self.training and w.ndim == 2:
             with NG():
                 w32 = self.weight.float()
                 row_clip = QT(w32.abs(), CL._qat_clip_pct, dim=1)
-                scale = (row_clip / 31.0).clamp_min(1.0 / 31.0)  # int6: clip_range=31
+                scale = (row_clip / 31.0).clamp_min(1.0 / 31.0)
                 w_q = (CLP(th.round(w32 / scale[:, None]), -31, 31) * scale[:, None]).to(x.dtype)
-            w = w + (w_q - w).detach()  # STE: straight-through estimator
+            w = w + (w_q - w).detach()
         return F.linear(x, w, self.bias.to(x.dtype) if self.bias is not None else None)
 
 def restore_low_dim_params_to_fp32(module):
@@ -667,7 +667,7 @@ class CSA(M):
         k = self.c_k(x).reshape(bsz, seqlen, self.num_kv_heads, self.head_dim)
         v = self.c_v(x)
         if v_embed is not None: v = v + v_embed
-        if v_residual is not None: v = v + v_residual  # v42: VRL — add first layer's V
+        if v_residual is not None: v = v + v_residual
         v = v.reshape(bsz, seqlen, self.num_kv_heads, self.head_dim)
         q, k = F.rms_norm(q, (q.size(-1),)), F.rms_norm(k, (k.size(-1),))
         cos, sin = self.rotary(seqlen, x.device, q.dtype)
@@ -873,7 +873,7 @@ class GPT(M):
         return self.lsc * th.tanh(logits / self.lsc)
 
 def chs(bm, tl, args, device, gas, num_batches=256):
-    hessians = {}  # param_name -> H matrix (cols x cols)
+    hessians = {}
     hooks = []
     param_to_name = {}
     for name, module in bm.named_modules():
@@ -887,7 +887,7 @@ def chs(bm, tl, args, device, gas, num_batches=256):
                 def hook_fn(module, input, output):
                     x = input[0].detach().float()
                     if x.ndim == 3:
-                        x = x.reshape(-1, x.shape[-1])  # (B*T, D)
+                        x = x.reshape(-1, x.shape[-1])
                     xtx = (x.T @ x).cpu()
                     hessians[pname] += xtx
                     count[0] += x.shape[0]
@@ -902,7 +902,7 @@ def chs(bm, tl, args, device, gas, num_batches=256):
     for h in hooks: h.remove()
     for name in hessians:
         H = hessians[name]
-        H /= num_batches  # average
+        H /= num_batches
         damp = 0.01 * DG(H).mean().clamp_min(1e-6)
         H += damp * EYE(H.shape[0])
         hessians[name] = H
@@ -965,7 +965,7 @@ def mspc(path_spec: str, sd: dict[str, th.Tensor], log0):
 
 def ree(args, bm, rank, ws, device, dd, master,
                     code, vt, bb, hs, ib, log0):
-    log0(f"gptq:calib {args.gptq_calib_batches} batches")
+    log0(f"gptq:calib {args.gptq_calib_batches}")
     calib_loader = DTL(args.tf, rank, ws, device)
     hessians = chs(bm, calib_loader, args, device, 8 // ws,
                                 num_batches=args.gptq_calib_batches)
@@ -976,7 +976,7 @@ def ree(args, bm, rank, ws, device, dd, master,
             h_name = name + ".weight"
             if h_name in hessians:
                 hessian_map[sd_name] = hessians[h_name]
-    log0(f"gptq:hessians {len(hessian_map)} layers")
+    log0(f"gptq:hess {len(hessian_map)}")
 
     sd_cpu = {k: v.detach().cpu() for k, v in bm.state_dict().items()}
     code_bytes = len(code.encode("utf-8")); size_limit = 16_000_000
@@ -1144,10 +1144,10 @@ def main():
     actual_train_files = len(list(dataset_dir.glob("fineweb_train_*.bin")))
     vt = load_validation_tokens(args.vf, args.tsl)
     bb, hs, ib = build_sentencepiece_luts(sp, args.vs, device)
-    log0(f"train_loader:dataset:{dataset_dir.name} train_shards:{actual_train_files}")
+    log0(f"data:{dataset_dir.name} train:{actual_train_files}")
     log0(f"val_tokens:{vt.numel()-1}")
     CL._qat_enabled = False
-    CL._qat_clip_pct = args.qat_clip_pct  # v41: QAT-export alignment
+    CL._qat_clip_pct = args.qat_clip_pct
     bm = GPT(
         vs=args.vs, nl=args.nl, dm=args.dm,
         nh=args.nh, nkh=args.nkh, mm=args.mm,
@@ -1204,10 +1204,10 @@ def main():
         opts.insert(1, optimizer_head)
     n_params = sum(p.numel() for p in bm.parameters())
     xsa_layers = [i for i in range(args.nl) if i >= args.nl - args.xsn] if args.xsn > 0 else []
-    log0(f"model_params:{n_params}"); log0(f"world:{ws} ga:{gas}")
-    log0(f"cfg:v42 lqat={args.lqt} ema={args.ema_decay} xsa={args.xsn} rope={args.rd} bg={args.bgvs} qat={args.qat_clip_pct} prune={args.prune_pct}")
+    log0(f"params:{n_params}"); log0(f"world:{ws} ga:{gas}")
+    log0(f"cfg:lqat={args.lqt} ema={args.ema_decay} xsa={args.xsn} rope={args.rd} bg={args.bgvs} qat={args.qat_clip_pct} prune={args.prune_pct}")
     log0(f"xsa_layers:{xsa_layers}")
-    log0(f"fa3:{HAS_FA3} swa:{args.swa_enabled} wd:{args.wdi} adam_wd:{args.adam_wd}")
+    log0(f"fa3:{HAS_FA3} swa:{args.swa_enabled} wd:{args.wdi} awd:{args.adam_wd}")
     tl = DTL(args.tf, rank, ws, device)
     def zero_grad_all():
         for opt in opts: opt.zero_grad(set_to_none=True)
@@ -1234,7 +1234,7 @@ def main():
                 (wl * grad_scale).backward()
             for opt in opts: opt.step()
             zero_grad_all()
-            if args.warmup_steps <= 20 or (wi+1) % 10 == 0: log0(f"warmup_step:{wi+1}/{args.warmup_steps}")
+            if args.warmup_steps <= 20 or (wi+1) % 10 == 0: log0(f"warm:{wi+1}/{args.warmup_steps}")
         bm.load_state_dict(initial_model_state, strict=True)
         for opt, state in zip(opts, initial_optimizer_states, strict=True): opt.load_state_dict(state)
         zero_grad_all()
@@ -1255,13 +1255,13 @@ def main():
             SY(); t0 = PC()
         if last_step:
             if stop_after_step is not None and step < args.iterations:
-                log0(f"stopping_early: wallclock_cap train_time:{ttms:.0f}ms step:{step}/{args.iterations}")
+                log0(f"stop:wall train:{ttms:.0f}ms step:{step}/{args.iterations}")
             break
         elapsed_ms = ttms + 1000.0 * (PC() - t0)
         scale = lr_mul(step, elapsed_ms)
         if args.lqt > 0 and scale < args.lqt and not CL._qat_enabled:
             CL._qat_enabled = True
-            log0(f"late_qat:enabled step:{step} scale:{scale:.4f}")
+            log0(f"lqat:on step:{step} scale:{scale:.4f}")
         zero_grad_all(); train_loss = Z((), device=device)
         for ms in range(gas):
             if dd: model.require_backward_grad_sync = ms == gas - 1
@@ -1285,7 +1285,7 @@ def main():
         if args.swa_enabled and scale < 0.2 and step % args.swa_interval == 0:
             if swa_state is None:
                 swa_state = {n: t.detach().cpu().clone() for n, t in bm.state_dict().items()}
-                swa_count = 1; log0(f"swa:start step:{step}")
+                swa_count = 1; log0(f"swa:{step}")
             else:
                 for n, t in bm.state_dict().items(): swa_state[n] += t.detach().cpu()
                 swa_count += 1
@@ -1295,9 +1295,9 @@ def main():
         if dd and max_wallclock_ms is not None:
             rct = TT(int(reached_cap), device=device); ARD(rct, op=ROP.MAX); reached_cap = bool(rct.item())
         if stop_after_step is None and reached_cap: stop_after_step = step
-    log0(f"peak memory allocated: {th.cuda.max_memory_allocated()//1024//1024} MiB reserved: {th.cuda.max_memory_reserved()//1024//1024} MiB")
+    log0(f"mem:a{th.cuda.max_memory_allocated()//1024//1024} r{th.cuda.max_memory_reserved()//1024//1024}MiB")
 
-    log0("ema:applying EMA weights")
+    log0("ema:on")
     current_state = bm.state_dict()
     avg_state = {name: t.to(dtype=current_state[name].dtype) for name, t in ema_state.items()}
     bm.load_state_dict(avg_state, strict=True)

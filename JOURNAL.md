@@ -914,3 +914,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The candidate file shrank from `62,736` bytes to `62,202` bytes, another `534` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 62,202`, which is `-12,729` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
 - Decision: Keep the docstring-removal pass in the main lane. It is another clean counted-size win with no observed exporter regression.
 - Next step: Push the docstring-removal pass so the next live export rerun uses the smaller counted candidate source together with the stronger bitplane + raw-LZMA exporter path.
+
+- Timestamp: 2026-03-24 03:34 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL code-size hygiene
+- Objective: Reclaim another meaningful block of counted source bytes by removing leftover inline comments and shortening non-critical log labels while preserving parsable export/status markers and runtime behavior.
+- Command or config: Removed the remaining inline explanatory comments in `candidates/non_ttt_vrl_gptq/train_gpt.py`, shortened several non-critical log labels (for example calibration/config/warmup/memory labels), and kept the important markers like `step:`, `val_bpb:`, and `size_ok:` unchanged; then reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, reran `python3 runpod/check_ready.py`, and reran the offline codec round-trip validator on the fixed-seed quantized VRL model skeleton.
+- Result: The candidate file shrank from `62,202` bytes to `61,768` bytes, another `434` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 61,768`, which is `-13,163` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
+- Decision: Keep the comment/log-trim pass in the main lane. It is another clean counted-size win with no observed exporter regression and no change to the markers used by our export ladder tooling.
+- Next step: Push the comment/log-trim pass so the next live export rerun uses the smaller counted candidate source together with the stronger bitplane + raw-LZMA exporter path.
