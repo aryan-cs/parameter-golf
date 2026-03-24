@@ -1073,9 +1073,9 @@ def main():
         enable_cudnn_sdp(False); enable_flash_sdp(True); enable_mem_efficient_sdp(False); enable_math_sdp(False)
     lf = None
     if m0: os.makedirs("logs", exist_ok=True); lf = f"logs/{a.rid}.txt"; print(lf)
-    def log0(msg, console=True):
+    def log0(msg):
         if not m0: return
-        if console: print(msg)
+        print(msg)
         if lf:
             with open(lf, "a", encoding=U) as f: print(msg, file=f)
     random.seed(a.sd); np.random.seed(a.sd); th.manual_seed(a.sd); th.cuda.manual_seed_all(a.sd)
@@ -1141,19 +1141,19 @@ def main():
     tl = DTL(a.tf, rank, ws, dv)
     def zga():
         for opt in opts: opt.zero_grad(set_to_none=True)
-    mwm = 1000.0 * a.mws if a.mws > 0 else None
+    wm = 1000.0 * a.mws if a.mws > 0 else None
     def lr_mul(step, ems):
         if a.wdi <= 0: return 1.0
-        if mwm is None:
+        if wm is None:
             wd0 = max(a.it - a.wdi, 0)
             return max((a.it - step) / max(a.wdi, 1), 0.0) if step >= wd0 else 1.0
         step_ms = ems / max(step, 1); wd_ms = a.wdi * step_ms
-        rem_ms = max(mwm - ems, 0.0)
+        rem_ms = max(wm - ems, 0.0)
         return rem_ms / max(wd_ms, 1e-9) if rem_ms <= wd_ms else 1.0
 
     if a.wus > 0:
-        ims = {n: DL(t) for n, t in gs().items()}
-        ios = [copy.deepcopy(opt.state_dict()) for opt in opts]
+        is0 = {n: DL(t) for n, t in gs().items()}
+        os0 = [copy.deepcopy(opt.state_dict()) for opt in opts]
         model.train()
         for wi in range(a.wus):
             zga()
@@ -1164,39 +1164,39 @@ def main():
                 (wl * grad_scale).backward()
             for opt in opts: opt.step()
             zga()
-        ls(ims, 1)
-        for opt, state in zip(opts,ios,strict=1): opt.load_state_dict(state)
+        ls(is0, 1)
+        for opt, state in zip(opts,os0,strict=1): opt.load_state_dict(state)
         zga()
         if dd: model.require_backward_grad_sync = True
         tl = DTL(a.tf, rank, ws, dv)
-    ema_state = {name: t.detach().float().clone() for name, t in gs().items()}
-    ttms, sas = 0.0, None
+    es = {name: t.detach().float().clone() for name, t in gs().items()}
+    tm, ss = 0.0, None
     swa_state, swa_count = None, 0
     SY(); t0 = PC(); step = 0
     while True:
-        last_step = step == a.it or (sas is not None and step >= sas)
+        last_step = step == a.it or (ss is not None and step >= ss)
         sv = last_step or (a.vle > 0 and step % a.vle == 0)
         if sv:
-            SY(); ttms += 1000.0 * (PC() - t0)
+            SY(); tm += 1000.0 * (PC() - t0)
             vl, vb = evv(a, model, rank, ws, dv, gas,
                               vt, bb, hs, ib)
-            log0(f"step:{step}/{a.it} val_loss:{vl:.4f} val_bpb:{vb:.4f} train_time:{ttms:.0f}ms step_avg:{ttms/max(step,1):.2f}ms")
+            log0(f"step:{step}/{a.it} val_loss:{vl:.4f} val_bpb:{vb:.4f} train_time:{tm:.0f}ms step_avg:{tm/max(step,1):.2f}ms")
             SY(); t0 = PC()
         if last_step:
-            if sas is not None and step < a.it:
-                log0(f"stop:wall train:{ttms:.0f}ms step:{step}/{a.it}")
+            if ss is not None and step < a.it:
+                log0(f"stop:wall train:{tm:.0f}ms step:{step}/{a.it}")
             break
-        ems = ttms + 1000.0 * (PC() - t0)
+        ems = tm + 1000.0 * (PC() - t0)
         scale = lr_mul(step, ems)
         if a.lqt > 0 and scale < a.lqt and not CL._qat_enabled:
             CL._qat_enabled = True
-        zga(); trl = Z((), device=dv)
+        zga(); tls = Z((), device=dv)
         for ms in range(gas):
             if dd: model.require_backward_grad_sync = ms == gas - 1
             x, y = tl.nb(a.tbt, a.tsl, gas)
             with AU(): loss = model(x, y)
-            trl += loss.detach(); (loss * grad_scale).backward()
-        trl /= gas
+            tls += loss.detach(); (loss * grad_scale).backward()
+        tls /= gas
         frac = min(step / a.mmws, 1.0) if a.mmws > 0 else 1.0
         for group in om.param_groups:
             group["momentum"] = (1-frac)*a.mmst + frac*a.mum
@@ -1207,9 +1207,9 @@ def main():
         zga()
         with NG():
             for name, t in gs().items():
-                ema_state[name].mul_(a.ed).add_(t.detach().float(), alpha=1.0 - a.ed)
+                es[name].mul_(a.ed).add_(t.detach().float(), alpha=1.0 - a.ed)
         step += 1
-        ams = ttms + 1000.0 * (PC() - t0)
+        cms = tm + 1000.0 * (PC() - t0)
         if a.swe and scale < 0.2 and step % a.swi == 0:
             if swa_state is None:
                 swa_state = {n: DL(t) for n, t in gs().items()}
@@ -1218,14 +1218,14 @@ def main():
                 for n, t in gs().items(): swa_state[n] += DC(t)
                 swa_count += 1
         if a.tle > 0 and (step <= 10 or step % a.tle == 0):
-            log0(f"step:{step}/{a.it} train_loss:{trl.item():.4f} train_time:{ams:.0f}ms step_avg:{ams/step:.2f}ms")
-        rc = mwm is not None and ams >= mwm
-        if dd and mwm is not None:
+            log0(f"step:{step}/{a.it} train_loss:{tls.item():.4f} train_time:{cms:.0f}ms step_avg:{cms/step:.2f}ms")
+        rc = wm is not None and cms >= wm
+        if dd and wm is not None:
             rct = TT(int(rc), device=dv); ARD(rct, op=ROP.MAX); rc = bool(rct.item())
-        if sas is None and rc: sas = step
+        if ss is None and rc: ss = step
     cs = gs()
-    avg_state = {name: t.to(dtype=cs[name].dtype) for name, t in ema_state.items()}
-    ls(avg_state, 1)
+    avs = {name: t.to(dtype=cs[name].dtype) for name, t in es.items()}
+    ls(avs, 1)
     mspc(a.spc, gs())
     ree(a, bm, rank, ws, dv, dd, m0,
                     code, vt, bb, hs, ib, log0)
