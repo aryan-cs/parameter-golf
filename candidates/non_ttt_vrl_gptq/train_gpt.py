@@ -153,10 +153,10 @@ KG = 2
 KL = 3
 LF = [{
     "id": lzma.FILTER_LZMA2,
-    "dict_size": 3<<23,
+    "dict_size": 5<<22,
     "lc": 0,
-    "lp": 0,
-    "pb": 2,
+    "lp": 1,
+    "pb": 1,
     "mode": lzma.MODE_NORMAL,
     "nice_len": 64,
     "mf": lzma.MF_HC3,
@@ -470,7 +470,7 @@ def mcn(cid: int) -> str:
     if cid == KG:
         return "zl9"
     if cid == KL:
-        return "lz_hc3_24_l0_n64"
+        return "lz_hc3_20_p1_n64"
     return f"u({cid})"
 
 def cmb(raw: bytes) -> tuple[bytes, int]:
