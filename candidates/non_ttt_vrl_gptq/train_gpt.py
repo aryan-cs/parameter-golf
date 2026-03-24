@@ -1036,14 +1036,14 @@ def ree(a, bm, rank, ws, dv, dd, m0,
     mb = len(model_blob); ts = cb + mb
     log0(
         "ab:"
-        f" meta={meta_bytes}"
-        f" tensor_headers={thb}"
-        f" int6_payload={p6b}"
-        f" other_payload={opb}"
-        f" raw_total={len(quant_raw)}"
-        f" compressed_model={mb}"
-        f" codec={mcn(model_codec_id)}"
-        f" int6_tensors={p6t}"
+        f" m={meta_bytes}"
+        f" th={thb}"
+        f" p6={p6b}"
+        f" op={opb}"
+        f" rt={len(quant_raw)}"
+        f" cm={mb}"
+        f" cd={mcn(model_codec_id)}"
+        f" t6={p6t}"
     )
     log0(f"sz:m={mb} c={cb} t={ts}({ts/1e6:.2f}M)")
     if ts > sl: log0(f"warn:size {ts}+{ts - sl}")
