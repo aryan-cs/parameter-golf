@@ -38,4 +38,6 @@ nohup bash "${ROOT}/runpod/pod_run.sh" "$CANDIDATE" "$SEED" "$SOURCE_CONFIG" > "
 RUN_PID="$!"
 printf 'launched %s pid:%s log:%s\n' "$SOURCE_PREFIX" "$RUN_PID" "$LOG_PATH"
 
-bash "${ROOT}/runpod/pod_queue_export_ladder.sh" "$CANDIDATE" "$SEED" "$SOURCE_PREFIX" "$@"
+nohup bash "${ROOT}/runpod/pod_queue_export_ladder.sh" "$CANDIDATE" "$SEED" "$SOURCE_PREFIX" "$@" > /dev/null 2>&1 &
+QUEUE_PID="$!"
+printf 'queued export ladder after %s pid:%s\n' "$SOURCE_PREFIX" "$QUEUE_PID"

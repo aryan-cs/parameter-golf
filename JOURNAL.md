@@ -680,3 +680,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The restart plan now preserves the strongest available recipe first and only spends score on heavier pruning if the new exporter still needs it. Readiness still passes, and the recovery wrappers now validate against 7 config refs each with 30 config files total.
 - Decision: Use the baseline-first ladder as the new default relaunch path. Starting from `prune14` is no longer justified now that packed int6 is in the exporter.
 - Next step: Push the gentler recovery plan so the repo is ready to relaunch immediately when fresh H100 credits arrive.
+
+- Timestamp: 2026-03-24 03:56 America/Chicago
+- Commit: uncommitted
+- Lane: runpod export orchestration
+- Objective: Fix the export-ladder controller so the next relaunch does not waste credits on lower-quality sweeps after a valid artifact appears, and does not risk hanging on a rung that never launched.
+- Command or config: Patched `runpod/pod_launch_export_chain.sh` so the export ladder controller runs in the background, and rewrote `runpod/pod_queue_export_ladder.sh` to act as a single sequential controller: wait for the source run, resolve its checkpoint, stop immediately if the source already logged `Size OK:`, launch each export-only rung synchronously from the same checkpoint, and stop as soon as any rung logs `Size OK:`. Verified shell syntax with `bash -n runpod/pod_launch_export_chain.sh runpod/pod_queue_export_ladder.sh runpod/pod_queue_export_after_prefix.sh` and reran `python3 runpod/check_ready.py`.
+- Result: The export ladder is now operationally safer and cheaper. It will no longer blindly continue through more aggressive pruning after a valid artifact is found, and it will not depend on later rungs producing new checkpoints just to unblock the next rung.
+- Decision: Keep the sequential stop-on-valid controller as the default orchestration path for the next pod restart.
+- Next step: Push the ladder-controller fix so the relaunch path is both quality-preserving and credit-efficient before the next H100 pod comes up.
