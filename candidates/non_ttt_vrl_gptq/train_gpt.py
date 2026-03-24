@@ -872,7 +872,7 @@ class GPT(nn.Module):
         logits = F.linear(x, self.tok_emb.weight.to(x.dtype)) if self.tie_embeddings else self.lm_head(x)
         return self.logit_softcap * torch.tanh(logits / self.logit_softcap)
 
-def collect_hessians(bm, train_loader, args, device, gas, num_batches=256):
+def collect_hessians(bm, tl, args, device, gas, num_batches=256):
     """Run calibration batches through the model, collecting H = X^T X for each CastedLinear."""
     hessians = {}  # param_name -> H matrix (cols x cols)
     hooks = []
@@ -898,7 +898,7 @@ def collect_hessians(bm, train_loader, args, device, gas, num_batches=256):
     bm.eval()
     with torch.inference_mode(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
         for _ in range(num_batches):
-            x, y = train_loader.next_batch(args.train_batch_tokens, args.train_seq_len, gas)
+            x, y = tl.next_batch(args.train_batch_tokens, args.train_seq_len, gas)
             _ = bm(x, y)
     for h in hooks: h.remove()
     for name in hessians:
@@ -912,7 +912,7 @@ def collect_hessians(bm, train_loader, args, device, gas, num_batches=256):
 
 def eval_val_sliding(logits_fn, rank, ws, device, vt,
                      bb, hs, ib,
-                     seq_len, stride, eval_batch_seqs=256):
+                     seq_len, stride, ebs=256):
     total = vt.numel() - 1; windows, p = [], 0
     while p + seq_len <= total:
         s = 0 if p == 0 else (seq_len - stride); windows.append((p, s)); p += stride
@@ -922,11 +922,11 @@ def eval_val_sliding(logits_fn, rank, ws, device, vt,
     tok_count = torch.zeros((), device=device, dtype=torch.float64)
     byte_count = torch.zeros((), device=device, dtype=torch.float64)
     with torch.inference_mode():
-        for i in range(0, len(my_windows), eval_batch_seqs):
-            batch = my_windows[i:i+eval_batch_seqs]; bs = len(batch)
+        for i in range(0, len(my_windows), ebs):
+            batch = my_windows[i:i+ebs]; bs = len(batch)
             x_list = [vt[w:w+seq_len] for w, _ in batch]
             y_list = [vt[w+1:w+seq_len+1] for w, _ in batch]
-            pad = eval_batch_seqs - bs
+            pad = ebs - bs
             if pad > 0: x_list.extend([x_list[-1]]*pad); y_list.extend([y_list[-1]]*pad)
             x = torch.stack(x_list).to(device=device, dtype=torch.int64)
             y = torch.stack(y_list).to(device=device, dtype=torch.int64)
@@ -1108,7 +1108,7 @@ def run_export_eval(args, bm, rank, ws, device, distributed, master,
     torch.cuda.synchronize(); t_eval = time.perf_counter()
     q_vl, q_vb = eval_val_sliding(raw_logits_fn, rank, ws, device,
         val_tokens_eval, bb, hs, ib,
-        eval_sl, args.eval_stride, eval_batch_seqs=args.eval_batch_seqs)
+        eval_sl, args.eval_stride, ebs=args.eval_batch_seqs)
     torch.cuda.synchronize(); eval_time = time.perf_counter() - t_eval
     log0(f"final_int6 val_loss:{q_vl:.4f} val_bpb:{q_vb:.4f} eval_time:{eval_time*1000:.0f}ms")
     log0(f"final_int6_exact val_loss:{q_vl:.8f} val_bpb:{q_vb:.8f}")
@@ -1198,20 +1198,20 @@ def main():
     for group in optimizer_muon.param_groups: group["base_lr"] = args.matrix_lr
     optimizer_scalar = torch.optim.AdamW([{"params": scalar_params, "lr": args.scalar_lr, "base_lr": args.scalar_lr}],
                                           betas=(args.beta1, args.beta2), eps=args.adam_eps, weight_decay=args.adam_wd, fused=True)
-    optimizers = [optimizer_tok, optimizer_muon, optimizer_scalar]
+    opts = [optimizer_tok, optimizer_muon, optimizer_scalar]
     if bm.lm_head is not None:
         optimizer_head = torch.optim.Adam([{"params": [bm.lm_head.weight], "lr": args.head_lr, "base_lr": args.head_lr}],
                                            betas=(args.beta1, args.beta2), eps=args.adam_eps, fused=True)
-        optimizers.insert(1, optimizer_head)
+        opts.insert(1, optimizer_head)
     n_params = sum(p.numel() for p in bm.parameters())
     xsa_layers = [i for i in range(args.num_layers) if i >= args.num_layers - args.xsa_last_n] if args.xsa_last_n > 0 else []
     log0(f"model_params:{n_params}"); log0(f"world:{ws} ga:{gas}")
     log0(f"cfg:v42 lqat={args.late_qat_threshold} ema={args.ema_decay} xsa={args.xsa_last_n} rope={args.rope_dims} bg={args.bigram_vocab_size} qat={args.qat_clip_pct} prune={args.prune_pct}")
     log0(f"xsa_layers:{xsa_layers}")
     log0(f"fa3:{HAS_FA3} swa:{args.swa_enabled} wd:{args.warmdown_iters} adam_wd:{args.adam_wd}")
-    train_loader = DistributedTokenLoader(args.train_files, rank, ws, device)
+    tl = DistributedTokenLoader(args.train_files, rank, ws, device)
     def zero_grad_all():
-        for opt in optimizers: opt.zero_grad(set_to_none=True)
+        for opt in opts: opt.zero_grad(set_to_none=True)
     max_wallclock_ms = 1000.0 * args.max_wallclock_seconds if args.max_wallclock_seconds > 0 else None
     def lr_mul(step, elapsed_ms):
         if args.warmdown_iters <= 0: return 1.0
@@ -1224,23 +1224,23 @@ def main():
 
     if args.warmup_steps > 0:
         initial_model_state = {n: t.detach().cpu().clone() for n, t in bm.state_dict().items()}
-        initial_optimizer_states = [copy.deepcopy(opt.state_dict()) for opt in optimizers]
+        initial_optimizer_states = [copy.deepcopy(opt.state_dict()) for opt in opts]
         model.train()
         for wi in range(args.warmup_steps):
             zero_grad_all()
             for ms in range(gas):
                 if distributed: model.require_backward_grad_sync = ms == gas - 1
-                x, y = train_loader.next_batch(args.train_batch_tokens, args.train_seq_len, gas)
+                x, y = tl.next_batch(args.train_batch_tokens, args.train_seq_len, gas)
                 with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=True): wl = model(x, y)
                 (wl * grad_scale).backward()
-            for opt in optimizers: opt.step()
+            for opt in opts: opt.step()
             zero_grad_all()
             if args.warmup_steps <= 20 or (wi+1) % 10 == 0: log0(f"warmup_step:{wi+1}/{args.warmup_steps}")
         bm.load_state_dict(initial_model_state, strict=True)
-        for opt, state in zip(optimizers, initial_optimizer_states, strict=True): opt.load_state_dict(state)
+        for opt, state in zip(opts, initial_optimizer_states, strict=True): opt.load_state_dict(state)
         zero_grad_all()
         if distributed: model.require_backward_grad_sync = True
-        train_loader = DistributedTokenLoader(args.train_files, rank, ws, device)
+        tl = DistributedTokenLoader(args.train_files, rank, ws, device)
     ema_state = {name: t.detach().float().clone() for name, t in bm.state_dict().items()}
     ttms, stop_after_step = 0.0, None
     swa_state, swa_count = None, 0
@@ -1266,17 +1266,17 @@ def main():
         zero_grad_all(); train_loss = torch.zeros((), device=device)
         for ms in range(gas):
             if distributed: model.require_backward_grad_sync = ms == gas - 1
-            x, y = train_loader.next_batch(args.train_batch_tokens, args.train_seq_len, gas)
+            x, y = tl.next_batch(args.train_batch_tokens, args.train_seq_len, gas)
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=True): loss = model(x, y)
             train_loss += loss.detach(); (loss * grad_scale).backward()
         train_loss /= gas
         frac = min(step / args.muon_momentum_warmup_steps, 1.0) if args.muon_momentum_warmup_steps > 0 else 1.0
         for group in optimizer_muon.param_groups:
             group["momentum"] = (1-frac)*args.muon_momentum_warmup_start + frac*args.muon_momentum
-        for opt in optimizers:
+        for opt in opts:
             for group in opt.param_groups: group["lr"] = group["base_lr"] * scale
         if args.grad_clip_norm > 0: torch.nn.utils.clip_grad_norm_(bm.parameters(), args.grad_clip_norm)
-        for opt in optimizers: opt.step()
+        for opt in opts: opt.step()
         zero_grad_all()
         with torch.no_grad():
             for name, t in bm.state_dict().items():
