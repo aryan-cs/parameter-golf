@@ -1222,10 +1222,19 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Next step: Push this tighter filter setting so the next live `local_resume_existing_export.sh` recovery run uses the smallest validated exporter path we currently have.
 
 - Timestamp: 2026-03-24 05:31 CDT
-- Commit: `uncommitted`
+- Commit: `f50c3ae`
 - Lane: non-ttt VRL exporter compression
 - Objective: Check whether the new `lzma_raw_hc3_16mb_lc2_n64` default still held up when varying dictionary size and match finder, so we would not leave an obvious nearby exporter win on the table.
 - Command or config: Reused the same deterministic local CPU VRL model-skeleton export harness under `uv run --with torch --with numpy --with sentencepiece --with zstandard` and swept `{mf in [hc3,hc4,bt4], dict_size in [8 MiB,16 MiB,32 MiB], nice_len in [64,96]}` while holding the already-banked `lc=2`, `pb=2` constant. The sweep results were: `4246537 hc3 16MiB 64`, `4246576 hc3 8MiB 64`, `4246885 hc3 32MiB 64`, then a larger gap to the next group (`4249780 hc3 8MiB 96`, `4252332 hc3 16MiB 96`, `4254410 hc4 8MiB 64`, and all `bt4` variants above `4261808`).
 - Result: No better raw filter was found than the current default. The already-banked `hc3 / 16 MiB / lc=2 / pb=2 / nice_len=64` setting remains the best measured raw `LZMA2` configuration on this deterministic skeleton, so there was nothing new to patch into [train_gpt.py](/Users/aryan/Desktop/golf/candidates/non_ttt_vrl_gptq/train_gpt.py). The repo stayed on the current clean state with `blob_size=4246542`, `codec=lzma_raw_hc3_16mb_lc2_n64`, and `runpod readiness check: OK`.
 - Decision: Keep the current exporter default unchanged and stop spending more local time on nearby raw-`LZMA2` variants unless a new live artifact suggests the payload distribution has shifted enough to justify another sweep.
 - Next step: Treat Runpod balance restoration as the real next gating event, then resume the surviving checkpoint with `local_resume_existing_export.sh` so this smaller exporter path is exercised on the actual trained `final_model.pt`.
+
+- Timestamp: 2026-03-24 05:33 CDT
+- Commit: `a71a7e0`
+- Lane: non-ttt VRL code-size hygiene
+- Objective: Reclaim a few more counted bytes without touching artifact bytes, parsed log markers, or exporter behavior by shortening diagnostic codec-name strings that are only used in logs and debug output.
+- Command or config: Shortened the human-readable codec names returned by [train_gpt.py](/Users/aryan/Desktop/golf/candidates/non_ttt_vrl_gptq/train_gpt.py) from longer labels like `lzma_raw_hc3_16mb_lc2_n64`, `legacy_lzma_hc4_32mb_xz`, `legacy_zstd22`, `legacy_zlib9`, and `unknown({cid})` to shorter equivalents (`lz_hc3_16_l2_n64`, `lx_hc4_32_xz`, `lzs22`, `lzl9`, `u({cid})`). Then reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, reran `python3 runpod/check_ready.py`, and reran the chooser-level CPU export round-trip harness under `uv`.
+- Result: The candidate file shrank from `52,955` bytes to `52,908` bytes, another `47` bytes of direct code-payload savings. The wrapped export blob stayed exactly unchanged at `blob_size=4246542`, the chooser still selected the same codec path, and the CPU harness still reported exact `roundtrip=True` with the same SHA-256 `4bbb418b6d8265d42710b1cc6939d16e812ecfd150f5bae08b04dd32336fe3a6`.
+- Decision: Keep the shorter codec-label spellings in the main lane. This is a free counted-size win with no measured effect on the artifact bytes or recovery tooling.
+- Next step: Push this tiny hygiene pass so the next live export-only resume runs with the smallest counted source and the same best-known exporter behavior.
