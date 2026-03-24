@@ -455,3 +455,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The active run bundle confirms `PRUNE_PCT=0.14` and `SAVE_PRE_EXPORT_CHECKPOINT=1`, and the captured trainer snapshot includes `maybe_save_pre_export_checkpoint`, `export_only_checkpoint`, and `run_export_eval`.
 - Decision: Keep the export-only `prune17` watcher in place; the currently running prune14 job has the exact checkpoint/export support it needs for that handoff to succeed.
 - Next step: Continue monitoring prune14 for its first validation checkpoint and eventual saved checkpoint rather than spending time on more queue surgery.
+
+- Timestamp: 2026-03-24 01:01 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL export orchestration
+- Objective: Add one more low-latency fallback beyond the staged export-only `prune17` sweep so we can keep moving toward byte-cap compliance without another retrain if needed.
+- Command or config: Added `configs/runpod/non_ttt_vrl_gptq_1gpu_export_prune20.env` and `configs/runpod/non_ttt_vrl_gptq_8gpu_export_prune20.env`, synced them to the pod, and launched a second export-only watcher with `bash runpod/pod_queue_export_after_prefix.sh non_ttt_vrl_gptq 1337 non_ttt_vrl_gptq_1gpu_export_prune17 configs/runpod/non_ttt_vrl_gptq_1gpu_export_prune20.env`.
+- Result: The pod now has a four-stage queue: active `prune14`, then export-only `prune17`, then export-only `prune20`. The new watcher process is live as PID `183233`.
+- Decision: Keep the active prune14 run untouched and use the newly staged export-only `prune20` sweep only if `prune17` still misses the byte cap or degrades too much.
+- Next step: Wait for the first prune14 validation checkpoint and eventual saved checkpoint, then let the export-only chain consume that checkpoint automatically if the active run still fails the validity bar.
