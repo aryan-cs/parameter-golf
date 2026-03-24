@@ -134,7 +134,7 @@ class MU(th.optim.Optimizer):
                 p.add_(g, alpha=-lr); curr += p.numel()
         return loss
 
-def bsl(sp, vs, device):
+def bsl(sp, vs, dv):
     sv = int(sp.vocab_size()); ts = max(sv, vs)
     bbn = np.zeros((ts,), dtype=np.int16)
     hln = np.zeros((ts,), dtype=np.bool_)
@@ -146,33 +146,33 @@ def bsl(sp, vs, device):
         piece = sp.id_to_piece(tid)
         if piece.startswith("\u2581"): hln[tid] = True; piece = piece[1:]
         bbn[tid] = len(piece.encode("utf-8"))
-    return (TT(bbn, dtype=I16, device=device),
-            TT(hln, dtype=BO, device=device),
-            TT(ibn, dtype=BO, device=device))
+    return (TT(bbn, dtype=I16, device=dv),
+            TT(hln, dtype=BO, device=dv),
+            TT(ibn, dtype=BO, device=dv))
 
-def lvt(pattern, seq_len):
+def lvt(pattern, sl):
     files = [Path(p) for p in sorted(glob.glob(pattern))]
     if not files: raise FileNotFoundError(f"no:{pattern}")
     tokens = CAT([lds(file) for file in files]).contiguous()
-    usable = ((tokens.numel() - 1) // seq_len) * seq_len
-    if usable <= 0: raise ValueError(f"val<{seq_len}")
+    usable = ((tokens.numel() - 1) // sl) * sl
+    if usable <= 0: raise ValueError(f"val<{sl}")
     return tokens[:usable + 1]
 
-def eval_val(a, model, rank, ws, device, gas,
+def eval_val(a, model, rank, ws, dv, gas,
              vt, bb, hs, ib, esl=0):
-    seq_len = esl if esl > 0 else a.tsl
-    lbs = a.vbs // (ws * gas) // seq_len
-    tsq = (vt.numel() - 1) // seq_len
+    sl = esl if esl > 0 else a.tsl
+    lbs = a.vbs // (ws * gas) // sl
+    tsq = (vt.numel() - 1) // sl
     ss = (tsq * rank) // ws; se = (tsq * (rank + 1)) // ws
-    vls = Z((), device=device, dtype=F64)
-    vtc = Z((), device=device, dtype=F64)
-    vbc = Z((), device=device, dtype=F64)
+    vls = Z((), device=dv, dtype=F64)
+    vtc = Z((), device=dv, dtype=F64)
+    vbc = Z((), device=dv, dtype=F64)
     model.eval()
     with IM():
         for bss in range(ss, se, lbs):
             bse = min(bss + lbs, se)
-            local = vt[bss*seq_len:(bse*seq_len)+1].to(device=device, dtype=I64, non_blocking=True)
-            x, y = local[:-1].reshape(-1, seq_len), local[1:].reshape(-1, seq_len)
+            local = vt[bss*sl:(bse*sl)+1].to(device=dv, dtype=I64, non_blocking=True)
+            x, y = local[:-1].reshape(-1, sl), local[1:].reshape(-1, sl)
             with AC(device_type="cuda", dtype=BF, enabled=True):
                 bl = model(x, y).detach()
             vls += bl.to(F64) * float(y.numel())
@@ -256,8 +256,8 @@ def eqm(meta: dict[str, object]) -> tuple[bytes, list[str]]:
 
 def dqm(blob: bytes) -> tuple[dict[str, object], list[str], bool]:
     if blob.startswith(QMB):
-        offset = len(QMB)
-        entry_count = struct.unpack_from("<H", blob, offset)[0]; offset += 2
+        o = len(QMB)
+        entry_count = struct.unpack_from("<H", blob, o)[0]; o += 2
         kind_map = {
             0: MP,
             1: MC,
@@ -266,8 +266,8 @@ def dqm(blob: bytes) -> tuple[dict[str, object], list[str], bool]:
         }
         meta, names = {}, []
         for _ in range(entry_count):
-            name_len, kind_code = struct.unpack_from("<HB", blob, offset); offset += 3
-            name = blob[offset:offset+name_len].decode("utf-8"); offset += name_len
+            name_len, kind_code = struct.unpack_from("<HB", blob, o); o += 3
+            name = blob[o:o+name_len].decode("utf-8"); o += name_len
             meta[name] = kind_map[kind_code]
             names.append(name)
         return meta, names, True
@@ -503,10 +503,10 @@ def ui6(raw: bytes | memoryview, shape: list[int]) -> Tensor:
     if packed_u8.size != expected:
         raise ValueError(f"bad int6 sz {expected}!={packed_u8.size}")
     u = np.zeros(padded, dtype=np.uint8)
-    offset = 0
+    o = 0
     for bit in range(6):
-        plane = packed_u8[offset:offset + plane_bytes]
-        offset += plane_bytes
+        plane = packed_u8[o:o + plane_bytes]
+        o += plane_bytes
         bits = np.unpackbits(plane, bitorder="little")
         u |= (bits.astype(np.uint8, copy=False) << bit)
     arr = _zigzag_decode_int6(u[:numel])
@@ -578,14 +578,14 @@ class TS:
         return chunks[0] if len(chunks) == 1 else CAT(chunks)
 
 class DTL:
-    def __init__(self, pattern, rank, ws, device):
-        self.rank, self.ws, self.device = rank, ws, device; self.stream = TS(pattern)
-    def next_batch(self, gt, seq_len, gas):
+    def __init__(self, pattern, rank, ws, dv):
+        self.rank, self.ws, self.dv = rank, ws, dv; self.stream = TS(pattern)
+    def next_batch(self, gt, sl, gas):
         prs = gt // (self.ws * gas) + 1
         chunk = self.stream.take(prs * self.ws)
         start = self.rank * prs; local = chunk[start:start+prs].to(dtype=I64)
-        x, y = local[:-1].reshape(-1, seq_len), local[1:].reshape(-1, seq_len)
-        return x.to(self.device, non_blocking=True), y.to(self.device, non_blocking=True)
+        x, y = local[:-1].reshape(-1, sl), local[1:].reshape(-1, sl)
+        return x.to(self.dv, non_blocking=True), y.to(self.dv, non_blocking=True)
 
 class RN(M):
     def __init__(self, eps=None): super().__init__(); self.eps = eps
@@ -619,17 +619,17 @@ class RY(M):
         inv_freq = 1.0 / (base ** (AR(0, self.rope_dims, 2, dtype=F32) / self.rope_dims))
         self.register_buffer("inv_freq", inv_freq, persistent=False)
         self._seq_len_cached = 0; self._cos_cached = self._sin_cached = None
-    def forward(self, seq_len, device, dtype):
-        if self._cos_cached is None or self._seq_len_cached != seq_len or self._cos_cached.device != device:
+    def forward(self, sl, dv, dtype):
+        if self._cos_cached is None or self._seq_len_cached != sl or self._cos_cached.device != dv:
             rd = self.rope_dims
-            if seq_len > self.tsl:
-                scale = seq_len / self.tsl
+            if sl > self.tsl:
+                scale = sl / self.tsl
                 new_base = self.base * (scale ** (rd / (rd - 2)))
-                inv_freq = 1.0 / (new_base ** (AR(0, rd, 2, dtype=F32, device=device) / rd))
-            else: inv_freq = self.inv_freq.to(device)
-            freqs = th.outer(AR(seq_len, device=device, dtype=inv_freq.dtype), inv_freq)
+                inv_freq = 1.0 / (new_base ** (AR(0, rd, 2, dtype=F32, device=dv) / rd))
+            else: inv_freq = self.inv_freq.to(dv)
+            freqs = th.outer(AR(sl, device=dv, dtype=inv_freq.dtype), inv_freq)
             self._cos_cached = freqs.cos()[None, :, None, :]; self._sin_cached = freqs.sin()[None, :, None, :]
-            self._seq_len_cached = seq_len
+            self._seq_len_cached = sl
         return self._cos_cached.to(dtype=dtype), self._sin_cached.to(dtype=dtype)
 
 def are(x, cos, sin, rd=0):
@@ -872,7 +872,7 @@ class GPT(M):
         logits = F.linear(x, self.tok_emb.weight.to(x.dtype)) if self.te else self.lm_head(x)
         return self.lsc * th.tanh(logits / self.lsc)
 
-def ch(bm, tl, args, device, gas, num_batches=256):
+def ch(bm, tl, args, dv, gas, num_batches=256):
     hessians = {}
     hooks = []
     param_to_name = {}
@@ -909,26 +909,26 @@ def ch(bm, tl, args, device, gas, num_batches=256):
     bm.train()
     return hessians
 
-def evl(logits_fn, rank, ws, device, vt,
+def evl(logits_fn, rank, ws, dv, vt,
                      bb, hs, ib,
-                     seq_len, stride, ebs=256):
+                     ql, stride, ebs=256):
     total = vt.numel() - 1; windows, p = [], 0
-    while p + seq_len <= total:
-        s = 0 if p == 0 else (seq_len - stride); windows.append((p, s)); p += stride
+    while p + ql <= total:
+        s = 0 if p == 0 else (ql - stride); windows.append((p, s)); p += stride
     n = len(windows); per_rank = (n + ws - 1) // ws
     my_windows = windows[rank*per_rank:min((rank+1)*per_rank, n)]
-    loss_sum = Z((), device=device, dtype=F64)
-    tok_count = Z((), device=device, dtype=F64)
-    byte_count = Z((), device=device, dtype=F64)
+    loss_sum = Z((), device=dv, dtype=F64)
+    tok_count = Z((), device=dv, dtype=F64)
+    byte_count = Z((), device=dv, dtype=F64)
     with IM():
         for i in range(0, len(my_windows), ebs):
             batch = my_windows[i:i+ebs]; bs = len(batch)
-            x_list = [vt[w:w+seq_len] for w, _ in batch]
-            y_list = [vt[w+1:w+seq_len+1] for w, _ in batch]
+            x_list = [vt[w:w+ql] for w, _ in batch]
+            y_list = [vt[w+1:w+ql+1] for w, _ in batch]
             pad = ebs - bs
             if pad > 0: x_list.extend([x_list[-1]]*pad); y_list.extend([y_list[-1]]*pad)
-            x = SK(x_list).to(device=device, dtype=I64)
-            y = SK(y_list).to(device=device, dtype=I64)
+            x = SK(x_list).to(device=dv, dtype=I64)
+            y = SK(y_list).to(device=dv, dtype=I64)
             with AC(device_type="cuda", dtype=BF): logits = logits_fn(x)
             for b in range(bs):
                 s = batch[b][1]; sl, st = logits[b, s:], y[b, s:]
@@ -962,10 +962,10 @@ def mspc(path_spec: str, sd: dict[str, th.Tensor], log0):
     os.replace(tmp_path, path)
     return str(path)
 
-def ree(a, bm, rank, ws, device, dd, master,
+def ree(a, bm, rank, ws, dv, dd, master,
                     code, vt, bb, hs, ib, log0):
-    cl = DTL(a.tf, rank, ws, device)
-    hh = ch(bm, cl, a, device, 8 // ws,
+    cl = DTL(a.tf, rank, ws, dv)
+    hh = ch(bm, cl, a, dv, 8 // ws,
                                 num_batches=a.gcb)
     hm = {}
     for name, module in bm.named_modules():
@@ -1053,41 +1053,41 @@ def ree(a, bm, rank, ws, device, dd, master,
     if dd: BR()
     with open("final_model.int6.ptz", "rb") as f: model_blob_loaded = f.read()
     rd, _ = dmb(model_blob_loaded)
-    offset = 0
-    meta_len = struct.unpack_from("<I", rd, offset)[0]; offset += 4
-    lm, meta_names, ctr = dqm(rd[offset:offset+meta_len]); offset += meta_len
+    o = 0
+    meta_len = struct.unpack_from("<I", rd, o)[0]; o += 4
+    lm, meta_names, ctr = dqm(rd[o:o+meta_len]); o += meta_len
     drm = {0: (I8, np.int8), 1: (F16, np.float16), 2: (F32, np.float32), 3: (BF, np.uint16)}
     lr = {}
-    while offset < len(rd):
+    while o < len(rd):
         if ctr:
-            name_idx, suffix, dt, ndim = struct.unpack_from("<HBBB", rd, offset); offset += 5
+            name_idx, suffix, dt, ndim = struct.unpack_from("<HBBB", rd, o); o += 5
             tname = dtr(name_idx, suffix, meta_names)
         else:
-            name_len = struct.unpack_from("<H", rd, offset)[0]; offset += 2
-            tname = rd[offset:offset+name_len].decode("utf-8"); offset += name_len
-            dt, ndim = struct.unpack_from("<BB", rd, offset); offset += 2
+            name_len = struct.unpack_from("<H", rd, o)[0]; o += 2
+            tname = rd[o:o+name_len].decode("utf-8"); o += name_len
+            dt, ndim = struct.unpack_from("<BB", rd, o); o += 2
         shape = []
         for _ in range(ndim):
-            shape.append(struct.unpack_from("<I", rd, offset)[0]); offset += 4
+            shape.append(struct.unpack_from("<I", rd, o)[0]); o += 4
         if dt == 4:
             numel = int(np.prod(shape, dtype=np.int64))
             nbytes = ((numel + 3) // 4) * 3
-            raw = memoryview(rd)[offset:offset+nbytes]
-            offset += nbytes
+            raw = memoryview(rd)[o:o+nbytes]
+            o += nbytes
             t = ui6l(raw, shape)
         elif dt == 5:
             numel = int(np.prod(shape, dtype=np.int64))
             nbytes = ((numel + 7) // 8) * 6
-            raw = memoryview(rd)[offset:offset+nbytes]
-            offset += nbytes
+            raw = memoryview(rd)[o:o+nbytes]
+            o += nbytes
             t = ui6(raw, shape)
         else:
             torch_dt, np_dt = drm[dt]
             numel = 1
             for s in shape: numel *= s
             nbytes = numel * np.dtype(np_dt).itemsize
-            arr = np.frombuffer(rd, dtype=np_dt, count=numel, offset=offset).copy()
-            offset += nbytes
+            arr = np.frombuffer(rd, dtype=np_dt, count=numel, offset=o).copy()
+            o += nbytes
             t = FN(arr).reshape(shape)
             if torch_dt == BF: t = t.view(BF)
         lr[tname] = t
@@ -1096,11 +1096,11 @@ def ree(a, bm, rank, ws, device, dd, master,
     eval_sl = a.esl if a.esl > 0 else a.tsl
     vte = lvt(a.val_files, eval_sl) if eval_sl != a.tsl else vt
     raw_logits_fn = CMP(bm.forward_logits, dynamic=False) if not bool(int(EG("TORCH_COMPILE_DISABLE", "0"))) else bm.forward_logits
-    warmup_x = Z(a.ebs, eval_sl, dtype=I64, device=device)
+    warmup_x = Z(a.ebs, eval_sl, dtype=I64, device=dv)
     bm.eval()
     with IM(), AC(device_type="cuda", dtype=BF): _ = raw_logits_fn(warmup_x)
     SY(); t_eval = PC()
-    q_vl, q_vb = evl(raw_logits_fn, rank, ws, device,
+    q_vl, q_vb = evl(raw_logits_fn, rank, ws, dv,
         vte, bb, hs, ib,
         eval_sl, a.evs, ebs=a.ebs)
     SY(); eval_time = PC() - t_eval
@@ -1118,8 +1118,8 @@ def main():
     if ws <= 0 or 8 % ws != 0: raise ValueError(f"bad WS={ws}")
     gas = 8 // ws; grad_scale = 1.0 / gas
     if not th.cuda.is_available(): raise RuntimeError("cuda req")
-    device = th.device("cuda", lrk); th.cuda.set_device(device)
-    if dd: IGP(backend="nccl", device_id=device); BR()
+    dv = th.device("cuda", lrk); th.cuda.set_device(dv)
+    if dd: IGP(backend="nccl", device_id=dv); BR()
     master = rank == 0
     th.backends.cuda.matmul.allow_tf32 = True; th.backends.cudnn.allow_tf32 = True
     if not HAS_FA3:
@@ -1135,7 +1135,7 @@ def main():
     random.seed(a.sd); np.random.seed(a.sd); th.manual_seed(a.sd); th.cuda.manual_seed_all(a.sd)
     sp = spm.SentencePieceProcessor(model_file=a.tp)
     vt = lvt(a.vf, a.tsl)
-    bb, hs, ib = bsl(sp, a.vs, device)
+    bb, hs, ib = bsl(sp, a.vs, dv)
     CL._qat_enabled = False
     CL._qat_clip_pct = a.qcp
     bm = GPT(
@@ -1147,7 +1147,7 @@ def main():
         bgvs=a.bgvs, bgd=a.bgd,
         xsn=a.xsn, rd=a.rd, ln_scale=a.lns,
         vee=a.vee, ved=a.ved, vel=a.vel,
-    ).to(device).bfloat16()
+    ).to(dv).bfloat16()
     for m in bm.modules():
         if isinstance(m, CL): m.float()
     rf32(bm)
@@ -1158,7 +1158,7 @@ def main():
         ckpt = th.load(eoc, map_location="cpu")
         model_state = ckpt["model_state"] if isinstance(ckpt, dict) and "model_state" in ckpt else ckpt
         bm.load_state_dict(model_state, strict=True)
-        ree(a, bm, rank, ws, device, dd, master,
+        ree(a, bm, rank, ws, dv, dd, master,
                         code, vt, bb, hs, ib, log0)
         return
     bnp = list(bm.blocks.named_parameters())
@@ -1191,7 +1191,7 @@ def main():
         oh = th.optim.Adam([{"params": [bm.lm_head.weight], "lr": a.hlr, "base_lr": a.hlr}],
                                            betas=(a.beta1, a.beta2), eps=a.aep, fused=True)
         opts.insert(1, oh)
-    tl = DTL(a.tf, rank, ws, device)
+    tl = DTL(a.tf, rank, ws, dv)
     def zga():
         for opt in opts: opt.zero_grad(set_to_none=True)
     mwm = 1000.0 * a.mws if a.mws > 0 else None
@@ -1221,7 +1221,7 @@ def main():
         for opt, state in zip(opts, ios, strict=True): opt.load_state_dict(state)
         zga()
         if dd: model.require_backward_grad_sync = True
-        tl = DTL(a.tf, rank, ws, device)
+        tl = DTL(a.tf, rank, ws, dv)
     ema_state = {name: t.detach().float().clone() for name, t in bm.state_dict().items()}
     ttms, sas = 0.0, None
     swa_state, swa_count = None, 0
@@ -1231,7 +1231,7 @@ def main():
         sv = last_step or (a.vle > 0 and step % a.vle == 0)
         if sv:
             SY(); ttms += 1000.0 * (PC() - t0)
-            vl, vb = eval_val(a, model, rank, ws, device, gas,
+            vl, vb = eval_val(a, model, rank, ws, dv, gas,
                               vt, bb, hs, ib)
             log0(f"step:{step}/{a.it} val_loss:{vl:.4f} val_bpb:{vb:.4f} train_time:{ttms:.0f}ms step_avg:{ttms/max(step,1):.2f}ms")
             SY(); t0 = PC()
@@ -1243,7 +1243,7 @@ def main():
         scale = lr_mul(step, ems)
         if a.lqt > 0 and scale < a.lqt and not CL._qat_enabled:
             CL._qat_enabled = True
-        zga(); trl = Z((), device=device)
+        zga(); trl = Z((), device=dv)
         for ms in range(gas):
             if dd: model.require_backward_grad_sync = ms == gas - 1
             x, y = tl.next_batch(a.tbt, a.tsl, gas)
@@ -1274,13 +1274,13 @@ def main():
             log0(f"step:{step}/{a.it} train_loss:{trl.item():.4f} train_time:{ams:.0f}ms step_avg:{ams/step:.2f}ms")
         rc = mwm is not None and ams >= mwm
         if dd and mwm is not None:
-            rct = TT(int(rc), device=device); ARD(rct, op=ROP.MAX); rc = bool(rct.item())
+            rct = TT(int(rc), device=dv); ARD(rct, op=ROP.MAX); rc = bool(rct.item())
         if sas is None and rc: sas = step
     cs = bm.state_dict()
     avg_state = {name: t.to(dtype=cs[name].dtype) for name, t in ema_state.items()}
     bm.load_state_dict(avg_state, strict=True)
     mspc(a.spc, bm.state_dict(), log0)
-    ree(a, bm, rank, ws, device, dd, master,
+    ree(a, bm, rank, ws, dv, dd, master,
                     code, vt, bb, hs, ib, log0)
 
 if __name__ == "__main__":
