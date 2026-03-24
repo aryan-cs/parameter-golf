@@ -1617,6 +1617,15 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Decision: Keep this exporter filter change. It is the strongest offline artifact win in the current local lane because it preserves the quantized raw payload exactly while making the wrapped blob materially smaller.
 - Next step: Push this exporter tuning so the repo stays on the best measured local artifact path, then keep prioritizing artifact-facing changes over tiny code-only hygiene while the live Runpod resume remains balance-blocked.
 
+- Timestamp: 2026-03-24 08:45 CDT
+- Commit: `ba50759`
+- Lane: non-ttt VRL exporter tuning
+- Objective: Resolve the remaining `hc4` vs `hc3` ambiguity inside the kept `17 MiB / lc=0 / lp=1 / pb=0 / nice_len=68` raw `LZMA2` family by checking both the tiny deterministic harness and a much more realistic default-like proxy.
+- Command or config: Compared the kept `hc4` filter against `hc3` with the same `dict_size=17 MiB`, `lc=0`, `lp=1`, `pb=0`, and `nice_len=68`. First verified on the tiny deterministic harness, then reran the comparison on a default-like proxy closer to the real training/export config: `VS=1024 NL=11 DM=512 NH=8 NKH=4 MM=3 BGVS=2048 BGD=128 XSN=11 RD=16 VED=128 VEL=9,10`. The comparison measured the final chooser-level wrapped blob, not just raw `LZMA2` size. Then patched [train_gpt.py](/Users/aryan/Desktop/golf/candidates/non_ttt_vrl_gptq/train_gpt.py) to switch `LF[0]["mf"]` from `lzma.MF_HC4` to `lzma.MF_HC3`, reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, and reran `python3 runpod/check_ready.py`.
+- Result: The tradeoff is asymmetric but favorable at realistic scale. On the tiny harness, `hc3` is `+1` byte worse on the wrapped blob with identical raw payload: `head_blob_size=12489`, `work_blob_size=12490`, `delta=+1`, `head_raw_size=30547`, `work_raw_size=30547`. On the default-like proxy, `hc3` is materially better with the same raw payload: `head_blob_size=4350089`, `work_blob_size=4349038`, `delta=-1051`, `head_raw_size=21470079`, `work_raw_size=21470079`. Compile and readiness checks still passed after the code change.
+- Decision: Keep the `hc3` switch. The tiny harness regression is only one byte, while the default-like proxy win is over one kilobyte with identical raw payload, which is the better signal for the real exporter regime we care about.
+- Next step: Push this filter change so the branch stays on the best realistic local exporter setting, then stop spending more time on broad filter sweeps unless a narrower artifact-facing hypothesis beats this new `hc3` default on the larger-proxy checks.
+
 - Timestamp: 2026-03-24 08:39 CDT
 - Commit: journal-only note after rejected experiments
 - Lane: non-ttt VRL exporter research
