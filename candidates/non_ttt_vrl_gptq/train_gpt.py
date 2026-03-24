@@ -135,20 +135,20 @@ class MU(th.optim.Optimizer):
         return loss
 
 def bsl(sp, vs, device):
-    sp_vocab_size = int(sp.vocab_size()); table_size = max(sp_vocab_size, vs)
-    base_bytes_np = np.zeros((table_size,), dtype=np.int16)
-    has_leading_space_np = np.zeros((table_size,), dtype=np.bool_)
-    is_boundary_token_np = np.ones((table_size,), dtype=np.bool_)
-    for tid in range(sp_vocab_size):
+    sv = int(sp.vocab_size()); ts = max(sv, vs)
+    bbn = np.zeros((ts,), dtype=np.int16)
+    hln = np.zeros((ts,), dtype=np.bool_)
+    ibn = np.ones((ts,), dtype=np.bool_)
+    for tid in range(sv):
         if sp.is_control(tid) or sp.is_unknown(tid) or sp.is_unused(tid): continue
-        is_boundary_token_np[tid] = False
-        if sp.is_byte(tid): base_bytes_np[tid] = 1; continue
+        ibn[tid] = False
+        if sp.is_byte(tid): bbn[tid] = 1; continue
         piece = sp.id_to_piece(tid)
-        if piece.startswith("\u2581"): has_leading_space_np[tid] = True; piece = piece[1:]
-        base_bytes_np[tid] = len(piece.encode("utf-8"))
-    return (TT(base_bytes_np, dtype=I16, device=device),
-            TT(has_leading_space_np, dtype=BO, device=device),
-            TT(is_boundary_token_np, dtype=BO, device=device))
+        if piece.startswith("\u2581"): hln[tid] = True; piece = piece[1:]
+        bbn[tid] = len(piece.encode("utf-8"))
+    return (TT(bbn, dtype=I16, device=device),
+            TT(hln, dtype=BO, device=device),
+            TT(ibn, dtype=BO, device=device))
 
 def lvt(pattern, seq_len):
     files = [Path(p) for p in sorted(glob.glob(pattern))]
@@ -162,28 +162,28 @@ def eval_val(a, model, rank, ws, device, gas,
              vt, bb, hs, ib, esl=0):
     seq_len = esl if esl > 0 else a.tsl
     lbs = a.vbs // (ws * gas) // seq_len
-    total_seqs = (vt.numel() - 1) // seq_len
-    seq_start = (total_seqs * rank) // ws; seq_end = (total_seqs * (rank + 1)) // ws
-    val_loss_sum = Z((), device=device, dtype=F64)
-    val_token_count = Z((), device=device, dtype=F64)
-    val_byte_count = Z((), device=device, dtype=F64)
+    tsq = (vt.numel() - 1) // seq_len
+    ss = (tsq * rank) // ws; se = (tsq * (rank + 1)) // ws
+    vls = Z((), device=device, dtype=F64)
+    vtc = Z((), device=device, dtype=F64)
+    vbc = Z((), device=device, dtype=F64)
     model.eval()
     with IM():
-        for bss in range(seq_start, seq_end, lbs):
-            bse = min(bss + lbs, seq_end)
+        for bss in range(ss, se, lbs):
+            bse = min(bss + lbs, se)
             local = vt[bss*seq_len:(bse*seq_len)+1].to(device=device, dtype=I64, non_blocking=True)
             x, y = local[:-1].reshape(-1, seq_len), local[1:].reshape(-1, seq_len)
             with AC(device_type="cuda", dtype=BF, enabled=True):
-                batch_loss = model(x, y).detach()
-            val_loss_sum += batch_loss.to(F64) * float(y.numel())
-            val_token_count += float(y.numel())
+                bl = model(x, y).detach()
+            vls += bl.to(F64) * float(y.numel())
+            vtc += float(y.numel())
             tb = bb[y.reshape(-1)].to(dtype=I16)
             tb += (hs[y.reshape(-1)] & ~ib[x.reshape(-1)]).to(dtype=I16)
-            val_byte_count += tb.to(F64).sum()
+            vbc += tb.to(F64).sum()
     if IA() and II():
-        for t in [val_loss_sum, val_token_count, val_byte_count]: ARD(t, op=ROP.SUM)
-    val_loss = val_loss_sum / val_token_count
-    bpt = val_loss.item() / math.log(2.0); tpb = val_token_count.item() / val_byte_count.item()
+        for t in [vls, vtc, vbc]: ARD(t, op=ROP.SUM)
+    val_loss = vls / vtc
+    bpt = val_loss.item() / math.log(2.0); tpb = vtc.item() / vbc.item()
     model.train(); return float(val_loss.item()), float(bpt * tpb)
 
 CP = tuple(
@@ -555,12 +555,12 @@ def dmb(blob: bytes) -> tuple[bytes, str]:
     return zlib.decompress(blob), "legacy_zlib9"
 
 def lds(file):
-    header_bytes = 256 * np.dtype("<i4").itemsize
+    hb = 256 * np.dtype("<i4").itemsize
     header = np.fromfile(file, dtype="<i4", count=256)
     if header.size != 256 or int(header[0]) != 20240520 or int(header[1]) != 1: raise ValueError(f"bad hdr {file}")
-    num_tokens = int(header[2])
-    if file.stat().st_size != header_bytes + num_tokens * np.dtype("<u2").itemsize: raise ValueError(f"bad size {file}")
-    return FN(np.fromfile(file, dtype="<u2", count=num_tokens, offset=header_bytes).astype(np.uint16, copy=False))
+    nt = int(header[2])
+    if file.stat().st_size != hb + nt * np.dtype("<u2").itemsize: raise ValueError(f"bad size {file}")
+    return FN(np.fromfile(file, dtype="<u2", count=nt, offset=hb).astype(np.uint16, copy=False))
 
 class TS:
     def __init__(self, pattern):
@@ -578,12 +578,12 @@ class TS:
         return chunks[0] if len(chunks) == 1 else CAT(chunks)
 
 class DTL:
-    def __init__(self, pattern, rank, world_size, device):
-        self.rank, self.world_size, self.device = rank, world_size, device; self.stream = TS(pattern)
-    def next_batch(self, global_tokens, seq_len, grad_accum_steps):
-        per_rank_span = global_tokens // (self.world_size * grad_accum_steps) + 1
-        chunk = self.stream.take(per_rank_span * self.world_size)
-        start = self.rank * per_rank_span; local = chunk[start:start+per_rank_span].to(dtype=I64)
+    def __init__(self, pattern, rank, ws, device):
+        self.rank, self.ws, self.device = rank, ws, device; self.stream = TS(pattern)
+    def next_batch(self, gt, seq_len, gas):
+        prs = gt // (self.ws * gas) + 1
+        chunk = self.stream.take(prs * self.ws)
+        start = self.rank * prs; local = chunk[start:start+prs].to(dtype=I64)
         x, y = local[:-1].reshape(-1, seq_len), local[1:].reshape(-1, seq_len)
         return x.to(self.device, non_blocking=True), y.to(self.device, non_blocking=True)
 
