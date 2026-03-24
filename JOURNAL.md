@@ -536,3 +536,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The active candidate now has a materially denser int6 export format. This should reduce artifact size without changing training or quantization behavior. A full runtime round-trip test is still pending because the local environment currently lacks `torch`, but the patch compiles cleanly and targets the exact part of the pipeline that is causing the validity failure.
 - Decision: Keep this serializer improvement in the main lane; it is a direct size win and pairs naturally with the staged prune ladder once we have a fresh pod.
 - Next step: Push the serializer change, then rerun the VRL recovery chain on the next pod so we can measure whether packed int6 plus staged pruning clears the 16 MB cap.
+
+- Timestamp: 2026-03-24 01:38 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL export compression
+- Objective: Add at least one local correctness check for the new packed-int6 serializer even though the current machine lacks `torch` and `numpy`.
+- Command or config: Ran a pure-stdlib Python round-trip harness that mirrors the 6-bit grouping logic used by the new serializer and decoder across varied tensor lengths.
+- Result: The pure-Python packing check passed for lengths `1, 2, 3, 4, 5, 7, 16, 17, 31, 64, 127, 1024`, which gives us confidence that the bit layout itself is sound. Full runtime verification inside `train_gpt.py` is still pending the next CUDA pod because the local environment does not have `torch`.
+- Decision: Keep the packed-int6 serializer patch in place; we now have both a syntax check and an independent bit-layout sanity check.
+- Next step: Resume the VRL recovery chain on the next pod and measure the real post-quant artifact size improvement from packed int6 plus the staged prune ladder.
