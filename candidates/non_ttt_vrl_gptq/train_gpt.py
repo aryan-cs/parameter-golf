@@ -263,13 +263,13 @@ def qi6g(weight, hessian=None, cr=31, block_size=128):
         Hinv = th.linalg.cholesky(Hinv, upper=True)
     except th.linalg.LinAlgError:
         return qi6p(t32, cr)
-    best_q = None; best_scale = None; best_err = float('inf')
+    best_q = None; best_s = None; best_err = float('inf')
     for pct in [0.9990, 0.9995, 0.9999, 0.99999, 1.0]:
         if pct < 1.0:
-            row_clip = QT(t32.abs(), pct, dim=1)
+            rc = QT(t32.abs(), pct, dim=1)
         else:
-            row_clip = t32.abs().amax(dim=1)
-        s = (row_clip / cr).clamp_min(1.0 / cr).to(F16)
+            rc = t32.abs().amax(dim=1)
+        s = (rc / cr).clamp_min(1.0 / cr).to(F16)
         sf = s.float()
         Q = ZL(W, dtype=I8)
         W_work = W.clone()
@@ -294,19 +294,19 @@ def qi6g(weight, hessian=None, cr=31, block_size=128):
         recon = Q.float() * sf[:, None]
         mse = (W - recon).pow(2).mean().item()
         if mse < best_err:
-            best_q, best_scale, best_err = Q, s, mse
+            best_q, best_s, best_err = Q, s, mse
     best_q = best_q[:, inv_perm]
-    return best_q, best_scale
+    return best_q, best_s
 
 def qi6p(t32, cr=31):
     if t32.ndim == 2:
         best_q, best_s, best_err = None, None, float('inf')
         for pct in [0.9990, 0.9995, 0.9999, 0.99999, 1.0]:
             if pct < 1.0:
-                row_clip = QT(t32.abs(), pct, dim=1)
+                rc = QT(t32.abs(), pct, dim=1)
             else:
-                row_clip = t32.abs().amax(dim=1)
-            s = (row_clip / cr).clamp_min(1.0 / cr).to(F16)
+                rc = t32.abs().amax(dim=1)
+            s = (rc / cr).clamp_min(1.0 / cr).to(F16)
             q = CLP(th.round(t32 / s.float()[:, None]), -cr, cr).to(I8)
             recon = q.float() * s.float()[:, None]
             err = (t32 - recon).pow(2).mean().item()
@@ -322,53 +322,53 @@ def qft(t):
     t32 = t.float()
     if t32.ndim == 2:
         clip_q = 99.99984 / 100.0
-        clip_abs = QT(t32.abs(), clip_q, dim=1) if t32.numel() else EM((t32.shape[0],), dtype=F32)
-        clipped = th.maximum(th.minimum(t32, clip_abs[:, None]), -clip_abs[:, None])
-        scale = (clip_abs / 127.0).clamp_min(1.0 / 127.0)
-        q = CLP(th.round(clipped / scale[:, None]), -127, 127).to(I8).contiguous()
+        ca = QT(t32.abs(), clip_q, dim=1) if t32.numel() else EM((t32.shape[0],), dtype=F32)
+        ct = th.maximum(th.minimum(t32, ca[:, None]), -ca[:, None])
+        scale = (ca / 127.0).clamp_min(1.0 / 127.0)
+        q = CLP(th.round(ct / scale[:, None]), -127, 127).to(I8).contiguous()
         return q, scale.to(dtype=I8D).contiguous()
     clip_q = 99.99984 / 100.0
-    clip_abs = float(QT(t32.abs().flatten(), clip_q).item()) if t32.numel() else 0.0
-    scale = TT(clip_abs / 127.0 if clip_abs > 0 else 1.0, dtype=F32)
-    q = CLP(th.round(CLP(t32, -clip_abs, clip_abs) / scale), -127, 127).to(I8).contiguous()
+    ca = float(QT(t32.abs().flatten(), clip_q).item()) if t32.numel() else 0.0
+    scale = TT(ca / 127.0 if ca > 0 else 1.0, dtype=F32)
+    q = CLP(th.round(CLP(t32, -ca, ca) / scale), -127, 127).to(I8).contiguous()
     return q, scale
 
 def qsd(sd, hh=None):
-    result, meta = {}, {}
-    int6_cats = "mabv"
-    for name, tensor in sd.items():
-        t = DX(tensor)
+    r, m = {}, {}
+    i6c = "mabv"
+    for name, tn in sd.items():
+        t = DX(tn)
         cat = cpm(name)
         if not t.is_floating_point() or t.numel() <= I8K:
-            result[name] = t.to(F16) if t.is_floating_point() else t
-            meta[name] = MP; continue
+            r[name] = t.to(F16) if t.is_floating_point() else t
+            m[name] = MP; continue
         if any(p in name for p in CP):
-            result[name] = t.float(); meta[name] = MC; continue
-        if cat in int6_cats and t.ndim >= 1:
+            r[name] = t.float(); m[name] = MC; continue
+        if cat in i6c and t.ndim >= 1:
             H = hh.get(name) if hh else None
             q, s = qi6g(t, hessian=H)
-            result[name + QS] = q; result[name + SS] = s
-            meta[name] = M6; continue
+            r[name + QS] = q; r[name + SS] = s
+            m[name] = M6; continue
         q, s = qft(t)
-        result[name + QS] = q; result[name + SS] = s
-        meta[name] = M8
-    return result, meta
+        r[name + QS] = q; r[name + SS] = s
+        m[name] = M8
+    return r, m
 
-def dsd(result, meta, template_sd):
+def dsd(result, meta, tsd):
     out = {}
-    for name, orig in template_sd.items():
+    for name, orig in tsd.items():
         info = meta.get(name)
         if info is None: continue
-        orig_dtype = orig.dtype
+        od = orig.dtype
         if info in (MP, MC) or mk(info) in "pc":
             t = result[name]
-            if t.dtype == F16 and orig_dtype in (F32, BF): t = t.to(orig_dtype)
+            if t.dtype == F16 and od in (F32, BF): t = t.to(od)
             out[name] = t; continue
         q, s = result[name + QS], result[name + SS]
         if s.ndim > 0:
-            out[name] = (q.float() * s.float().view(q.shape[0], *([1]*(q.ndim-1)))).to(orig_dtype)
+            out[name] = (q.float() * s.float().view(q.shape[0], *([1]*(q.ndim-1)))).to(od)
         else:
-            out[name] = (q.float() * float(s.item())).to(orig_dtype)
+            out[name] = (q.float() * float(s.item())).to(od)
     return out
 
 def ze6(arr_i16: np.ndarray) -> np.ndarray:
