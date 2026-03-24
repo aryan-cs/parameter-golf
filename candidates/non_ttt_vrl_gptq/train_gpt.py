@@ -11,7 +11,7 @@ from torch import Tensor, nn
 from torch.nn.parallel import DistributedDataParallel as DDP
 EG=os.environ.get; JP=os.path.join; PC=time.perf_counter
 BF=th.bfloat16; F16=th.float16; F32=th.float32; F64=th.float64; I8=th.int8; I16=th.int16; I64=th.int64; BO=th.bool; U16=th.uint16
-AC=th.autocast; IM=th.inference_mode; Z=th.zeros; TT=th.tensor; QT=th.quantile; EM=th.empty; FN=th.from_numpy; SK=th.stack; PK=struct.pack; UF=struct.unpack_from; ER=ValueError; CU="cuda"; AU=lambda e=1:AC(device_type=CU,dtype=BF,enabled=e); DC=lambda t:t.detach().cpu(); DL=lambda t:DC(t).clone(); DX=lambda t:DC(t).contiguous(); AS=lambda x,d:x.astype(d,copy=False)
+AC=th.autocast; IM=th.inference_mode; Z=th.zeros; TT=th.tensor; QT=th.quantile; EM=th.empty; FN=th.from_numpy; SK=th.stack; PK=struct.pack; UF=struct.unpack_from; ER=ValueError; CU="cuda"; AU=lambda e=1:AC(device_type=CU,dtype=BF,enabled=e); DC=lambda t:t.detach().cpu(); DL=lambda t:DC(t).clone(); DX=lambda t:DC(t).contiguous(); AS=lambda x,d:x.astype(d,copy=False); NM=lambda s:int(np.prod(s,dtype=np.int64))
 P=nn.Parameter; PL=nn.ParameterList; M=nn.Module; ML=nn.ModuleList; NI=nn.init; NG=th.no_grad; CLP=th.clamp; DG=th.diag; CMP=th.compile; SY=th.cuda.synchronize
 IA=dist.is_available; II=dist.is_initialized; BR=dist.barrier; GWS=dist.get_world_size; GRK=dist.get_rank; IGP=dist.init_process_group; DGP=dist.destroy_process_group; ARD=dist.all_reduce; ROP=dist.ReduceOp
 ZL=th.zeros_like; EL=th.empty_like; AR=th.arange; SG=th.sigmoid; CAT=th.cat; ON=th.ones; FUL=th.full; EYE=th.eye
@@ -458,7 +458,7 @@ def pi6l(t: Tensor) -> bytes:
     return out.tobytes()
 
 def ui6l(raw: bytes | memoryview, shape: list[int]) -> Tensor:
-    numel = int(np.prod(shape, dtype=np.int64))
+    numel = NM(shape)
     if numel == 0:
         return EM(shape, dtype=I8)
     packed_u8 = np.frombuffer(raw, dtype=N8)
@@ -494,7 +494,7 @@ def pi6(t: Tensor) -> bytes:
     return bytes(out)
 
 def ui6(raw: bytes | memoryview, shape: list[int]) -> Tensor:
-    numel = int(np.prod(shape, dtype=np.int64))
+    numel = NM(shape)
     if numel == 0:
         return EM(shape, dtype=I8)
     padded = ((numel + 7) // 8) * 8
@@ -1071,21 +1071,20 @@ def ree(a, bm, rank, ws, dv, dd, m0,
         for _ in range(ndim):
             shape.append(UF("<I", rd, o)[0]); o += 4
         if dt == 4:
-            numel = int(np.prod(shape, dtype=np.int64))
+            numel = NM(shape)
             nbytes = ((numel + 3) // 4) * 3
             raw = memoryview(rd)[o:o+nbytes]
             o += nbytes
             t = ui6l(raw, shape)
         elif dt == 5:
-            numel = int(np.prod(shape, dtype=np.int64))
+            numel = NM(shape)
             nbytes = ((numel + 7) // 8) * 6
             raw = memoryview(rd)[o:o+nbytes]
             o += nbytes
             t = ui6(raw, shape)
         else:
             torch_dt, np_dt = drm[dt]
-            numel = 1
-            for s in shape: numel *= s
+            numel = NM(shape)
             nbytes = numel * np.dtype(np_dt).itemsize
             arr = np.frombuffer(rd, dtype=np_dt, count=numel, offset=o).copy()
             o += nbytes
