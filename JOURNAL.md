@@ -644,3 +644,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: There are no more high-confidence offline changes left that can be validated on this machine without a CUDA-capable environment and `torch`. The repo is launch-ready, but real progress from here requires a fresh Runpod pod to measure the live artifact after the packed-int6, compact-header, and artifact-breakdown changes.
 - Decision: Stop speculative offline churn and wait for credits / a fresh pod instead of making unvalidated format changes.
 - Next step: Relaunch the VRL recovery/export chain on the next pod and use the new artifact breakdown logs to drive any remaining byte-cap sweeps.
+
+- Timestamp: 2026-03-24 03:12 America/Chicago
+- Commit: uncommitted
+- Lane: runpod readiness
+- Objective: Reconfirm the exact repository state before the next status handoff so the journal matches reality and the remote stays current.
+- Command or config: Ran `git rev-parse HEAD`, `git status --short`, `python3 runpod/check_ready.py`, and tailed the journal to confirm the latest readiness notes are present.
+- Result: HEAD was `3e06011`, the worktree was clean, and `runpod/check_ready.py` still reported `OK` with both recovery wrappers pointing at the expected 5-config chains and 22 verified config files.
+- Decision: Keep the repo unchanged until credits land; the current bottleneck remains live H100 access rather than local code readiness.
+- Next step: Push this verification note, then resume the VRL recovery/export chain on the next pod the moment credits are available.
