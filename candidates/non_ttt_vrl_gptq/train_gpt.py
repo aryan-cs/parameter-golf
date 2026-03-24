@@ -140,7 +140,8 @@ def vv(a, model, rk, ws, dv, gas,
     model.train(); return float(IT(vl)), float(bpt * tpb)
 
 CP = tuple(
-    p for p in "asc,ascs,msc,mscs,rm,rms,qgn,skw,skws,smear,bol,bgm.scale,vls,vsh.scale,vra".split(",") if p)
+    p for p in "asc,ascs,msc,mscs,rm,rms,g,skw,skws,smear,bol,bgm.s,vls,vsh.s,vra".split(",") if p)
+IC=lambda n:any(n==p or n.startswith(p+".") or n.endswith("."+p) or f".{p}." in n for p in CP)
 I8K = 65_536
 I8D = F16
 MP = "p"
@@ -166,9 +167,9 @@ LF = [{
 
 def cpm(name):
     if "tke" in name or "lmh" in name: return "e"
-    if ".mlp." in name: return "m"
+    if ".m." in name: return "m"
     if "bgm" in name: return "b"
-    if ".attn." in name or (".proj." in name and ".mlp." not in name): return "a"
+    if ".a." in name or (".p." in name and ".m." not in name): return "a"
     if "vsh" in name: return "v"
     return "o"
 
@@ -343,7 +344,7 @@ def qs(sd, hh=None):
         if not t.is_floating_point() or t.numel() <= I8K:
             r[name] = t.to(F16) if t.is_floating_point() else t
             m[name] = MP; continue
-        if any(p in name for p in CP):
+        if IC(name):
             r[name] = TF(t); m[name] = MC; continue
         if cat in i6c and t.ndim >= 1:
             H = hh.get(name) if hh else None
@@ -561,7 +562,7 @@ class CL(nn.Linear):
 def rf32(module):
     with NG():
         for name, param in module.named_parameters():
-            if (param.ndim < 2 or any(p in name for p in CP)) and param.dtype != F32:
+            if (param.ndim < 2 or IC(name)) and param.dtype != F32:
                 param.data = TF(param.data)
 
 class RY(M):
@@ -601,10 +602,10 @@ class CSA(M):
         super().__init__()
         self.nh, self.nkh = nh, nkh; self.hd = dim // nh
         kv_dim = nkh * self.hd
-        self.c_q = CL(dim, dim, bias=False); self.c_k = CL(dim, kv_dim, bias=False)
-        self.c_v = CL(dim, kv_dim, bias=False); self.proj = CL(dim, dim, bias=False)
-        self.proj._zero_init = True
-        self.qgn = P(FUL((nh,), qgi, dtype=F32))
+        self.cq = CL(dim, dim, bias=False); self.ck = CL(dim, kv_dim, bias=False)
+        self.cv = CL(dim, kv_dim, bias=False); self.p = CL(dim, dim, bias=False)
+        self.p._zero_init = True
+        self.g = P(FUL((nh,), qgi, dtype=F32))
         self.rd = 0
         self.rotary = RY(self.hd, base=rb, tsl=1024)
         self.ux = False
@@ -616,9 +617,9 @@ class CSA(M):
         return RS(y_g - proj, B, T, H, D)
     def forward(self, x, ve=None, vr=None):
         bsz, seqlen, dim = x.shape
-        q = RS(self.c_q(x), bsz, seqlen, self.nh, self.hd)
-        k = RS(self.c_k(x), bsz, seqlen, self.nkh, self.hd)
-        v = self.c_v(x)
+        q = RS(self.cq(x), bsz, seqlen, self.nh, self.hd)
+        k = RS(self.ck(x), bsz, seqlen, self.nkh, self.hd)
+        v = self.cv(x)
         if ve is not None: v = v + ve
         if vr is not None: v = v + vr
         v = RS(v, bsz, seqlen, self.nkh, self.hd)
@@ -626,7 +627,7 @@ class CSA(M):
         cos, sin = self.rotary(seqlen, x.device, q.dtype)
         q = are(q, cos, sin, self.rd)
         k = are(k, cos, sin, self.rd)
-        q = q * TY(self.qgn, q.dtype)[None, None, :, None]
+        q = q * TY(self.g, q.dtype)[None, None, :, None]
         if HAS_FA3:
             y = _fa3_func(q, k, v, causal=True)
             if isinstance(y, tuple): y = y[0]
@@ -635,16 +636,16 @@ class CSA(M):
             y = F.scaled_dot_product_attention(qt, kt, vt, attn_mask=None, is_causal=True,
                                                enable_gqa=(self.nkh != self.nh)).transpose(1, 2)
         if self.ux: y = self.xe(y, v)
-        return self.proj(RS(y, bsz, seqlen, dim))
+        return self.p(RS(y, bsz, seqlen, dim))
 
 class MLP(M):
     def __init__(self, dim, mm):
         super().__init__()
-        self.fc = CL(dim, int(mm * dim), bias=False)
-        self.proj = CL(int(mm * dim), dim, bias=False)
-        self.proj._zero_init = True
+        self.f = CL(dim, int(mm * dim), bias=False)
+        self.p = CL(int(mm * dim), dim, bias=False)
+        self.p._zero_init = True
     def forward(self, x):
-        return self.proj(F.leaky_relu(self.fc(x), negative_slope=0.5).square())
+        return self.p(F.leaky_relu(self.f(x), negative_slope=0.5).square())
 
 class SGT(M):
     def __init__(self, dim):
@@ -658,40 +659,40 @@ class BHE(M):
     def __init__(self, bgvs, bgd, dm):
         super().__init__()
         self.bv = bgvs
-        self.embed = nn.Embedding(bgvs, bgd)
-        NI.zeros_(self.embed.weight)
-        self.proj = CL(bgd, dm, bias=False) if bgd != dm else None
-        if self.proj is not None: NI.zeros_(self.proj.weight)
-        self.scale = P(TT(0.05, dtype=F32))
+        self.e = nn.Embedding(bgvs, bgd)
+        NI.zeros_(self.e.weight)
+        self.p = CL(bgd, dm, bias=False) if bgd != dm else None
+        if self.p is not None: NI.zeros_(self.p.weight)
+        self.s = P(TT(0.05, dtype=F32))
     def bh(self, tokens):
         t = tokens.to(th.int32); mod = self.bv - 1
         out = EL(t); out[..., 0] = mod
         out[..., 1:] = th.bitwise_xor(36313 * t[..., 1:], 27191 * t[..., :-1]) % mod
         return out.long()
     def forward(self, ids):
-        h = self.embed(self.bh(ids))
-        if self.proj is not None: h = self.proj(h)
-        return h * TY(self.scale, h.dtype)
+        h = self.e(self.bh(ids))
+        if self.p is not None: h = self.p(h)
+        return h * TY(self.s, h.dtype)
 
 class VE(M):
     def __init__(self, vs, ve_dim, kv_dim):
         super().__init__()
-        self.embed = nn.Embedding(vs, ve_dim)
-        NI.normal_(self.embed.weight, std=0.01)
-        self.proj = CL(ve_dim, kv_dim, bias=False) if ve_dim != kv_dim else None
-        if self.proj is not None: NI.zeros_(self.proj.weight)
-        self.scale = P(TT(0.1, dtype=F32))
+        self.e = nn.Embedding(vs, ve_dim)
+        NI.normal_(self.e.weight, std=0.01)
+        self.p = CL(ve_dim, kv_dim, bias=False) if ve_dim != kv_dim else None
+        if self.p is not None: NI.zeros_(self.p.weight)
+        self.s = P(TT(0.1, dtype=F32))
     def forward(self, ids):
-        h = self.embed(ids)
-        if self.proj is not None: h = self.proj(h)
-        return h * TY(self.scale, h.dtype)
+        h = self.e(ids)
+        if self.p is not None: h = self.p(h)
+        return h * TY(self.s, h.dtype)
 
 class BL(M):
     def __init__(self, dim, nh, nkh, mm, rb, qgi, li=0, ln_scale=False):
         super().__init__()
         self.attn_norm, self.mlp_norm = RN(), RN()
-        self.attn = CSA(dim, nh, nkh, rb, qgi)
-        self.mlp = MLP(dim, mm)
+        self.a = CSA(dim, nh, nkh, rb, qgi)
+        self.m = MLP(dim, mm)
         self.asc = P(ON(dim, dtype=F32))
         self.msc = P(ON(dim, dtype=F32))
         self.rm = P(TF(SK((ON(dim), Z(dim)))))
@@ -699,9 +700,9 @@ class BL(M):
     def forward(self, x, x0, ve=None, vr=None):
         mix = TY(self.rm, x.dtype)
         x_in = mix[0][None, None, :] * x + mix[1][None, None, :] * x0
-        attn_out = self.attn(self.attn_norm(x_in) * self.lsf, ve=ve, vr=vr)
+        attn_out = self.a(self.attn_norm(x_in) * self.lsf, ve=ve, vr=vr)
         x_out = x_in + TY(self.asc, x_in.dtype)[None, None, :] * attn_out
-        x_out = x_out + TY(self.msc, x_out.dtype)[None, None, :] * self.mlp(self.mlp_norm(x_out) * self.lsf)
+        x_out = x_out + TY(self.msc, x_out.dtype)[None, None, :] * self.m(self.mlp_norm(x_out) * self.lsf)
         return x_out
 
 class GPT(M):
@@ -731,11 +732,11 @@ class GPT(M):
         if rd > 0:
             hd = dm // nh
             for block in self.bs:
-                block.attn.rd = rd
-                block.attn.rotary = RY(hd, base=rb, tsl=1024, rd=rd)
+                block.a.rd = rd
+                block.a.rotary = RY(hd, base=rb, tsl=1024, rd=rd)
         if xsn > 0:
             for i in range(max(0, nl - xsn), nl):
-                self.bs[i].attn.ux = True
+                self.bs[i].a.ux = True
         kv_dim = nkh * (dm // nh)
         self.vli = [int(x) for x in vel.split(",") if x.strip()] if vee else []
         if self.vli:
@@ -763,7 +764,7 @@ class GPT(M):
                 if getattr(module, "_zero_init", False): NI.zeros_(module.weight)
                 elif module.weight.ndim == 2 and module.weight.shape[0] >= 64 and module.weight.shape[1] >= 64:
                     NI.orthogonal_(module.weight, gain=1.0)
-                    if ".proj." in name or name.endswith(".proj"):
+                    if ".p." in name or name.endswith(".p"):
                         with NG(): module.weight.mul_(1.0 / math.sqrt(2 * nl))
         for i, block in enumerate(self.bs):
             with NG():
@@ -783,7 +784,7 @@ class GPT(M):
             blk0 = self.bs[0]
             mix0 = TY(blk0.rm, x0.dtype)
             x_in0 = mix0[0][None, None, :] * x0 + mix0[1][None, None, :] * x0
-            v0 = blk0.attn.c_v(blk0.attn_norm(x_in0) * blk0.lsf)
+            v0 = blk0.a.cv(blk0.attn_norm(x_in0) * blk0.lsf)
         vi = 0
         for i in range(self.nel):
             ve = self.gv(i, ids, vc)
@@ -1110,25 +1111,25 @@ def main():
                         code, vt, bb, hs, ib, log0)
         return
     bnp = list(bm.bs.named_parameters())
-    mpa = [p for n, p in bnp if p.ndim == 2 and not any(pat in n for pat in CP)]
-    spa = [p for n, p in bnp if p.ndim < 2 or any(pat in n for pat in CP)]
+    mpa = [p for n, p in bnp if p.ndim == 2 and not IC(n)]
+    spa = [p for n, p in bnp if p.ndim < 2 or IC(n)]
     if bm.skw.numel() > 0: spa.append(bm.skw)
     if bm.smear is not None: spa.append(bm.smear.gate)
     if bm.bol is not None: spa.append(bm.bol)
-    if bm.bgm is not None: spa.append(bm.bgm.scale)
+    if bm.bgm is not None: spa.append(bm.bgm.s)
     if bm.vsh is not None:
-        spa.append(bm.vsh.scale)
+        spa.append(bm.vsh.s)
         for s in bm.vls: spa.append(s)
     if bm.vre:
         for alpha in bm.vra: spa.append(alpha)
     tlr = a.telr if a.te else a.elr
     tpg = [{PA: [bm.tke.weight], "lr": tlr, BL: tlr}]
     if bm.bgm is not None:
-        tpg.append({PA: [bm.bgm.embed.weight], "lr": tlr, BL: tlr})
-        if bm.bgm.proj is not None: mpa.append(bm.bgm.proj.weight)
+        tpg.append({PA: [bm.bgm.e.weight], "lr": tlr, BL: tlr})
+        if bm.bgm.p is not None: mpa.append(bm.bgm.p.weight)
     if bm.vsh is not None:
-        tpg.append({PA: [bm.vsh.embed.weight], "lr": tlr, BL: tlr})
-        if bm.vsh.proj is not None: mpa.append(bm.vsh.proj.weight)
+        tpg.append({PA: [bm.vsh.e.weight], "lr": tlr, BL: tlr})
+        if bm.vsh.p is not None: mpa.append(bm.vsh.p.weight)
     ot = th.optim.AdamW(tpg, betas=(a.beta1, a.beta2), eps=a.aep, weight_decay=a.awd, fused=True)
     om = MU(mpa, lr=a.mlr, momentum=a.mum, ns_steps=a.mns, wd=a.mwd)
     for group in om.param_groups: group[BL] = a.mlr
