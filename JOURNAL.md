@@ -142,7 +142,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Next step: Commit and push the launcher change, re-sync the repo, and relaunch the single-H100 smoke run through `pod_run.sh`.
 
 - Timestamp: 2026-03-23 18:06 America/Chicago
-- Commit: uncommitted
+- Commit: `9fdc879`
 - Lane: runpod bring-up
 - Objective: Clear the next launch failure after switching the smoke path to direct Python.
 - Command or config: Re-ran `bash runpod/pod_run.sh non_ttt_m22_base 1337` on the pod and inspected the resulting traceback from `runs/non_ttt_m22_base/.../train.log`.
@@ -1093,4 +1093,13 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Command or config: Added short in-file aliases for the CUDA device string and the repeated autocast context helper inside `candidates/non_ttt_vrl_gptq/train_gpt.py`, replaced the repeated `AC(device_type=\"cuda\", dtype=BF, ...)` sites and the `th.device(\"cuda\", ...)` construction, then reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, reran `python3 runpod/check_ready.py`, and reran the deterministic CPU export round-trip comparison harness on `HEAD` versus the working copy.
 - Result: The candidate file shrank from `54,361` bytes to `54,211` bytes, another `150` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 54,211`, which is `-20,720` bytes. Compile and readiness checks still passed. The deterministic comparison harness matched exactly on `HEAD` and the working copy (`codec=lzma_raw_hc3_16mb`, `blob_size=4264990` for both), so the helper pass did not change measured export behavior under that harness.
 - Decision: Keep the CUDA/autocast helper pass in the main lane. It is a better counted-size win than the last two micro-passes and still looks behavior-neutral under the deterministic offline export comparison.
+- Next step: Commit and push this pass so the next live export rerun uses the smallest counted candidate source we have so far together with the stronger bitplane + raw-LZMA exporter path.
+
+- Timestamp: 2026-03-24 04:37 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL code-size hygiene
+- Objective: Reclaim another safe counted-size block by compacting the repeated `detach().cpu()` / `clone()` / `contiguous()` chains in the export and checkpoint paths without changing artifact semantics.
+- Command or config: Added tiny in-file helpers for `detach().cpu()`, `detach().cpu().clone()`, and `detach().cpu().contiguous()` inside `candidates/non_ttt_vrl_gptq/train_gpt.py`, replaced the repeated export/checkpoint call sites, then reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, reran `python3 runpod/check_ready.py`, and reran the deterministic CPU export round-trip comparison harness on `HEAD` versus the working copy.
+- Result: The candidate file shrank from `54,211` bytes to `54,157` bytes, another `54` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 54,157`, which is `-20,774` bytes. Compile and readiness checks still passed. The deterministic comparison harness matched exactly on `HEAD` and the working copy (`codec=lzma_raw_hc3_16mb`, `blob_size=4264990` for both), so the helper pass did not change measured export behavior under that harness.
+- Decision: Keep the detach/cpu helper pass in the main lane. It is another validated counted-size win with no observed exporter regression under the deterministic offline comparison.
 - Next step: Commit and push this pass so the next live export rerun uses the smallest counted candidate source we have so far together with the stronger bitplane + raw-LZMA exporter path.
