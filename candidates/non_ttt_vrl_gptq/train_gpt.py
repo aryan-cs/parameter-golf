@@ -97,7 +97,7 @@ def z5(G: Tensor, steps: int = 10, eps: float = 1e-7) -> Tensor:
         A = X @ X.T; B = b * A + c * A @ A; X = a * X + B @ X
     return X.T if transposed else X
 
-class Muon(th.optim.Optimizer):
+class MU(th.optim.Optimizer):
     def __init__(self, params, lr, momentum, ns_steps, wd=0.0, nesterov=True):
         super().__init__(params, dict(lr=lr, momentum=momentum, ns_steps=ns_steps, wd=wd, nesterov=nesterov))
     @NG()
@@ -562,7 +562,7 @@ def lds(file):
     if file.stat().st_size != header_bytes + num_tokens * np.dtype("<u2").itemsize: raise ValueError(f"bad size {file}")
     return FN(np.fromfile(file, dtype="<u2", count=num_tokens, offset=header_bytes).astype(np.uint16, copy=False))
 
-class TokenStream:
+class TS:
     def __init__(self, pattern):
         self.files = [Path(p) for p in sorted(glob.glob(pattern))]
         if not self.files: raise FileNotFoundError(f"no:{pattern}")
@@ -579,7 +579,7 @@ class TokenStream:
 
 class DTL:
     def __init__(self, pattern, rank, world_size, device):
-        self.rank, self.world_size, self.device = rank, world_size, device; self.stream = TokenStream(pattern)
+        self.rank, self.world_size, self.device = rank, world_size, device; self.stream = TS(pattern)
     def next_batch(self, global_tokens, seq_len, grad_accum_steps):
         per_rank_span = global_tokens // (self.world_size * grad_accum_steps) + 1
         chunk = self.stream.take(per_rank_span * self.world_size)
@@ -587,7 +587,7 @@ class DTL:
         x, y = local[:-1].reshape(-1, seq_len), local[1:].reshape(-1, seq_len)
         return x.to(self.device, non_blocking=True), y.to(self.device, non_blocking=True)
 
-class RMSNorm(M):
+class RN(M):
     def __init__(self, eps=None): super().__init__(); self.eps = eps
     def forward(self, x): return F.rms_norm(x, (x.size(-1),), eps=self.eps)
 
@@ -611,7 +611,7 @@ def rf32(module):
             if (param.ndim < 2 or any(p in name for p in CP)) and param.dtype != F32:
                 param.data = param.data.float()
 
-class Rotary(M):
+class RY(M):
     def __init__(self, dim, base=10000.0, tsl=1024, rd=0):
         super().__init__()
         self.dim = dim; self.base = base; self.tsl = tsl
@@ -653,7 +653,7 @@ class CSA(M):
         self.proj._zero_init = True
         self.q_gain = P(FUL((nh,), qgi, dtype=F32))
         self.rope_dims = 0
-        self.rotary = Rotary(self.head_dim, base=rb, tsl=1024)
+        self.rotary = RY(self.head_dim, base=rb, tsl=1024)
         self.use_xsa = False
     def _xsa_efficient(self, y, v):
         B, T, H, D = y.shape; Hkv = v.size(-2); group = H // Hkv
@@ -693,7 +693,7 @@ class MLP(M):
     def forward(self, x):
         return self.proj(F.leaky_relu(self.fc(x), negative_slope=0.5).square())
 
-class SmearGate(M):
+class SGT(M):
     def __init__(self, dim):
         super().__init__(); self.gate = P(Z(dim, dtype=F32))
     def forward(self, x):
@@ -733,10 +733,10 @@ class VE(M):
         if self.proj is not None: h = self.proj(h)
         return h * self.scale.to(dtype=h.dtype)
 
-class Block(M):
+class BL(M):
     def __init__(self, dim, nh, nkh, mm, rb, qgi, layer_idx=0, ln_scale=False):
         super().__init__()
-        self.attn_norm, self.mlp_norm = RMSNorm(), RMSNorm()
+        self.attn_norm, self.mlp_norm = RN(), RN()
         self.attn = CSA(dim, nh, nkh, rb, qgi)
         self.mlp = MLP(dim, mm)
         self.attn_scale = P(ON(dim, dtype=F32))
@@ -764,14 +764,14 @@ class GPT(M):
         self.se, self.be, self.num_layers = se, be, nl
         self.tok_emb = nn.Embedding(vs, dm)
         self.bigram = BHE(bgvs, bgd, dm) if bgvs > 0 else None
-        self.smear = SmearGate(dm) if se else None
+        self.smear = SGT(dm) if se else None
         self.backout_lambda = P(backout_init * ON(1)) if be else None
         self.num_encoder_layers = nl // 2
         self.num_decoder_layers = nl - self.num_encoder_layers
         self.num_skip_weights = min(self.num_encoder_layers, self.num_decoder_layers)
         self.skip_weights = P(ON(self.num_skip_weights, dm, dtype=F32))
         self.blocks = ML([
-            Block(dm, nh, nkh, mm, rb, qgi,
+            BL(dm, nh, nkh, mm, rb, qgi,
                   layer_idx=i, ln_scale=ln_scale)
             for i in range(nl)
         ])
@@ -779,7 +779,7 @@ class GPT(M):
             head_dim = dm // nh
             for block in self.blocks:
                 block.attn.rope_dims = rd
-                block.attn.rotary = Rotary(head_dim, base=rb, tsl=1024, rd=rd)
+                block.attn.rotary = RY(head_dim, base=rb, tsl=1024, rd=rd)
         if xsn > 0:
             for i in range(max(0, nl - xsn), nl):
                 self.blocks[i].attn.use_xsa = True
@@ -790,7 +790,7 @@ class GPT(M):
             self.ve_layer_scales = PL([P(ON(1, dtype=F32)) for _ in self.ve_layer_indices])
         else:
             self.ve_shared = None; self.ve_layer_scales = PL()
-        self.final_norm = RMSNorm()
+        self.final_norm = RN()
         self.vrl_enabled = nl > 1
         if self.vrl_enabled:
             self.vrl_alphas = PL([
@@ -872,7 +872,7 @@ class GPT(M):
         logits = F.linear(x, self.tok_emb.weight.to(x.dtype)) if self.te else self.lm_head(x)
         return self.lsc * th.tanh(logits / self.lsc)
 
-def chs(bm, tl, args, device, gas, num_batches=256):
+def ch(bm, tl, args, device, gas, num_batches=256):
     hessians = {}
     hooks = []
     param_to_name = {}
@@ -909,7 +909,7 @@ def chs(bm, tl, args, device, gas, num_batches=256):
     bm.train()
     return hessians
 
-def eval_val_sliding(logits_fn, rank, ws, device, vt,
+def evl(logits_fn, rank, ws, device, vt,
                      bb, hs, ib,
                      seq_len, stride, ebs=256):
     total = vt.numel() - 1; windows, p = [], 0
@@ -965,7 +965,7 @@ def mspc(path_spec: str, sd: dict[str, th.Tensor], log0):
 def ree(a, bm, rank, ws, device, dd, master,
                     code, vt, bb, hs, ib, log0):
     cl = DTL(a.tf, rank, ws, device)
-    hessians = chs(bm, cl, a, device, 8 // ws,
+    hessians = ch(bm, cl, a, device, 8 // ws,
                                 num_batches=a.gcb)
     hm = {}
     for name, module in bm.named_modules():
@@ -1100,7 +1100,7 @@ def ree(a, bm, rank, ws, device, dd, master,
     bm.eval()
     with IM(), AC(device_type="cuda", dtype=BF): _ = raw_logits_fn(warmup_x)
     SY(); t_eval = PC()
-    q_vl, q_vb = eval_val_sliding(raw_logits_fn, rank, ws, device,
+    q_vl, q_vb = evl(raw_logits_fn, rank, ws, device,
         vte, bb, hs, ib,
         eval_sl, a.evs, ebs=a.ebs)
     SY(); eval_time = PC() - t_eval
@@ -1182,7 +1182,7 @@ def main():
         tok_param_groups.append({"params": [bm.ve_shared.embed.weight], "lr": token_lr, "base_lr": token_lr})
         if bm.ve_shared.proj is not None: matrix_params.append(bm.ve_shared.proj.weight)
     optimizer_tok = th.optim.AdamW(tok_param_groups, betas=(a.beta1, a.beta2), eps=a.aep, weight_decay=a.awd, fused=True)
-    optimizer_muon = Muon(matrix_params, lr=a.mlr, momentum=a.mum, ns_steps=a.mns, wd=a.mwd)
+    optimizer_muon = MU(matrix_params, lr=a.mlr, momentum=a.mum, ns_steps=a.mns, wd=a.mwd)
     for group in optimizer_muon.param_groups: group["base_lr"] = a.mlr
     optimizer_scalar = th.optim.AdamW([{"params": scalar_params, "lr": a.slr, "base_lr": a.slr}],
                                           betas=(a.beta1, a.beta2), eps=a.aep, weight_decay=a.awd, fused=True)
