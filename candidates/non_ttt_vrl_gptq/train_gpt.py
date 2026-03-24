@@ -43,11 +43,11 @@ class H:
 def z5(G: Tensor, steps: int = 10, eps: float = 1e-7) -> Tensor:
     a, b, c = (3.4445, -4.7750, 2.0315)
     X = G.bfloat16(); X /= X.norm() + eps
-    transposed = G.size(0) > G.size(1)
-    if transposed: X = X.T
+    tr = G.size(0) > G.size(1)
+    if tr: X = X.T
     for _ in range(steps):
         A = X @ X.T; B = b * A + c * A @ A; X = a * X + B @ X
-    return X.T if transposed else X
+    return X.T if tr else X
 
 class MU(th.optim.Optimizer):
     def __init__(self, params, lr, momentum, ns_steps, wd=0.0, nesterov=True):
@@ -110,7 +110,7 @@ def lvt(pattern, sl):
     if usable <= 0: raise ER(f"val<{sl}")
     return tokens[:usable + 1]
 
-def eval_val(a, model, rank, ws, dv, gas,
+def evv(a, model, rank, ws, dv, gas,
              vt, bb, hs, ib, esl=0):
     sl = esl if esl > 0 else a.tsl
     lbs = a.vbs // (ws * gas) // sl
@@ -371,7 +371,7 @@ def dsd(result, meta, template_sd):
             out[name] = (q.float() * float(s.item())).to(orig_dtype)
     return out
 
-def _zigzag_encode_int6(arr_i16: np.ndarray) -> np.ndarray:
+def ze6(arr_i16: np.ndarray) -> np.ndarray:
     arr = AS(arr_i16, N6)
     if arr.size == 0:
         return NE((0,), dtype=N8)
@@ -380,7 +380,7 @@ def _zigzag_encode_int6(arr_i16: np.ndarray) -> np.ndarray:
     out = np.where(arr >= 0, arr * 2, (-arr) * 2 - 1)
     return AS(out, N8)
 
-def _zigzag_decode_int6(u8: np.ndarray) -> np.ndarray:
+def zd6(u8: np.ndarray) -> np.ndarray:
     u = AS(u8, N6)
     return AS(np.where((u & 1) == 0, u // 2, -((u + 1) // 2)), N6)
 
@@ -433,7 +433,7 @@ def pi6(t: Tensor) -> bytes:
     arr = AS(q.numpy().reshape(-1), N6)
     if arr.size == 0:
         return b""
-    u = _zigzag_encode_int6(AS(arr, N6))
+    u = ze6(AS(arr, N6))
     numel = u.size
     pad = (-numel) % 8
     if pad:
@@ -461,7 +461,7 @@ def ui6(raw: bytes | memoryview, shape: list[int]) -> Tensor:
         o += plane_bytes
         bits = np.unpackbits(plane, bitorder=LT)
         u |= (AS(bits, N8) << bit)
-    arr = _zigzag_decode_int6(u[:numel])
+    arr = zd6(u[:numel])
     return FN(AS(arr, N1).reshape(shape))
 
 def mcn(cid: int) -> str:
@@ -819,7 +819,7 @@ class GPT(M):
         logits_proj = LI(x_flat, self.tok_emb.weight) if self.te else self.lm_head(x_flat)
         logits = self.lsc * th.tanh(logits_proj / self.lsc)
         return F.cross_entropy(logits.float(), targets, reduction="mean")
-    def forward_logits(self, ids):
+    def fwl(self, ids):
         x0 = self._embed(ids); x = self.final_norm(self._run_layers(x0, x0, ids))
         logits = LI(x, self.tok_emb.weight.to(x.dtype)) if self.te else self.lm_head(x)
         return self.lsc * th.tanh(logits / self.lsc)
@@ -1046,7 +1046,7 @@ def ree(a, bm, rank, ws, dv, dd, m0,
     bm.load_state_dict(deq_state, 1)
     eval_sl = a.esl if a.esl > 0 else a.tsl
     vte = lvt(a.val_files, eval_sl) if eval_sl != a.tsl else vt
-    rlf = CMP(bm.forward_logits, dynamic=False) if not GB(TD) else bm.forward_logits
+    rlf = CMP(bm.fwl, dynamic=False) if not GB(TD) else bm.fwl
     warmup_x = Z(a.ebs, eval_sl, dtype=I64, device=dv)
     bm.eval()
     with IM(), AU(): _ = rlf(warmup_x)
@@ -1183,7 +1183,7 @@ def main():
         sv = last_step or (a.vle > 0 and step % a.vle == 0)
         if sv:
             SY(); ttms += 1000.0 * (PC() - t0)
-            vl, vb = eval_val(a, model, rank, ws, dv, gas,
+            vl, vb = evv(a, model, rank, ws, dv, gas,
                               vt, bb, hs, ib)
             log0(f"step:{step}/{a.it} val_loss:{vl:.4f} val_bpb:{vb:.4f} train_time:{ttms:.0f}ms step_avg:{ttms/max(step,1):.2f}ms")
             SY(); t0 = PC()
