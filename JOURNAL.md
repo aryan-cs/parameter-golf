@@ -1319,3 +1319,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The candidate file shrank from `52,613` bytes to `52,604` bytes, another `9` bytes of direct code-payload savings. The wrapped export blob stayed exactly unchanged at `blob_size=4221908`, `raw_size=20623636`, with identical SHA-256 `44436f8709ee07385c7c2c761a37d2b3ca7c91fc0c071a9576db320750c96726`; only the diagnostic codec string changed from `lz18p1683` to `l181683`.
 - Decision: Keep the shorter suffix alias and codec label. This is another free counted-size win with no measured effect on artifact bytes or decompression behavior.
 - Next step: Push this tiny hygiene pass so the repo stays on the smallest counted candidate while preserving the current best-known `dict18/pb1` exporter path for the next live export-only rerun.
+
+- Timestamp: 2026-03-24 06:25 CDT
+- Commit: `b6d3c47`
+- Lane: non-ttt VRL code-size hygiene
+- Objective: Reclaim a few more counted bytes after the first `dict18/pb1` label shrink without changing artifact bytes, by shortening only the remaining human-readable codec/debug strings.
+- Command or config: Shortened the diagnostic codec string in [train_gpt.py](/Users/aryan/Desktop/golf/candidates/non_ttt_vrl_gptq/train_gpt.py) from `l181683` to `l183`, shortened the legacy fallback labels from `lx432`/`lzs22`/`lzl9` to `x32`/`zs`/`z9`, and shortened the unknown-codec label from `u({cid})` to `u{cid}`. Then reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, reran `python3 runpod/check_ready.py`, and reran the stronger local `HEAD` vs working-copy chooser-level CPU export harness.
+- Result: The candidate file shrank from `52,604` bytes to `52,592` bytes, another `12` bytes of direct code-payload savings. The wrapped export blob stayed exactly unchanged at `blob_size=4221908`, `raw_size=20623636`, with identical SHA-256 `44436f8709ee07385c7c2c761a37d2b3ca7c91fc0c071a9576db320750c96726`; only the diagnostic codec strings changed.
+- Decision: Keep the shorter codec/debug labels. This is another free counted-size win with no measured effect on artifact bytes or decompression behavior.
+- Next step: Push this tiny hygiene pass so the repo stays on the smallest counted candidate while preserving the current best-known `dict18/pb1` exporter path for the next live export-only rerun.
