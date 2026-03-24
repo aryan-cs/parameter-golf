@@ -338,3 +338,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The run has now advanced to `step:6500/20000 train_loss:2.0328`, with `swa:start step:6250` and `late_qat:enabled step:6401 scale:0.1498` appearing in the log, confirming that the final late-training regime is now active.
 - Decision: Keep the current baseline untouched and continue waiting for the completed post-quant artifact, because the late-QAT/SWA phase is now in effect and is exactly the part of the recipe we most need to observe through export.
 - Next step: Capture the final quantized score from this run, then compare it against the already-queued no-prune follow-up if the export gap is still too large.
+
+- Timestamp: 2026-03-24 00:07 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL long-run
+- Objective: Capture the strongest late-training checkpoint reached before export begins.
+- Command or config: Monitored `runs/non_ttt_vrl_gptq/seed1337/20260324T033051Z/train.log` through the wallclock stop and the start of the export pipeline.
+- Result: The run stopped at `step:6926/20000 val_loss:1.9199 val_bpb:1.1370 train_time:5400568ms`, then immediately entered the export path with `ema:applying EMA weights` and `gptq:calibrating with 256 batches...`.
+- Decision: Keep the baseline export running to completion; this is now our strongest live signal by a wide margin and close enough to the public frontier that the completed quantized artifact is the most important remaining unknown.
+- Next step: Wait for the final post-quant metric from this baseline run, then let the already-queued no-prune follow-up start automatically if the export gap is still too large.
