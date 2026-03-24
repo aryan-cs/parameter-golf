@@ -626,3 +626,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The exporter header compression work is now on `origin/master` at commit `a9eea7b`, and the worktree is clean again.
 - Decision: Keep the repo steady until Runpod credits land; the next meaningful step is a live rerun, not more speculative local churn.
 - Next step: Relaunch the recovery chain on a fresh pod and measure whether packed int6 + compact headers + staged prune sweeps finally produce a valid under-16MB artifact.
+
+- Timestamp: 2026-03-24 02:53 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL export compression
+- Objective: Make the next live rerun more informative by logging an explicit byte breakdown for the artifact instead of only the final compressed size.
+- Command or config: Patched `candidates/non_ttt_vrl_gptq/train_gpt.py` so `run_export_eval` logs `artifact_breakdown` with metadata bytes, tensor-header bytes, packed int6 payload bytes, other payload bytes, raw total bytes, compressed model bytes, and the count of packed int6 tensors. Verified syntax with `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py` and reran `python3 runpod/check_ready.py`.
+- Result: The next live run will tell us exactly where the remaining bytes are going, which will make it much easier to decide whether further pruning is needed or whether another format tweak is the right follow-up. Runpod readiness still reports `OK`.
+- Decision: Keep this logging in the main lane; it is low-risk and directly improves the speed of the next debug cycle if the first post-credit rerun is still close to the cap.
+- Next step: Push the instrumentation so the remote repo is fully launch-ready before credits land.

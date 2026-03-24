@@ -936,6 +936,11 @@ def run_export_eval(args, base_model, rank, world_size, device, distributed, mas
     meta_blob, meta_names = encode_quant_meta(quant_meta)
     name_to_idx = {name: idx for idx, name in enumerate(meta_names)}
     parts = [struct.pack("<I", len(meta_blob)), meta_blob]
+    meta_bytes = 4 + len(meta_blob)
+    tensor_header_bytes = 0
+    packed_int6_payload_bytes = 0
+    other_payload_bytes = 0
+    packed_int6_tensors = 0
     tensor_order = sorted(quant_result.keys())
     for tname in tensor_order:
         t = quant_result[tname]
@@ -953,14 +958,30 @@ def run_export_eval(args, base_model, rank, world_size, device, distributed, mas
             raw = t_np.tobytes()
         name_idx, suffix = encode_tensor_ref(tname, name_to_idx)
         parts.append(struct.pack("<HBBB", name_idx, suffix, dt, t.ndim))
+        tensor_header_bytes += 5 + 4 * t.ndim
         for d in t.shape: parts.append(struct.pack("<I", d))
         parts.append(raw)
+        if pack_int6:
+            packed_int6_payload_bytes += len(raw)
+            packed_int6_tensors += 1
+        else:
+            other_payload_bytes += len(raw)
     quant_raw = b"".join(parts)
     if HAS_ZSTD:
         model_blob = zstd.ZstdCompressor(level=22).compress(quant_raw)
     else:
         model_blob = zlib.compress(quant_raw, level=9)
     model_bytes = len(model_blob); total_size = code_bytes + model_bytes
+    log0(
+        "artifact_breakdown:"
+        f" meta={meta_bytes}"
+        f" tensor_headers={tensor_header_bytes}"
+        f" int6_payload={packed_int6_payload_bytes}"
+        f" other_payload={other_payload_bytes}"
+        f" raw_total={len(quant_raw)}"
+        f" compressed_model={model_bytes}"
+        f" int6_tensors={packed_int6_tensors}"
+    )
     log0(f"model:{model_bytes} code:{code_bytes} total:{total_size} ({total_size/1e6:.2f} MB)")
     if total_size > size_limit: log0(f"WARNING: Total size {total_size} exceeds 16MB limit by {total_size - size_limit} bytes!")
     else: log0(f"Size OK: {total_size/1e6:.2f} MB")
