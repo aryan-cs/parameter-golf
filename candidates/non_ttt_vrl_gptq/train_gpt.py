@@ -66,7 +66,7 @@ class MU(th.optim.Optimizer):
             lr, momentum, ns_steps = group["lr"], group["momentum"], group["ns_steps"]
             nesterov = group["nesterov"]
             total_params = sum(int(p.numel()) for p in params)
-            updates_flat = Z(total_params, device=params[0].device, dtype=BF)
+            uf = Z(total_params, device=params[0].device, dtype=BF)
             curr = 0
             for i, p in enumerate(params):
                 if i % ws == rk and p.grad is not None:
@@ -76,12 +76,12 @@ class MU(th.optim.Optimizer):
                     if nesterov: g = g.add(buf, alpha=momentum)
                     g = z5(g, steps=ns_steps)
                     g *= max(1, g.size(0) / g.size(1)) ** 0.5
-                    updates_flat[curr : curr + p.numel()] = g.reshape(-1)
+                    uf[curr : curr + p.numel()] = g.reshape(-1)
                 curr += p.numel()
-            if dd: ARD(updates_flat, op=ROP.SUM)
+            if dd: ARD(uf, op=ROP.SUM)
             wd = group.get("wd", 0.0); curr = 0
             for p in params:
-                g = updates_flat[curr : curr + p.numel()].view_as(p).to(dtype=p.dtype)
+                g = uf[curr : curr + p.numel()].view_as(p).to(dtype=p.dtype)
                 if wd > 0: p.data.mul_(1.0 - lr * wd)
                 p.add_(g, alpha=-lr); curr += p.numel()
         return loss
@@ -195,15 +195,15 @@ def eqm(meta: dict[str, object]) -> tuple[bytes, list[str]]:
     parts = [QMB, PK("<H", len(names))]
     for name in names:
         kind = meta[name]
-        kind_code = kind_map.get(kind)
-        if kind_code is None:
-            kind_name = mk(kind)
-            if kind_name == "6": kind_code = 2
-            elif kind_name == "8": kind_code = 3
+        kc = kind_map.get(kind)
+        if kc is None:
+            kn = mk(kind)
+            if kn == "6": kc = 2
+            elif kn == "8": kc = 3
             else: raise ER(f"bad meta {name}:{kind!r}")
-        name_bytes = name.encode(U)
-        parts.append(PK(F3, len(name_bytes), kind_code))
-        parts.append(name_bytes)
+        xb = name.encode(U)
+        parts.append(PK(F3, len(xb), kc))
+        parts.append(xb)
     return b"".join(parts), names
 
 def dqm(blob: bytes) -> tuple[dict[str, object], list[str], bool]:
@@ -412,12 +412,12 @@ def ui6l(raw: bytes | memoryview, shape: list[int]) -> Tensor:
     numel = NM(shape)
     if numel == 0:
         return EM(shape, dtype=I8)
-    packed_u8 = FB(raw, dtype=N8)
+    pu = FB(raw, dtype=N8)
     groups = (numel + 3) // 4
-    if packed_u8.size != groups * 3:
-        raise ER(f"bad int6 sz {groups*3}!={packed_u8.size}")
-    triplets = AS(packed_u8.reshape(-1, 3), N4)
-    packed = triplets[:, 0] | (triplets[:, 1] << 8) | (triplets[:, 2] << 16)
+    if pu.size != groups * 3:
+        raise ER(f"bad int6 sz {groups*3}!={pu.size}")
+    tr = AS(pu.reshape(-1, 3), N4)
+    packed = tr[:, 0] | (tr[:, 1] << 8) | (tr[:, 2] << 16)
     u = NE(groups * 4, dtype=N8)
     u[0::4] = (packed & 0x3F).astype(N8)
     u[1::4] = ((packed >> 6) & 0x3F).astype(N8)
@@ -449,16 +449,16 @@ def ui6(raw: bytes | memoryview, shape: list[int]) -> Tensor:
     if numel == 0:
         return EM(shape, dtype=I8)
     padded = ((numel + 7) // 8) * 8
-    plane_bytes = padded // 8
-    packed_u8 = FB(raw, dtype=N8)
-    expected = plane_bytes * 6
-    if packed_u8.size != expected:
-        raise ER(f"bad int6 sz {expected}!={packed_u8.size}")
+    pb = padded // 8
+    pu = FB(raw, dtype=N8)
+    expected = pb * 6
+    if pu.size != expected:
+        raise ER(f"bad int6 sz {expected}!={pu.size}")
     u = NZ(padded, dtype=N8)
     o = 0
     for bit in range(6):
-        plane = packed_u8[o:o + plane_bytes]
-        o += plane_bytes
+        plane = pu[o:o + pb]
+        o += pb
         bits = np.unpackbits(plane, bitorder=LT)
         u |= (AS(bits, N8) << bit)
     arr = zd6(u[:numel])
@@ -522,17 +522,17 @@ class TS:
     def _advance_file(self):
         self.file_idx = (self.file_idx + 1) % len(self.files); self.tokens = lds(self.files[self.file_idx]); self.pos = 0
     def take(self, n):
-        chunks, remaining = [], n
-        while remaining > 0:
+        chunks, r = [], n
+        while r > 0:
             avail = self.tokens.numel() - self.pos
             if avail <= 0: self._advance_file(); continue
-            k = min(remaining, avail); chunks.append(self.tokens[self.pos:self.pos+k]); self.pos += k; remaining -= k
+            k = min(r, avail); chunks.append(self.tokens[self.pos:self.pos+k]); self.pos += k; r -= k
         return chunks[0] if len(chunks) == 1 else CAT(chunks)
 
 class DTL:
     def __init__(self, pat, rank, ws, dv):
         self.rank, self.ws, self.dv = rank, ws, dv; self.stream = TS(pat)
-    def next_batch(self, gt, sl, gas):
+    def nb(self, gt, sl, gas):
         prs = gt // (self.ws * gas) + 1
         chunk = self.stream.take(prs * self.ws)
         start = self.rank * prs; local = chunk[start:start+prs].to(dtype=I64)
@@ -849,7 +849,7 @@ def ch(bm, tl, args, dv, gas, num_batches=256):
     bm.eval()
     with IM(), AU():
         for _ in range(num_batches):
-            x, y = tl.next_batch(args.tbt, args.tsl, gas)
+            x, y = tl.nb(args.tbt, args.tsl, gas)
             _ = bm(x, y)
     for h in hooks: h.remove()
     for name in hh:
@@ -1164,7 +1164,7 @@ def main():
             zga()
             for ms in range(gas):
                 if dd: model.require_backward_grad_sync = ms == gas - 1
-                x, y = tl.next_batch(a.tbt, a.tsl, gas)
+                x, y = tl.nb(a.tbt, a.tsl, gas)
                 with AU(): wl = model(x, y)
                 (wl * grad_scale).backward()
             for opt in opts: opt.step()
@@ -1198,7 +1198,7 @@ def main():
         zga(); trl = Z((), device=dv)
         for ms in range(gas):
             if dd: model.require_backward_grad_sync = ms == gas - 1
-            x, y = tl.next_batch(a.tbt, a.tsl, gas)
+            x, y = tl.nb(a.tbt, a.tsl, gas)
             with AU(): loss = model(x, y)
             trl += loss.detach(); (loss * grad_scale).backward()
         trl /= gas
