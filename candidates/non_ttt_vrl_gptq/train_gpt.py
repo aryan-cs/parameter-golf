@@ -1114,24 +1114,24 @@ def main():
     z5 = CMP(z5)
     dd = "RANK" in os.environ and "WORLD_SIZE" in os.environ
     rank = int(EG("RANK", "0")); ws = int(EG("WORLD_SIZE", "1"))
-    local_rank = int(EG("LOCAL_RANK", "0"))
+    lrk = int(EG("LOCAL_RANK", "0"))
     if ws <= 0 or 8 % ws != 0: raise ValueError(f"bad WS={ws}")
     gas = 8 // ws; grad_scale = 1.0 / gas
     if not th.cuda.is_available(): raise RuntimeError("cuda req")
-    device = th.device("cuda", local_rank); th.cuda.set_device(device)
+    device = th.device("cuda", lrk); th.cuda.set_device(device)
     if dd: IGP(backend="nccl", device_id=device); BR()
     master = rank == 0
     th.backends.cuda.matmul.allow_tf32 = True; th.backends.cudnn.allow_tf32 = True
     if not HAS_FA3:
         from th.backends.cuda import enable_cudnn_sdp, enable_flash_sdp, enable_math_sdp, enable_mem_efficient_sdp
         enable_cudnn_sdp(False); enable_flash_sdp(True); enable_mem_efficient_sdp(False); enable_math_sdp(False)
-    logfile = None
-    if master: os.makedirs("logs", exist_ok=True); logfile = f"logs/{a.rid}.txt"; print(logfile)
+    lf = None
+    if master: os.makedirs("logs", exist_ok=True); lf = f"logs/{a.rid}.txt"; print(lf)
     def log0(msg, console=True):
         if not master: return
         if console: print(msg)
-        if logfile:
-            with open(logfile, "a", encoding="utf-8") as f: print(msg, file=f)
+        if lf:
+            with open(lf, "a", encoding="utf-8") as f: print(msg, file=f)
     random.seed(a.sd); np.random.seed(a.sd); th.manual_seed(a.sd); th.cuda.manual_seed_all(a.sd)
     sp = spm.SentencePieceProcessor(model_file=a.tp)
     vt = lvt(a.vf, a.tsl)
@@ -1151,8 +1151,8 @@ def main():
     for m in bm.modules():
         if isinstance(m, CL): m.float()
     rf32(bm)
-    compiled_model = CMP(bm, dynamic=False, fullgraph=True) if not bool(int(EG("TORCH_COMPILE_DISABLE", "0"))) else bm
-    model = DDP(compiled_model, device_ids=[local_rank], broadcast_buffers=False) if dd else compiled_model
+    cm = CMP(bm, dynamic=False, fullgraph=True) if not bool(int(EG("TORCH_COMPILE_DISABLE", "0"))) else bm
+    model = DDP(cm, device_ids=[lrk], broadcast_buffers=False) if dd else cm
     eoc = rcp(a.eoc)
     if eoc:
         ckpt = th.load(eoc, map_location="cpu")
@@ -1181,32 +1181,32 @@ def main():
     if bm.ve_shared is not None:
         tok_param_groups.append({"params": [bm.ve_shared.embed.weight], "lr": token_lr, "base_lr": token_lr})
         if bm.ve_shared.proj is not None: matrix_params.append(bm.ve_shared.proj.weight)
-    optimizer_tok = th.optim.AdamW(tok_param_groups, betas=(a.beta1, a.beta2), eps=a.aep, weight_decay=a.awd, fused=True)
-    optimizer_muon = MU(matrix_params, lr=a.mlr, momentum=a.mum, ns_steps=a.mns, wd=a.mwd)
-    for group in optimizer_muon.param_groups: group["base_lr"] = a.mlr
-    optimizer_scalar = th.optim.AdamW([{"params": scalar_params, "lr": a.slr, "base_lr": a.slr}],
+    ot = th.optim.AdamW(tok_param_groups, betas=(a.beta1, a.beta2), eps=a.aep, weight_decay=a.awd, fused=True)
+    om = MU(matrix_params, lr=a.mlr, momentum=a.mum, ns_steps=a.mns, wd=a.mwd)
+    for group in om.param_groups: group["base_lr"] = a.mlr
+    os = th.optim.AdamW([{"params": scalar_params, "lr": a.slr, "base_lr": a.slr}],
                                           betas=(a.beta1, a.beta2), eps=a.aep, weight_decay=a.awd, fused=True)
-    opts = [optimizer_tok, optimizer_muon, optimizer_scalar]
+    opts = [ot, om, os]
     if bm.lm_head is not None:
-        optimizer_head = th.optim.Adam([{"params": [bm.lm_head.weight], "lr": a.hlr, "base_lr": a.hlr}],
+        oh = th.optim.Adam([{"params": [bm.lm_head.weight], "lr": a.hlr, "base_lr": a.hlr}],
                                            betas=(a.beta1, a.beta2), eps=a.aep, fused=True)
-        opts.insert(1, optimizer_head)
+        opts.insert(1, oh)
     tl = DTL(a.tf, rank, ws, device)
     def zero_grad_all():
         for opt in opts: opt.zero_grad(set_to_none=True)
-    max_wallclock_ms = 1000.0 * a.mws if a.mws > 0 else None
-    def lr_mul(step, elapsed_ms):
+    mwm = 1000.0 * a.mws if a.mws > 0 else None
+    def lr_mul(step, ems):
         if a.wdi <= 0: return 1.0
-        if max_wallclock_ms is None:
+        if mwm is None:
             wd0 = max(a.it - a.wdi, 0)
             return max((a.it - step) / max(a.wdi, 1), 0.0) if step >= wd0 else 1.0
-        step_ms = elapsed_ms / max(step, 1); wd_ms = a.wdi * step_ms
-        rem_ms = max(max_wallclock_ms - elapsed_ms, 0.0)
+        step_ms = ems / max(step, 1); wd_ms = a.wdi * step_ms
+        rem_ms = max(mwm - ems, 0.0)
         return rem_ms / max(wd_ms, 1e-9) if rem_ms <= wd_ms else 1.0
 
     if a.wus > 0:
-        initial_model_state = {n: t.detach().cpu().clone() for n, t in bm.state_dict().items()}
-        initial_optimizer_states = [copy.deepcopy(opt.state_dict()) for opt in opts]
+        ims = {n: t.detach().cpu().clone() for n, t in bm.state_dict().items()}
+        ios = [copy.deepcopy(opt.state_dict()) for opt in opts]
         model.train()
         for wi in range(a.wus):
             zero_grad_all()
@@ -1217,41 +1217,41 @@ def main():
                 (wl * grad_scale).backward()
             for opt in opts: opt.step()
             zero_grad_all()
-        bm.load_state_dict(initial_model_state, strict=True)
-        for opt, state in zip(opts, initial_optimizer_states, strict=True): opt.load_state_dict(state)
+        bm.load_state_dict(ims, strict=True)
+        for opt, state in zip(opts, ios, strict=True): opt.load_state_dict(state)
         zero_grad_all()
         if dd: model.require_backward_grad_sync = True
         tl = DTL(a.tf, rank, ws, device)
     ema_state = {name: t.detach().float().clone() for name, t in bm.state_dict().items()}
-    ttms, stop_after_step = 0.0, None
+    ttms, sas = 0.0, None
     swa_state, swa_count = None, 0
     SY(); t0 = PC(); step = 0
     while True:
-        last_step = step == a.it or (stop_after_step is not None and step >= stop_after_step)
-        should_validate = last_step or (a.vle > 0 and step % a.vle == 0)
-        if should_validate:
+        last_step = step == a.it or (sas is not None and step >= sas)
+        sv = last_step or (a.vle > 0 and step % a.vle == 0)
+        if sv:
             SY(); ttms += 1000.0 * (PC() - t0)
             vl, vb = eval_val(a, model, rank, ws, device, gas,
                               vt, bb, hs, ib)
             log0(f"step:{step}/{a.it} val_loss:{vl:.4f} val_bpb:{vb:.4f} train_time:{ttms:.0f}ms step_avg:{ttms/max(step,1):.2f}ms")
             SY(); t0 = PC()
         if last_step:
-            if stop_after_step is not None and step < a.it:
+            if sas is not None and step < a.it:
                 log0(f"stop:wall train:{ttms:.0f}ms step:{step}/{a.it}")
             break
-        elapsed_ms = ttms + 1000.0 * (PC() - t0)
-        scale = lr_mul(step, elapsed_ms)
+        ems = ttms + 1000.0 * (PC() - t0)
+        scale = lr_mul(step, ems)
         if a.lqt > 0 and scale < a.lqt and not CL._qat_enabled:
             CL._qat_enabled = True
-        zero_grad_all(); train_loss = Z((), device=device)
+        zero_grad_all(); trl = Z((), device=device)
         for ms in range(gas):
             if dd: model.require_backward_grad_sync = ms == gas - 1
             x, y = tl.next_batch(a.tbt, a.tsl, gas)
             with AC(device_type="cuda", dtype=BF, enabled=True): loss = model(x, y)
-            train_loss += loss.detach(); (loss * grad_scale).backward()
-        train_loss /= gas
+            trl += loss.detach(); (loss * grad_scale).backward()
+        trl /= gas
         frac = min(step / a.mmws, 1.0) if a.mmws > 0 else 1.0
-        for group in optimizer_muon.param_groups:
+        for group in om.param_groups:
             group["momentum"] = (1-frac)*a.mmst + frac*a.mum
         for opt in opts:
             for group in opt.param_groups: group["lr"] = group["base_lr"] * scale
@@ -1262,7 +1262,7 @@ def main():
             for name, t in bm.state_dict().items():
                 ema_state[name].mul_(a.ed).add_(t.detach().float(), alpha=1.0 - a.ed)
         step += 1
-        approx_ms = ttms + 1000.0 * (PC() - t0)
+        ams = ttms + 1000.0 * (PC() - t0)
         if a.swe and scale < 0.2 and step % a.swi == 0:
             if swa_state is None:
                 swa_state = {n: t.detach().cpu().clone() for n, t in bm.state_dict().items()}
@@ -1271,13 +1271,13 @@ def main():
                 for n, t in bm.state_dict().items(): swa_state[n] += t.detach().cpu()
                 swa_count += 1
         if a.tle > 0 and (step <= 10 or step % a.tle == 0):
-            log0(f"step:{step}/{a.it} train_loss:{train_loss.item():.4f} train_time:{approx_ms:.0f}ms step_avg:{approx_ms/step:.2f}ms")
-        reached_cap = max_wallclock_ms is not None and approx_ms >= max_wallclock_ms
-        if dd and max_wallclock_ms is not None:
-            rct = TT(int(reached_cap), device=device); ARD(rct, op=ROP.MAX); reached_cap = bool(rct.item())
-        if stop_after_step is None and reached_cap: stop_after_step = step
-    current_state = bm.state_dict()
-    avg_state = {name: t.to(dtype=current_state[name].dtype) for name, t in ema_state.items()}
+            log0(f"step:{step}/{a.it} train_loss:{trl.item():.4f} train_time:{ams:.0f}ms step_avg:{ams/step:.2f}ms")
+        rc = mwm is not None and ams >= mwm
+        if dd and mwm is not None:
+            rct = TT(int(rc), device=device); ARD(rct, op=ROP.MAX); rc = bool(rct.item())
+        if sas is None and rc: sas = step
+    cs = bm.state_dict()
+    avg_state = {name: t.to(dtype=cs[name].dtype) for name, t in ema_state.items()}
     bm.load_state_dict(avg_state, strict=True)
     mspc(a.spc, bm.state_dict(), log0)
     ree(a, bm, rank, ws, device, dd, master,
