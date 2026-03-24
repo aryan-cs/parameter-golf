@@ -28,21 +28,21 @@ class H:
     iterations = int(os.environ.get("ITERATIONS", 20000))
     warmup_steps = int(os.environ.get("WARMUP_STEPS", 20))
     tbt = int(os.environ.get("TRAIN_BATCH_TOKENS", 786_432))
-    train_seq_len = int(os.environ.get("TRAIN_SEQ_LEN", 2048))
-    eval_seq_len = int(os.environ.get("EVAL_SEQ_LEN", 2048))
+    tsl = int(os.environ.get("TRAIN_SEQ_LEN", 2048))
+    esl = int(os.environ.get("EVAL_SEQ_LEN", 2048))
     eval_stride = int(os.environ.get("EVAL_STRIDE", 64))
     eval_batch_seqs = int(os.environ.get("EVAL_BATCH_SEQS", 256))
     mws = float(os.environ.get("MAX_WALLCLOCK_SECONDS", 600.0))
-    qk_gain_init = float(os.environ.get("QK_GAIN_INIT", 1.5))
-    vocab_size = int(os.environ.get("VOCAB_SIZE", 1024))
-    num_layers = int(os.environ.get("NUM_LAYERS", 11))
-    num_kv_heads = int(os.environ.get("NUM_KV_HEADS", 4))
-    model_dim = int(os.environ.get("MODEL_DIM", 512))
-    num_heads = int(os.environ.get("NUM_HEADS", 8))
-    mlp_mult = int(os.environ.get("MLP_MULT", 3))
-    tie_embeddings = bool(int(os.environ.get("TIE_EMBEDDINGS", "1")))
-    rope_base = float(os.environ.get("ROPE_BASE", 10000.0))
-    logit_softcap = float(os.environ.get("LOGIT_SOFTCAP", 30.0))
+    qgi = float(os.environ.get("QK_GAIN_INIT", 1.5))
+    vs = int(os.environ.get("VOCAB_SIZE", 1024))
+    nl = int(os.environ.get("NUM_LAYERS", 11))
+    nkh = int(os.environ.get("NUM_KV_HEADS", 4))
+    dm = int(os.environ.get("MODEL_DIM", 512))
+    nh = int(os.environ.get("NUM_HEADS", 8))
+    mm = int(os.environ.get("MLP_MULT", 3))
+    te = bool(int(os.environ.get("TIE_EMBEDDINGS", "1")))
+    rb = float(os.environ.get("ROPE_BASE", 10000.0))
+    lsc = float(os.environ.get("LOGIT_SOFTCAP", 30.0))
     embed_lr = float(os.environ.get("EMBED_LR", 0.6))
     head_lr = float(os.environ.get("HEAD_LR", 0.008))
     tied_embed_lr = float(os.environ.get("TIED_EMBED_LR", 0.035))
@@ -68,9 +68,9 @@ class H:
     warmdown_iters = int(os.environ.get("WARMDOWN_ITERS", 3500))
     late_qat_threshold = float(os.environ.get("LATE_QAT_THRESHOLD", 0.15))
     bgvs = int(os.environ.get("BIGRAM_VOCAB_SIZE", 2048))
-    bigram_dim = int(os.environ.get("BIGRAM_DIM", 128))
-    xsa_last_n = int(os.environ.get("XSA_LAST_N", 11))
-    rope_dims = int(os.environ.get("ROPE_DIMS", 16))
+    bgd = int(os.environ.get("BIGRAM_DIM", 128))
+    xsn = int(os.environ.get("XSA_LAST_N", 11))
+    rd = int(os.environ.get("ROPE_DIMS", 16))
     ln_scale = bool(int(os.environ.get("LN_SCALE", "1")))
     ve_enabled = bool(int(os.environ.get("VE_ENABLED", "1")))
     ve_dim = int(os.environ.get("VE_DIM", 128))
@@ -128,8 +128,8 @@ class Muon(torch.optim.Optimizer):
                 p.add_(g, alpha=-lr); curr += p.numel()
         return loss
 
-def build_sentencepiece_luts(sp, vocab_size, device):
-    sp_vocab_size = int(sp.vocab_size()); table_size = max(sp_vocab_size, vocab_size)
+def build_sentencepiece_luts(sp, vs, device):
+    sp_vocab_size = int(sp.vocab_size()); table_size = max(sp_vocab_size, vs)
     base_bytes_np = np.zeros((table_size,), dtype=np.int16)
     has_leading_space_np = np.zeros((table_size,), dtype=np.bool_)
     is_boundary_token_np = np.ones((table_size,), dtype=np.bool_)
@@ -154,7 +154,7 @@ def load_validation_tokens(pattern, seq_len):
 
 def eval_val(args, model, rank, ws, device, gas,
              vt, bb, hs, ib, eval_seq_len=0):
-    seq_len = eval_seq_len if eval_seq_len > 0 else args.train_seq_len
+    seq_len = eval_seq_len if eval_seq_len > 0 else args.tsl
     local_batch_seqs = args.vbs // (ws * gas) // seq_len
     total_seqs = (vt.numel() - 1) // seq_len
     seq_start = (total_seqs * rank) // ws; seq_end = (total_seqs * (rank + 1)) // ws
@@ -612,18 +612,18 @@ def restore_low_dim_params_to_fp32(module):
                 param.data = param.data.float()
 
 class Rotary(nn.Module):
-    def __init__(self, dim, base=10000.0, train_seq_len=1024, rope_dims=0):
+    def __init__(self, dim, base=10000.0, tsl=1024, rd=0):
         super().__init__()
-        self.dim = dim; self.base = base; self.train_seq_len = train_seq_len
-        self.rope_dims = rope_dims if rope_dims > 0 else dim
+        self.dim = dim; self.base = base; self.tsl = tsl
+        self.rope_dims = rd if rd > 0 else dim
         inv_freq = 1.0 / (base ** (torch.arange(0, self.rope_dims, 2, dtype=torch.float32) / self.rope_dims))
         self.register_buffer("inv_freq", inv_freq, persistent=False)
         self._seq_len_cached = 0; self._cos_cached = self._sin_cached = None
     def forward(self, seq_len, device, dtype):
         if self._cos_cached is None or self._seq_len_cached != seq_len or self._cos_cached.device != device:
             rd = self.rope_dims
-            if seq_len > self.train_seq_len:
-                scale = seq_len / self.train_seq_len
+            if seq_len > self.tsl:
+                scale = seq_len / self.tsl
                 new_base = self.base * (scale ** (rd / (rd - 2)))
                 inv_freq = 1.0 / (new_base ** (torch.arange(0, rd, 2, dtype=torch.float32, device=device) / rd))
             else: inv_freq = self.inv_freq.to(device)
@@ -632,10 +632,10 @@ class Rotary(nn.Module):
             self._seq_len_cached = seq_len
         return self._cos_cached.to(dtype=dtype), self._sin_cached.to(dtype=dtype)
 
-def apply_rotary_emb(x, cos, sin, rope_dims=0):
-    if rope_dims > 0 and rope_dims < x.size(-1):
-        x_rope, x_pass = x[..., :rope_dims], x[..., rope_dims:]
-        half = rope_dims // 2
+def apply_rotary_emb(x, cos, sin, rd=0):
+    if rd > 0 and rd < x.size(-1):
+        x_rope, x_pass = x[..., :rd], x[..., rd:]
+        half = rd // 2
         x1, x2 = x_rope[..., :half], x_rope[..., half:]
         x_rope = torch.cat((x1 * cos + x2 * sin, x1 * (-sin) + x2 * cos), dim=-1)
         return torch.cat((x_rope, x_pass), dim=-1)
@@ -644,16 +644,16 @@ def apply_rotary_emb(x, cos, sin, rope_dims=0):
     return torch.cat((x1 * cos + x2 * sin, x1 * (-sin) + x2 * cos), dim=-1)
 
 class CSA(nn.Module):
-    def __init__(self, dim, num_heads, num_kv_heads, rope_base, qk_gain_init):
+    def __init__(self, dim, nh, nkh, rb, qgi):
         super().__init__()
-        self.num_heads, self.num_kv_heads = num_heads, num_kv_heads; self.head_dim = dim // num_heads
-        kv_dim = num_kv_heads * self.head_dim
+        self.num_heads, self.num_kv_heads = nh, nkh; self.head_dim = dim // nh
+        kv_dim = nkh * self.head_dim
         self.c_q = CL(dim, dim, bias=False); self.c_k = CL(dim, kv_dim, bias=False)
         self.c_v = CL(dim, kv_dim, bias=False); self.proj = CL(dim, dim, bias=False)
         self.proj._zero_init = True
-        self.q_gain = nn.Parameter(torch.full((num_heads,), qk_gain_init, dtype=torch.float32))
+        self.q_gain = nn.Parameter(torch.full((nh,), qgi, dtype=torch.float32))
         self.rope_dims = 0
-        self.rotary = Rotary(self.head_dim, base=rope_base, train_seq_len=1024)
+        self.rotary = Rotary(self.head_dim, base=rb, tsl=1024)
         self.use_xsa = False
     def _xsa_efficient(self, y, v):
         B, T, H, D = y.shape; Hkv = v.size(-2); group = H // Hkv
@@ -685,10 +685,10 @@ class CSA(nn.Module):
         return self.proj(y.reshape(bsz, seqlen, dim))
 
 class MLP(nn.Module):
-    def __init__(self, dim, mlp_mult):
+    def __init__(self, dim, mm):
         super().__init__()
-        self.fc = CL(dim, int(mlp_mult * dim), bias=False)
-        self.proj = CL(int(mlp_mult * dim), dim, bias=False)
+        self.fc = CL(dim, int(mm * dim), bias=False)
+        self.proj = CL(int(mm * dim), dim, bias=False)
         self.proj._zero_init = True
     def forward(self, x):
         return self.proj(F.leaky_relu(self.fc(x), negative_slope=0.5).square())
@@ -702,12 +702,12 @@ class SmearGate(nn.Module):
         return (1 - g) * x + g * x_prev
 
 class BHE(nn.Module):
-    def __init__(self, bgvs, bigram_dim, model_dim):
+    def __init__(self, bgvs, bgd, dm):
         super().__init__()
         self.bgvs = bgvs
-        self.embed = nn.Embedding(bgvs, bigram_dim)
+        self.embed = nn.Embedding(bgvs, bgd)
         nn.init.zeros_(self.embed.weight)
-        self.proj = CL(bigram_dim, model_dim, bias=False) if bigram_dim != model_dim else None
+        self.proj = CL(bgd, dm, bias=False) if bgd != dm else None
         if self.proj is not None: nn.init.zeros_(self.proj.weight)
         self.scale = nn.Parameter(torch.tensor(0.05, dtype=torch.float32))
     def bigram_hash(self, tokens):
@@ -721,9 +721,9 @@ class BHE(nn.Module):
         return h * self.scale.to(dtype=h.dtype)
 
 class VE(nn.Module):
-    def __init__(self, vocab_size, ve_dim, kv_dim):
+    def __init__(self, vs, ve_dim, kv_dim):
         super().__init__()
-        self.embed = nn.Embedding(vocab_size, ve_dim)
+        self.embed = nn.Embedding(vs, ve_dim)
         nn.init.normal_(self.embed.weight, std=0.01)
         self.proj = CL(ve_dim, kv_dim, bias=False) if ve_dim != kv_dim else None
         if self.proj is not None: nn.init.zeros_(self.proj.weight)
@@ -734,11 +734,11 @@ class VE(nn.Module):
         return h * self.scale.to(dtype=h.dtype)
 
 class Block(nn.Module):
-    def __init__(self, dim, num_heads, num_kv_heads, mlp_mult, rope_base, qk_gain_init, layer_idx=0, ln_scale=False):
+    def __init__(self, dim, nh, nkh, mm, rb, qgi, layer_idx=0, ln_scale=False):
         super().__init__()
         self.attn_norm, self.mlp_norm = RMSNorm(), RMSNorm()
-        self.attn = CSA(dim, num_heads, num_kv_heads, rope_base, qk_gain_init)
-        self.mlp = MLP(dim, mlp_mult)
+        self.attn = CSA(dim, nh, nkh, rb, qgi)
+        self.mlp = MLP(dim, mm)
         self.attn_scale = nn.Parameter(torch.ones(dim, dtype=torch.float32))
         self.mlp_scale = nn.Parameter(torch.ones(dim, dtype=torch.float32))
         self.resid_mix = nn.Parameter(torch.stack((torch.ones(dim), torch.zeros(dim))).float())
@@ -752,53 +752,53 @@ class Block(nn.Module):
         return x_out
 
 class GPT(nn.Module):
-    def __init__(self, vocab_size, num_layers, model_dim, num_heads, num_kv_heads,
-                 mlp_mult, tie_embeddings, tied_embed_init_std, logit_softcap,
-                 rope_base, qk_gain_init, smear_enabled=True, backout_enabled=True, backout_init=0.2,
-                 bgvs=0, bigram_dim=128, xsa_last_n=0,
-                 rope_dims=0, ln_scale=False,
+    def __init__(self, vs, nl, dm, nh, nkh,
+                 mm, te, tied_embed_init_std, lsc,
+                 rb, qgi, smear_enabled=True, backout_enabled=True, backout_init=0.2,
+                 bgvs=0, bgd=128, xsn=0,
+                 rd=0, ln_scale=False,
                  ve_enabled=False, ve_dim=128, ve_layers="9,10"):
         super().__init__()
-        self.tie_embeddings, self.tied_embed_init_std = tie_embeddings, tied_embed_init_std
-        self.logit_softcap = logit_softcap
-        self.smear_enabled, self.backout_enabled, self.num_layers = smear_enabled, backout_enabled, num_layers
-        self.tok_emb = nn.Embedding(vocab_size, model_dim)
-        self.bigram = BHE(bgvs, bigram_dim, model_dim) if bgvs > 0 else None
-        self.smear = SmearGate(model_dim) if smear_enabled else None
+        self.tie_embeddings, self.tied_embed_init_std = te, tied_embed_init_std
+        self.logit_softcap = lsc
+        self.smear_enabled, self.backout_enabled, self.num_layers = smear_enabled, backout_enabled, nl
+        self.tok_emb = nn.Embedding(vs, dm)
+        self.bigram = BHE(bgvs, bgd, dm) if bgvs > 0 else None
+        self.smear = SmearGate(dm) if smear_enabled else None
         self.backout_lambda = nn.Parameter(backout_init * torch.ones(1)) if backout_enabled else None
-        self.num_encoder_layers = num_layers // 2
-        self.num_decoder_layers = num_layers - self.num_encoder_layers
+        self.num_encoder_layers = nl // 2
+        self.num_decoder_layers = nl - self.num_encoder_layers
         self.num_skip_weights = min(self.num_encoder_layers, self.num_decoder_layers)
-        self.skip_weights = nn.Parameter(torch.ones(self.num_skip_weights, model_dim, dtype=torch.float32))
+        self.skip_weights = nn.Parameter(torch.ones(self.num_skip_weights, dm, dtype=torch.float32))
         self.blocks = nn.ModuleList([
-            Block(model_dim, num_heads, num_kv_heads, mlp_mult, rope_base, qk_gain_init,
+            Block(dm, nh, nkh, mm, rb, qgi,
                   layer_idx=i, ln_scale=ln_scale)
-            for i in range(num_layers)
+            for i in range(nl)
         ])
-        if rope_dims > 0:
-            head_dim = model_dim // num_heads
+        if rd > 0:
+            head_dim = dm // nh
             for block in self.blocks:
-                block.attn.rope_dims = rope_dims
-                block.attn.rotary = Rotary(head_dim, base=rope_base, train_seq_len=1024, rope_dims=rope_dims)
-        if xsa_last_n > 0:
-            for i in range(max(0, num_layers - xsa_last_n), num_layers):
+                block.attn.rope_dims = rd
+                block.attn.rotary = Rotary(head_dim, base=rb, tsl=1024, rd=rd)
+        if xsn > 0:
+            for i in range(max(0, nl - xsn), nl):
                 self.blocks[i].attn.use_xsa = True
-        kv_dim = num_kv_heads * (model_dim // num_heads)
+        kv_dim = nkh * (dm // nh)
         self.ve_layer_indices = [int(x) for x in ve_layers.split(",") if x.strip()] if ve_enabled else []
         if self.ve_layer_indices:
-            self.ve_shared = VE(vocab_size, ve_dim, kv_dim)
+            self.ve_shared = VE(vs, ve_dim, kv_dim)
             self.ve_layer_scales = nn.ParameterList([nn.Parameter(torch.ones(1, dtype=torch.float32)) for _ in self.ve_layer_indices])
         else:
             self.ve_shared = None; self.ve_layer_scales = nn.ParameterList()
         self.final_norm = RMSNorm()
-        self.vrl_enabled = num_layers > 1
+        self.vrl_enabled = nl > 1
         if self.vrl_enabled:
             self.vrl_alphas = nn.ParameterList([
-                nn.Parameter(torch.tensor(0.0, dtype=torch.float32)) for _ in range(num_layers - 1)
+                nn.Parameter(torch.tensor(0.0, dtype=torch.float32)) for _ in range(nl - 1)
             ])
         else:
             self.vrl_alphas = nn.ParameterList()
-        self.lm_head = None if tie_embeddings else CL(model_dim, vocab_size, bias=False)
+        self.lm_head = None if te else CL(dm, vs, bias=False)
         if self.lm_head is not None: self.lm_head._zero_init = True
         self._init_weights()
     def _init_weights(self):
@@ -898,7 +898,7 @@ def chs(bm, tl, args, device, gas, num_batches=256):
     bm.eval()
     with torch.inference_mode(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
         for _ in range(num_batches):
-            x, y = tl.next_batch(args.tbt, args.train_seq_len, gas)
+            x, y = tl.next_batch(args.tbt, args.tsl, gas)
             _ = bm(x, y)
     for h in hooks: h.remove()
     for name in hessians:
@@ -1099,8 +1099,8 @@ def ree(args, bm, rank, ws, device, distributed, master,
         loaded_result[tname] = t
     deq_state = dsd(loaded_result, loaded_meta, sd_cpu)
     bm.load_state_dict(deq_state, strict=True)
-    eval_sl = args.eval_seq_len if args.eval_seq_len > 0 else args.train_seq_len
-    val_tokens_eval = load_validation_tokens(args.val_files, eval_sl) if eval_sl != args.train_seq_len else vt
+    eval_sl = args.esl if args.esl > 0 else args.tsl
+    val_tokens_eval = load_validation_tokens(args.val_files, eval_sl) if eval_sl != args.tsl else vt
     raw_logits_fn = torch.compile(bm.forward_logits, dynamic=False) if not bool(int(os.environ.get("TORCH_COMPILE_DISABLE", "0"))) else bm.forward_logits
     warmup_x = torch.zeros(args.eval_batch_seqs, eval_sl, dtype=torch.int64, device=device)
     bm.eval()
@@ -1143,20 +1143,20 @@ def main():
     sp = spm.SentencePieceProcessor(model_file=args.tokenizer_path)
     dataset_dir = Path(args.data_path).resolve()
     actual_train_files = len(list(dataset_dir.glob("fineweb_train_*.bin")))
-    vt = load_validation_tokens(args.val_files, args.train_seq_len)
-    bb, hs, ib = build_sentencepiece_luts(sp, args.vocab_size, device)
+    vt = load_validation_tokens(args.val_files, args.tsl)
+    bb, hs, ib = build_sentencepiece_luts(sp, args.vs, device)
     log0(f"train_loader:dataset:{dataset_dir.name} train_shards:{actual_train_files}")
     log0(f"val_tokens:{vt.numel()-1}")
     CL._qat_enabled = False
     CL._qat_clip_pct = args.qat_clip_pct  # v41: QAT-export alignment
     bm = GPT(
-        vocab_size=args.vocab_size, num_layers=args.num_layers, model_dim=args.model_dim,
-        num_heads=args.num_heads, num_kv_heads=args.num_kv_heads, mlp_mult=args.mlp_mult,
-        tie_embeddings=args.tie_embeddings, tied_embed_init_std=args.tied_embed_init_std,
-        logit_softcap=args.logit_softcap, rope_base=args.rope_base, qk_gain_init=args.qk_gain_init,
+        vs=args.vs, nl=args.nl, dm=args.dm,
+        nh=args.nh, nkh=args.nkh, mm=args.mm,
+        te=args.te, tied_embed_init_std=args.tied_embed_init_std,
+        lsc=args.lsc, rb=args.rb, qgi=args.qgi,
         smear_enabled=args.smear_enabled, backout_enabled=args.backout_enabled, backout_init=args.backout_init,
-        bgvs=args.bgvs, bigram_dim=args.bigram_dim,
-        xsa_last_n=args.xsa_last_n, rope_dims=args.rope_dims, ln_scale=args.ln_scale,
+        bgvs=args.bgvs, bgd=args.bgd,
+        xsn=args.xsn, rd=args.rd, ln_scale=args.ln_scale,
         ve_enabled=args.ve_enabled, ve_dim=args.ve_dim, ve_layers=args.ve_layers,
     ).to(device).bfloat16()
     for m in bm.modules():
@@ -1185,7 +1185,7 @@ def main():
         for s in bm.ve_layer_scales: scalar_params.append(s)
     if bm.vrl_enabled:
         for a in bm.vrl_alphas: scalar_params.append(a)
-    token_lr = args.tied_embed_lr if args.tie_embeddings else args.embed_lr
+    token_lr = args.tied_embed_lr if args.te else args.embed_lr
     tok_param_groups = [{"params": [bm.tok_emb.weight], "lr": token_lr, "base_lr": token_lr}]
     if bm.bigram is not None:
         tok_param_groups.append({"params": [bm.bigram.embed.weight], "lr": token_lr, "base_lr": token_lr})
@@ -1204,9 +1204,9 @@ def main():
                                            betas=(args.beta1, args.beta2), eps=args.adam_eps, fused=True)
         opts.insert(1, optimizer_head)
     n_params = sum(p.numel() for p in bm.parameters())
-    xsa_layers = [i for i in range(args.num_layers) if i >= args.num_layers - args.xsa_last_n] if args.xsa_last_n > 0 else []
+    xsa_layers = [i for i in range(args.nl) if i >= args.nl - args.xsn] if args.xsn > 0 else []
     log0(f"model_params:{n_params}"); log0(f"world:{ws} ga:{gas}")
-    log0(f"cfg:v42 lqat={args.late_qat_threshold} ema={args.ema_decay} xsa={args.xsa_last_n} rope={args.rope_dims} bg={args.bgvs} qat={args.qat_clip_pct} prune={args.prune_pct}")
+    log0(f"cfg:v42 lqat={args.late_qat_threshold} ema={args.ema_decay} xsa={args.xsn} rope={args.rd} bg={args.bgvs} qat={args.qat_clip_pct} prune={args.prune_pct}")
     log0(f"xsa_layers:{xsa_layers}")
     log0(f"fa3:{HAS_FA3} swa:{args.swa_enabled} wd:{args.warmdown_iters} adam_wd:{args.adam_wd}")
     tl = DTL(args.train_files, rank, ws, device)
@@ -1230,7 +1230,7 @@ def main():
             zero_grad_all()
             for ms in range(gas):
                 if distributed: model.require_backward_grad_sync = ms == gas - 1
-                x, y = tl.next_batch(args.tbt, args.train_seq_len, gas)
+                x, y = tl.next_batch(args.tbt, args.tsl, gas)
                 with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=True): wl = model(x, y)
                 (wl * grad_scale).backward()
             for opt in opts: opt.step()
@@ -1266,7 +1266,7 @@ def main():
         zero_grad_all(); train_loss = torch.zeros((), device=device)
         for ms in range(gas):
             if distributed: model.require_backward_grad_sync = ms == gas - 1
-            x, y = tl.next_batch(args.tbt, args.train_seq_len, gas)
+            x, y = tl.next_batch(args.tbt, args.tsl, gas)
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=True): loss = model(x, y)
             train_loss += loss.detach(); (loss * grad_scale).backward()
         train_loss /= gas
