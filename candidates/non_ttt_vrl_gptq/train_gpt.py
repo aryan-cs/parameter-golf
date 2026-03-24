@@ -893,23 +893,23 @@ def evl(logits_fn, rank, ws, dv, vt,
     vl = (ls / tc).item()
     return vl, vl / math.log(2.0) * (tc.item() / bc.item())
 
-def rcp(spec: str) -> str:
-    if not spec:
+def rcp(sp: str) -> str:
+    if not sp:
         return ""
-    if spec == "1":
+    if sp == "1":
         return str(PT(EG("OUT_DIR", ".")) / "pre_export_model.pt")
-    return spec
+    return sp
 
-def mspc(path_spec: str, sd: dict[str, th.Tensor], log0):
-    ckpt_path = rcp(path_spec)
-    if not ckpt_path:
+def mspc(ps: str, sd: dict[str, th.Tensor]):
+    cp = rcp(ps)
+    if not cp:
         return ""
     ckpt = {MS: {k: DC(v) for k, v in sd.items()}}
-    path = PT(ckpt_path)
+    path = PT(cp)
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = path.with_suffix(path.suffix + ".tmp")
-    th.save(ckpt, tmp_path)
-    os.replace(tmp_path, path)
+    tp = path.with_suffix(path.suffix + ".tmp")
+    th.save(ckpt, tp)
+    os.replace(tp, path)
     return str(path)
 
 def ree(a, bm, rank, ws, dv, dd, m0,
@@ -949,21 +949,20 @@ def ree(a, bm, rank, ws, dv, dd, m0,
     eb, en = eqm(qm)
     nti = {name: idx for idx, name in enumerate(en)}
     parts = [PK(F4, len(eb)), eb]
-    meta_bytes = 4 + len(eb)
+    mb0 = 4 + len(eb)
     thb = 0
     p6b = 0
     opb = 0
     p6t = 0
-    tensor_order = sorted(qr.keys())
-    for tname in tensor_order:
+    for tname in sorted(qr):
         t = qr[tname]
         bn = tname[:-2] if tname.endswith(QS) else ""
         pi = (
             tname.endswith(QS)
             and mk(qm.get(bn)) == "6"
         )
-        dtype_map = {I8: 0, F16: 1, F32: 2, BF: 3}
-        dt = 5 if pi else dtype_map.get(t.dtype, 2)
+        dm0 = {I8: 0, F16: 1, F32: 2, BF: 3}
+        dt = 5 if pi else dm0.get(t.dtype, 2)
         if pi:
             raw = pi6(t)
         else:
@@ -984,7 +983,7 @@ def ree(a, bm, rank, ws, dv, dd, m0,
     mb = len(model_blob); ts = cb + mb
     log0(
         "ab:"
-        f" m={meta_bytes}"
+        f" m={mb0}"
         f" th={thb}"
         f" p6={p6b}"
         f" op={opb}"
@@ -1011,8 +1010,8 @@ def ree(a, bm, rank, ws, dv, dd, m0,
             ni, suffix, dt, ndim = UF(F5, rd, o); o += 5
             tname = dtr(ni, suffix, en)
         else:
-            name_len = UF("<H", rd, o)[0]; o += 2
-            tname = rd[o:o+name_len].decode(U); o += name_len
+            nl = UF("<H", rd, o)[0]; o += 2
+            tname = rd[o:o+nl].decode(U); o += nl
             dt, ndim = UF("<BB", rd, o); o += 2
         shape = []
         for _ in range(ndim):
@@ -1030,13 +1029,13 @@ def ree(a, bm, rank, ws, dv, dd, m0,
             o += nbytes
             t = ui6(raw, shape)
         else:
-            torch_dt, np_dt = drm[dt]
+            td, nd = drm[dt]
             numel = NM(shape)
-            nbytes = numel * np.dtype(np_dt).itemsize
-            arr = FB(rd, dtype=np_dt, count=numel, offset=o).copy()
+            nbytes = numel * np.dtype(nd).itemsize
+            arr = FB(rd, dtype=nd, count=numel, offset=o).copy()
             o += nbytes
             t = FN(arr).reshape(shape)
-            if torch_dt == BF: t = t.view(BF)
+            if td == BF: t = t.view(BF)
         lr[tname] = t
     deq_state = dsd(lr, lm, sd_cpu)
     bm.load_state_dict(deq_state, 1)
@@ -1227,7 +1226,7 @@ def main():
     cs = gs()
     avg_state = {name: t.to(dtype=cs[name].dtype) for name, t in ema_state.items()}
     ls(avg_state, 1)
-    mspc(a.spc, gs(), log0)
+    mspc(a.spc, gs())
     ree(a, bm, rank, ws, dv, dd, m0,
                     code, vt, bb, hs, ib, log0)
 
