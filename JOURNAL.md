@@ -1186,10 +1186,19 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Next step: After balance is replenished, use [local_resume_existing_export.sh](/Users/aryan/Desktop/golf/runpod/local_resume_existing_export.sh) with pod id `liyrlu10czeqvw` and remote checkpoint path `./final_model.pt` to start the next live recovery attempt.
 
 - Timestamp: 2026-03-24 05:10 CDT
-- Commit: uncommitted
+- Commit: `6ef5f77`
 - Lane: non-ttt VRL offline validation
 - Objective: Re-establish a stronger behavior check for the latest candidate after the recent config-block compaction and recovery-tooling work, using a real CPU model-skeleton export comparison instead of only syntax/readiness checks.
 - Command or config: Ran `uv run --with torch --with numpy --with sentencepiece --with zstandard` locally, loaded the current [train_gpt.py](/Users/aryan/Desktop/golf/candidates/non_ttt_vrl_gptq/train_gpt.py) plus the older `f6c21b2` version from `git show`, instantiated the same fixed-seed VRL `GPT` skeleton in both, quantized via `qsd`, serialized via `eqm`/tensor records/`cmb`, decompressed via `dmb`, and compared the final wrapped blob metrics and SHA-256 hashes.
 - Result: The current candidate and the older `f6c21b2` candidate matched exactly under this stronger CPU harness: `codec=lzma_raw_hc3_16mb`, `blob_size=4265342`, `raw_size=20623636`, and identical SHA-256 `4c790a9145ffe855b6a28b60b1184808add2e6e9074aeba9fec692e3f36824ce`. This is stronger evidence than plain `py_compile` that the latest source-size reductions did not perturb the model-serialization path on the offline skeleton test.
 - Decision: Treat the latest counted-source reductions as behavior-neutral under the current CPU export harness as well as under syntax/readiness checks.
 - Next step: Keep using this stronger local `uv run --with torch ...` comparison before banking future source-size passes, so we have a higher-confidence offline gate while Runpod remains balance-blocked.
+
+- Timestamp: 2026-03-24 05:17 CDT
+- Commit: `4a6d25b`
+- Lane: non-ttt VRL code-size hygiene + recovery validation
+- Objective: Reclaim one more safe counted-size block in the candidate while also fixing the readiness checker so it understands the new delegated resume wrapper correctly.
+- Command or config: Added tiny in-file aliases for `FileNotFoundError`, `RuntimeError`, `np.uint32`, and a shared `non_blocking=1` constant inside [train_gpt.py](/Users/aryan/Desktop/golf/candidates/non_ttt_vrl_gptq/train_gpt.py), updated the loader/codec/eval call sites, and adjusted [check_ready.py](/Users/aryan/Desktop/golf/runpod/check_ready.py) so wrappers can declare different minimum embedded-config counts instead of assuming every wrapper must inline at least five config paths. Then reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, reran `python3 runpod/check_ready.py`, and reran the stronger local `uv run --with torch --with numpy --with sentencepiece --with zstandard` CPU model-skeleton export comparison against the older `f6c21b2` candidate.
+- Result: The candidate file shrank from `52,959` bytes to `52,948` bytes, another `11` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 52,948`, which is `-21,983` bytes. The updated readiness validator still passes and now reports `local_resume_existing_export.sh: 0 config refs` as expected instead of failing. The stronger CPU export comparison still matched exactly against `f6c21b2`: `codec=lzma_raw_hc3_16mb`, `blob_size=4265342`, `raw_size=20623636`, identical SHA-256 `4c790a9145ffe855b6a28b60b1184808add2e6e9074aeba9fec692e3f36824ce`.
+- Decision: Keep both the small alias pass and the readiness-check fix. The size win is tiny, but it is free, and the validator fix matters more because it keeps the new resume wrapper inside the checked launch surface.
+- Next step: Push this pass so the repo stays clean and the next live recovery attempt can rely on a readiness checker that understands the full current recovery toolkit.
