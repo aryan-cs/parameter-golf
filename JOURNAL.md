@@ -212,3 +212,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: March 22 remained slightly better pre-quant (`1.4284` vs `1.4400`), but VRL/GPTQ was decisively better post-quant (`2.3924` vs `2.7577`) while still fitting easily under the size cap (`7.24 MB` vs `6.94 MB` total smoke artifact size).
 - Decision: Promote VRL + Full GPTQ to the primary non-TTT candidate for the eventual 8xH100 run, and keep March 22 as the backup lane.
 - Next step: Commit and push the 8-GPU run configs, then request an `8x H100 SXM` pod so the promoted VRL lane can be validated on leaderboard-relevant hardware.
+
+- Timestamp: 2026-03-23 19:15 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL long-run prep
+- Objective: Get more leaderboard-relevant signal out of the existing single-H100 pod while waiting for 8-GPU hardware.
+- Command or config: Started expanding the dataset from 10 to 80 `sp1024` train shards on the pod and added `configs/runpod/non_ttt_vrl_gptq_1gpu_long.env` with `MAX_WALLCLOCK_SECONDS=5400`, `VAL_LOSS_EVERY=1000`, and `EVAL_STRIDE=64`.
+- Result: The pod is now downloading the full training shard set, and the repo has a long-run VRL config that should approximate the step count of a 600-second 8xH100 job using a single H100 over about 90 minutes.
+- Decision: Once the 80-shard download finishes, launch this long VRL run on the current pod instead of wasting more cycles on tiny-slice proxy runs.
+- Next step: Commit and push the long-run config, then queue the long VRL launch behind the active 80-shard download.
