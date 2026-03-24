@@ -770,3 +770,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The controller now remains compatible with both old and new train logs, so the next export ladder relaunch will still stop as soon as any rung produces a valid-size artifact instead of accidentally running past it.
 - Decision: Keep the compatibility patch in the main lane. The candidate can stay smaller without sacrificing recovery-script correctness.
 - Next step: Push the controller fix so the next live relaunch benefits from the shorter candidate logs and still exits immediately on the first valid artifact.
+
+- Timestamp: 2026-03-24 02:50 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL code-size hygiene
+- Objective: Reclaim another block of counted source bytes by shortening repeated internal identifiers that are local to the candidate file and do not affect the artifact format.
+- Command or config: Renamed a set of repeated local constants and helper functions in `candidates/non_ttt_vrl_gptq/train_gpt.py` (for example control-pattern constants, quant-meta helpers, int6 pack/unpack helpers, and model-blob codec helpers), then reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, reran `python3 runpod/check_ready.py`, and reran the offline codec round-trip validator on a fixed-seed quantized VRL model skeleton.
+- Result: The candidate file shrank from `71,982` bytes to `70,761` bytes, another `1,221` bytes of direct code-payload savings. Compile and readiness checks still passed, and the offline validator still produced the same codec/result (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
+- Decision: Keep the identifier-shortening pass in the main lane. It buys real counted headroom without changing the trained artifact path.
+- Next step: Push the rename pass so the next live export rerun benefits from both the stronger exporter and the smaller counted candidate source.

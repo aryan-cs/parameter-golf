@@ -180,20 +180,20 @@ def eval_val(args, model, rank, world_size, device, grad_accum_steps,
     bpt = val_loss.item() / math.log(2.0); tpb = val_token_count.item() / val_byte_count.item()
     model.train(); return float(val_loss.item()), float(bpt * tpb)
 
-CONTROL_TENSOR_NAME_PATTERNS = tuple(
+CP = tuple(
     p for p in "attn_scale,attn_scales,mlp_scale,mlp_scales,resid_mix,resid_mixes,q_gain,skip_weight,skip_weights,smear,backout_lambda,bigram.scale,ve_layer_scales,ve_shared.scale,vrl_alphas".split(",") if p)
-INT8_KEEP_FLOAT_MAX_NUMEL = 65_536
-INT8_PER_ROW_SCALE_DTYPE = torch.float16
-META_PASSTHROUGH = "p"
-META_PASSTHROUGH_CTRL = "c"
-META_INT6 = 6
-META_INT8 = 8
-META_BLOB_MAGIC = b"QMB1"
-MODEL_BLOB_MAGIC = b"QCB1"
-MODEL_CODEC_ZSTD = 1
-MODEL_CODEC_ZLIB = 2
-MODEL_CODEC_LZMA = 3
-LZMA_FILTERS = [{
+I8K = 65_536
+I8D = torch.float16
+MP = "p"
+MC = "c"
+M6 = 6
+M8 = 8
+QMB = b"QMB1"
+QCB = b"QCB1"
+KZ = 1
+KG = 2
+KL = 3
+LF = [{
     "id": lzma.FILTER_LZMA2,
     "dict_size": 1 << 24,
     "lc": 3,
@@ -214,27 +214,27 @@ def _classify_param(name):
     return "other"
 
 def _meta_kind(info):
-    if info == META_PASSTHROUGH or info == "passthrough":
+    if info == MP or info == "passthrough":
         return "passthrough"
-    if info == META_PASSTHROUGH_CTRL or info == "passthrough_ctrl":
+    if info == MC or info == "passthrough_ctrl":
         return "passthrough_ctrl"
-    if info == META_INT6 or (isinstance(info, dict) and info.get("type") == "int6"):
+    if info == M6 or (isinstance(info, dict) and info.get("type") == "int6"):
         return "int6"
-    if info == META_INT8 or (isinstance(info, dict) and info.get("type") == "int8"):
+    if info == M8 or (isinstance(info, dict) and info.get("type") == "int8"):
         return "int8"
     return None
 
-def encode_quant_meta(meta: dict[str, object]) -> tuple[bytes, list[str]]:
+def eqm(meta: dict[str, object]) -> tuple[bytes, list[str]]:
     names = sorted(meta)
     kind_map = {
-        META_PASSTHROUGH: 0,
-        META_PASSTHROUGH_CTRL: 1,
-        META_INT6: 2,
-        META_INT8: 3,
+        MP: 0,
+        MC: 1,
+        M6: 2,
+        M8: 3,
         "passthrough": 0,
         "passthrough_ctrl": 1,
     }
-    parts = [META_BLOB_MAGIC, struct.pack("<H", len(names))]
+    parts = [QMB, struct.pack("<H", len(names))]
     for name in names:
         kind = meta[name]
         kind_code = kind_map.get(kind)
@@ -248,15 +248,15 @@ def encode_quant_meta(meta: dict[str, object]) -> tuple[bytes, list[str]]:
         parts.append(name_bytes)
     return b"".join(parts), names
 
-def decode_quant_meta(blob: bytes) -> tuple[dict[str, object], list[str], bool]:
-    if blob.startswith(META_BLOB_MAGIC):
-        offset = len(META_BLOB_MAGIC)
+def dqm(blob: bytes) -> tuple[dict[str, object], list[str], bool]:
+    if blob.startswith(QMB):
+        offset = len(QMB)
         entry_count = struct.unpack_from("<H", blob, offset)[0]; offset += 2
         kind_map = {
-            0: META_PASSTHROUGH,
-            1: META_PASSTHROUGH_CTRL,
-            2: META_INT6,
-            3: META_INT8,
+            0: MP,
+            1: MC,
+            2: M6,
+            3: M8,
         }
         meta, names = {}, []
         for _ in range(entry_count):
@@ -267,7 +267,7 @@ def decode_quant_meta(blob: bytes) -> tuple[dict[str, object], list[str], bool]:
         return meta, names, True
     return json.loads(blob.decode("utf-8")), [], False
 
-def encode_tensor_ref(tname: str, name_to_idx: dict[str, int]) -> tuple[int, int]:
+def etr(tname: str, name_to_idx: dict[str, int]) -> tuple[int, int]:
     if tname in name_to_idx:
         return name_to_idx[tname], 0
     if tname.endswith(".q") and tname[:-2] in name_to_idx:
@@ -278,7 +278,7 @@ def encode_tensor_ref(tname: str, name_to_idx: dict[str, int]) -> tuple[int, int
         base_name, suffix = tname, 0
     return name_to_idx[base_name], suffix
 
-def decode_tensor_ref(name_idx: int, suffix: int, names: list[str]) -> str:
+def dtr(name_idx: int, suffix: int, names: list[str]) -> str:
     base_name = names[name_idx]
     if suffix == 1: return base_name + ".q"
     if suffix == 2: return base_name + ".scale"
@@ -373,36 +373,36 @@ def quantize_float_tensor(t):
         clipped = torch.maximum(torch.minimum(t32, clip_abs[:, None]), -clip_abs[:, None])
         scale = (clip_abs / 127.0).clamp_min(1.0 / 127.0)
         q = torch.clamp(torch.round(clipped / scale[:, None]), -127, 127).to(torch.int8).contiguous()
-        return q, scale.to(dtype=INT8_PER_ROW_SCALE_DTYPE).contiguous()
+        return q, scale.to(dtype=I8D).contiguous()
     clip_q = 99.99984 / 100.0
     clip_abs = float(torch.quantile(t32.abs().flatten(), clip_q).item()) if t32.numel() else 0.0
     scale = torch.tensor(clip_abs / 127.0 if clip_abs > 0 else 1.0, dtype=torch.float32)
     q = torch.clamp(torch.round(torch.clamp(t32, -clip_abs, clip_abs) / scale), -127, 127).to(torch.int8).contiguous()
     return q, scale
 
-def quantize_state_dict_mixed(state_dict, hessians=None):
+def qsd(state_dict, hessians=None):
     """Mixed int6/int8 quantization. Uses Full GPTQ when Hessian data available."""
     result, meta = {}, {}
     int6_cats = {"mlp", "attn", "bigram", "ve"}
     for name, tensor in state_dict.items():
         t = tensor.detach().cpu().contiguous()
         cat = _classify_param(name)
-        if not t.is_floating_point() or t.numel() <= INT8_KEEP_FLOAT_MAX_NUMEL:
+        if not t.is_floating_point() or t.numel() <= I8K:
             result[name] = t.to(torch.float16) if t.is_floating_point() else t
-            meta[name] = META_PASSTHROUGH; continue
-        if any(p in name for p in CONTROL_TENSOR_NAME_PATTERNS):
-            result[name] = t.float(); meta[name] = META_PASSTHROUGH_CTRL; continue
+            meta[name] = MP; continue
+        if any(p in name for p in CP):
+            result[name] = t.float(); meta[name] = MC; continue
         if cat in int6_cats and t.ndim >= 1:
             H = hessians.get(name) if hessians else None
             q, s = quantize_int6_gptq(t, hessian=H)
             result[name + ".q"] = q; result[name + ".scale"] = s
-            meta[name] = META_INT6; continue
+            meta[name] = M6; continue
         q, s = quantize_float_tensor(t)
         result[name + ".q"] = q; result[name + ".scale"] = s
-        meta[name] = META_INT8
+        meta[name] = M8
     return result, meta
 
-def dequantize_state_dict_mixed(result, meta, template_sd):
+def dsd(result, meta, template_sd):
     out = {}
     for name, orig in template_sd.items():
         info = meta.get(name)
@@ -432,7 +432,7 @@ def _zigzag_decode_int6(u8: np.ndarray) -> np.ndarray:
     u = u8.astype(np.int16, copy=False)
     return np.where((u & 1) == 0, u // 2, -((u + 1) // 2)).astype(np.int16, copy=False)
 
-def pack_int6_tensor_legacy(t: torch.Tensor) -> bytes:
+def pi6l(t: torch.Tensor) -> bytes:
     q = t.detach().cpu().contiguous()
     if q.dtype != torch.int8:
         raise TypeError(f"expected int8 tensor for int6 packing, got {q.dtype}")
@@ -456,7 +456,7 @@ def pack_int6_tensor_legacy(t: torch.Tensor) -> bytes:
     out[2::3] = ((packed >> 16) & 0xFF).astype(np.uint8)
     return out.tobytes()
 
-def unpack_int6_tensor_legacy(raw: bytes | memoryview, shape: list[int]) -> torch.Tensor:
+def ui6l(raw: bytes | memoryview, shape: list[int]) -> torch.Tensor:
     numel = int(np.prod(shape, dtype=np.int64))
     if numel == 0:
         return torch.empty(shape, dtype=torch.int8)
@@ -474,7 +474,7 @@ def unpack_int6_tensor_legacy(raw: bytes | memoryview, shape: list[int]) -> torc
     arr = u[:numel].astype(np.int16, copy=False) - 31
     return torch.from_numpy(arr.astype(np.int8, copy=False).reshape(shape))
 
-def pack_int6_tensor(t: torch.Tensor) -> bytes:
+def pi6(t: torch.Tensor) -> bytes:
     q = t.detach().cpu().contiguous()
     if q.dtype != torch.int8:
         raise TypeError(f"expected int8 tensor for int6 packing, got {q.dtype}")
@@ -492,7 +492,7 @@ def pack_int6_tensor(t: torch.Tensor) -> bytes:
         out.extend(np.packbits(bits, axis=1, bitorder="little").reshape(-1).tobytes())
     return bytes(out)
 
-def unpack_int6_tensor(raw: bytes | memoryview, shape: list[int]) -> torch.Tensor:
+def ui6(raw: bytes | memoryview, shape: list[int]) -> torch.Tensor:
     numel = int(np.prod(shape, dtype=np.int64))
     if numel == 0:
         return torch.empty(shape, dtype=torch.int8)
@@ -512,38 +512,38 @@ def unpack_int6_tensor(raw: bytes | memoryview, shape: list[int]) -> torch.Tenso
     arr = _zigzag_decode_int6(u[:numel])
     return torch.from_numpy(arr.astype(np.int8, copy=False).reshape(shape))
 
-def _model_codec_name(codec_id: int) -> str:
-    if codec_id == MODEL_CODEC_ZSTD:
+def mcn(codec_id: int) -> str:
+    if codec_id == KZ:
         return "zstd19"
-    if codec_id == MODEL_CODEC_ZLIB:
+    if codec_id == KG:
         return "zlib9"
-    if codec_id == MODEL_CODEC_LZMA:
+    if codec_id == KL:
         return "lzma_raw_hc3_16mb"
     return f"unknown({codec_id})"
 
-def compress_model_blob(raw: bytes) -> tuple[bytes, int]:
+def cmb(raw: bytes) -> tuple[bytes, int]:
     candidates = [
-        (MODEL_CODEC_LZMA, lzma.compress(raw, format=lzma.FORMAT_RAW, filters=LZMA_FILTERS)),
-        (MODEL_CODEC_ZLIB, zlib.compress(raw, level=9)),
+        (KL, lzma.compress(raw, format=lzma.FORMAT_RAW, filters=LF)),
+        (KG, zlib.compress(raw, level=9)),
     ]
     if HAS_ZSTD:
-        candidates.append((MODEL_CODEC_ZSTD, zstd.ZstdCompressor(level=19).compress(raw)))
+        candidates.append((KZ, zstd.ZstdCompressor(level=19).compress(raw)))
     codec_id, payload = min(candidates, key=lambda item: len(item[1]))
-    return MODEL_BLOB_MAGIC + bytes([codec_id]) + payload, codec_id
+    return QCB + bytes([codec_id]) + payload, codec_id
 
-def decompress_model_blob(blob: bytes) -> tuple[bytes, str]:
-    if blob.startswith(MODEL_BLOB_MAGIC):
-        codec_id = blob[len(MODEL_BLOB_MAGIC)]
-        payload = blob[len(MODEL_BLOB_MAGIC) + 1:]
-        if codec_id == MODEL_CODEC_ZSTD:
+def dmb(blob: bytes) -> tuple[bytes, str]:
+    if blob.startswith(QCB):
+        codec_id = blob[len(QCB)]
+        payload = blob[len(QCB) + 1:]
+        if codec_id == KZ:
             if not HAS_ZSTD:
                 raise RuntimeError("artifact uses zstd codec but zstandard is unavailable")
-            return zstd.ZstdDecompressor().decompress(payload), _model_codec_name(codec_id)
-        if codec_id == MODEL_CODEC_ZLIB:
-            return zlib.decompress(payload), _model_codec_name(codec_id)
-        if codec_id == MODEL_CODEC_LZMA:
+            return zstd.ZstdDecompressor().decompress(payload), mcn(codec_id)
+        if codec_id == KG:
+            return zlib.decompress(payload), mcn(codec_id)
+        if codec_id == KL:
             try:
-                return lzma.decompress(payload, format=lzma.FORMAT_RAW, filters=LZMA_FILTERS), _model_codec_name(codec_id)
+                return lzma.decompress(payload, format=lzma.FORMAT_RAW, filters=LF), mcn(codec_id)
             except lzma.LZMAError:
                 return lzma.decompress(payload), "legacy_lzma_hc4_32mb_xz"
         raise ValueError(f"unknown model codec id: {codec_id}")
@@ -608,7 +608,7 @@ class CastedLinear(nn.Linear):
 def restore_low_dim_params_to_fp32(module):
     with torch.no_grad():
         for name, param in module.named_parameters():
-            if (param.ndim < 2 or any(p in name for p in CONTROL_TENSOR_NAME_PATTERNS)) and param.dtype != torch.float32:
+            if (param.ndim < 2 or any(p in name for p in CP)) and param.dtype != torch.float32:
                 param.data = param.data.float()
 
 class Rotary(nn.Module):
@@ -981,7 +981,7 @@ def run_export_eval(args, base_model, rank, world_size, device, distributed, mas
 
     sd_cpu = {k: v.detach().cpu() for k, v in base_model.state_dict().items()}
     code_bytes = len(code.encode("utf-8")); size_limit = 16_000_000
-    quant_result, quant_meta = quantize_state_dict_mixed(sd_cpu, hessians=hessian_map)
+    quant_result, quant_meta = qsd(sd_cpu, hessians=hessian_map)
     if args.prune_pct > 0:
         all_int6_vals = []
         for name, info in quant_meta.items():
@@ -1003,7 +1003,7 @@ def run_export_eval(args, base_model, rank, world_size, device, distributed, mas
                         quant_result[qname][mask] = 0
             total_int6 = sum(quant_result[n + ".q"].numel() for n, i in quant_meta.items() if _meta_kind(i) == "int6" and n + ".q" in quant_result)
             log0(f"prune:{pruned_count}/{total_int6} ({100*pruned_count/max(total_int6,1):.1f}%) thr={threshold:.0f}")
-    meta_blob, meta_names = encode_quant_meta(quant_meta)
+    meta_blob, meta_names = eqm(quant_meta)
     name_to_idx = {name: idx for idx, name in enumerate(meta_names)}
     parts = [struct.pack("<I", len(meta_blob)), meta_blob]
     meta_bytes = 4 + len(meta_blob)
@@ -1022,11 +1022,11 @@ def run_export_eval(args, base_model, rank, world_size, device, distributed, mas
         dtype_map = {torch.int8: 0, torch.float16: 1, torch.float32: 2, torch.bfloat16: 3}
         dt = 5 if pack_int6 else dtype_map.get(t.dtype, 2)
         if pack_int6:
-            raw = pack_int6_tensor(t)
+            raw = pi6(t)
         else:
             t_np = t.contiguous().numpy() if t.dtype != torch.bfloat16 else t.contiguous().view(torch.uint16).numpy()
             raw = t_np.tobytes()
-        name_idx, suffix = encode_tensor_ref(tname, name_to_idx)
+        name_idx, suffix = etr(tname, name_to_idx)
         parts.append(struct.pack("<HBBB", name_idx, suffix, dt, t.ndim))
         tensor_header_bytes += 5 + 4 * t.ndim
         for d in t.shape: parts.append(struct.pack("<I", d))
@@ -1037,7 +1037,7 @@ def run_export_eval(args, base_model, rank, world_size, device, distributed, mas
         else:
             other_payload_bytes += len(raw)
     quant_raw = b"".join(parts)
-    model_blob, model_codec_id = compress_model_blob(quant_raw)
+    model_blob, model_codec_id = cmb(quant_raw)
     model_bytes = len(model_blob); total_size = code_bytes + model_bytes
     log0(
         "ab:"
@@ -1047,7 +1047,7 @@ def run_export_eval(args, base_model, rank, world_size, device, distributed, mas
         f" other_payload={other_payload_bytes}"
         f" raw_total={len(quant_raw)}"
         f" compressed_model={model_bytes}"
-        f" codec={_model_codec_name(model_codec_id)}"
+        f" codec={mcn(model_codec_id)}"
         f" int6_tensors={packed_int6_tensors}"
     )
     log0(f"sizes:m={model_bytes} c={code_bytes} t={total_size} ({total_size/1e6:.2f} MB)")
@@ -1057,17 +1057,17 @@ def run_export_eval(args, base_model, rank, world_size, device, distributed, mas
         with open("final_model.int6.ptz", "wb") as f: f.write(model_blob)
     if distributed: dist.barrier()
     with open("final_model.int6.ptz", "rb") as f: model_blob_loaded = f.read()
-    raw_data, loaded_codec_name = decompress_model_blob(model_blob_loaded)
+    raw_data, loaded_codec_name = dmb(model_blob_loaded)
     log0(f"codec_loaded:{loaded_codec_name}")
     offset = 0
     meta_len = struct.unpack_from("<I", raw_data, offset)[0]; offset += 4
-    loaded_meta, meta_names, compact_tensor_refs = decode_quant_meta(raw_data[offset:offset+meta_len]); offset += meta_len
+    loaded_meta, meta_names, compact_tensor_refs = dqm(raw_data[offset:offset+meta_len]); offset += meta_len
     dtype_rmap = {0: (torch.int8, np.int8), 1: (torch.float16, np.float16), 2: (torch.float32, np.float32), 3: (torch.bfloat16, np.uint16)}
     loaded_result = {}
     while offset < len(raw_data):
         if compact_tensor_refs:
             name_idx, suffix, dt, ndim = struct.unpack_from("<HBBB", raw_data, offset); offset += 5
-            tname = decode_tensor_ref(name_idx, suffix, meta_names)
+            tname = dtr(name_idx, suffix, meta_names)
         else:
             name_len = struct.unpack_from("<H", raw_data, offset)[0]; offset += 2
             tname = raw_data[offset:offset+name_len].decode("utf-8"); offset += name_len
@@ -1080,13 +1080,13 @@ def run_export_eval(args, base_model, rank, world_size, device, distributed, mas
             nbytes = ((numel + 3) // 4) * 3
             raw = memoryview(raw_data)[offset:offset+nbytes]
             offset += nbytes
-            t = unpack_int6_tensor_legacy(raw, shape)
+            t = ui6l(raw, shape)
         elif dt == 5:
             numel = int(np.prod(shape, dtype=np.int64))
             nbytes = ((numel + 7) // 8) * 6
             raw = memoryview(raw_data)[offset:offset+nbytes]
             offset += nbytes
-            t = unpack_int6_tensor(raw, shape)
+            t = ui6(raw, shape)
         else:
             torch_dt, np_dt = dtype_rmap[dt]
             numel = 1
@@ -1097,7 +1097,7 @@ def run_export_eval(args, base_model, rank, world_size, device, distributed, mas
             t = torch.from_numpy(arr).reshape(shape)
             if torch_dt == torch.bfloat16: t = t.view(torch.bfloat16)
         loaded_result[tname] = t
-    deq_state = dequantize_state_dict_mixed(loaded_result, loaded_meta, sd_cpu)
+    deq_state = dsd(loaded_result, loaded_meta, sd_cpu)
     base_model.load_state_dict(deq_state, strict=True)
     eval_sl = args.eval_seq_len if args.eval_seq_len > 0 else args.train_seq_len
     val_tokens_eval = load_validation_tokens(args.val_files, eval_sl) if eval_sl != args.train_seq_len else val_tokens
@@ -1174,8 +1174,8 @@ def main():
                         code, val_tokens, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut, log0)
         return
     block_named_params = list(base_model.blocks.named_parameters())
-    matrix_params = [p for n, p in block_named_params if p.ndim == 2 and not any(pat in n for pat in CONTROL_TENSOR_NAME_PATTERNS)]
-    scalar_params = [p for n, p in block_named_params if p.ndim < 2 or any(pat in n for pat in CONTROL_TENSOR_NAME_PATTERNS)]
+    matrix_params = [p for n, p in block_named_params if p.ndim == 2 and not any(pat in n for pat in CP)]
+    scalar_params = [p for n, p in block_named_params if p.ndim < 2 or any(pat in n for pat in CP)]
     if base_model.skip_weights.numel() > 0: scalar_params.append(base_model.skip_weights)
     if base_model.smear is not None: scalar_params.append(base_model.smear.gate)
     if base_model.backout_lambda is not None: scalar_params.append(base_model.backout_lambda)
