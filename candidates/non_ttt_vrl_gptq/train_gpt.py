@@ -22,22 +22,22 @@ except ImportError:
     HAS_FA3 = False
 
 class H:
-    data_path = EG("DATA_PATH", "./data/datasets/fineweb10B_sp1024")
-    tf = JP(data_path, "fineweb_train_*.bin")
-    vf = JP(data_path, "fineweb_val_*.bin")
-    tokenizer_path = EG("TOKENIZER_PATH", "./data/tokenizers/fineweb_1024_bpe.model")
-    run_id = EG("RUN_ID", str(uuid.uuid4()))
-    seed = int(EG("SEED", 42))
+    dp = EG("DATA_PATH", "./data/datasets/fineweb10B_sp1024")
+    tf = JP(dp, "fineweb_train_*.bin")
+    vf = JP(dp, "fineweb_val_*.bin")
+    tp = EG("TOKENIZER_PATH", "./data/tokenizers/fineweb_1024_bpe.model")
+    rid = EG("RUN_ID", str(uuid.uuid4()))
+    sd = int(EG("SEED", 42))
     vbs = int(EG("VAL_BATCH_SIZE", 524_288))
-    val_loss_every = int(EG("VAL_LOSS_EVERY", 500))
-    train_log_every = int(EG("TRAIN_LOG_EVERY", 200))
-    iterations = int(EG("ITERATIONS", 20000))
-    warmup_steps = int(EG("WARMUP_STEPS", 20))
+    vle = int(EG("VAL_LOSS_EVERY", 500))
+    tle = int(EG("TRAIN_LOG_EVERY", 200))
+    it = int(EG("ITERATIONS", 20000))
+    wus = int(EG("WARMUP_STEPS", 20))
     tbt = int(EG("TRAIN_BATCH_TOKENS", 786_432))
     tsl = int(EG("TRAIN_SEQ_LEN", 2048))
     esl = int(EG("EVAL_SEQ_LEN", 2048))
-    eval_stride = int(EG("EVAL_STRIDE", 64))
-    eval_batch_seqs = int(EG("EVAL_BATCH_SEQS", 256))
+    evs = int(EG("EVAL_STRIDE", 64))
+    ebs = int(EG("EVAL_BATCH_SEQS", 256))
     mws = float(EG("MAX_WALLCLOCK_SECONDS", 600.0))
     qgi = float(EG("QK_GAIN_INIT", 1.5))
     vs = int(EG("VOCAB_SIZE", 1024))
@@ -49,42 +49,42 @@ class H:
     te = bool(int(EG("TIE_EMBEDDINGS", "1")))
     rb = float(EG("ROPE_BASE", 10000.0))
     lsc = float(EG("LOGIT_SOFTCAP", 30.0))
-    embed_lr = float(EG("EMBED_LR", 0.6))
-    head_lr = float(EG("HEAD_LR", 0.008))
-    tied_embed_lr = float(EG("TIED_EMBED_LR", 0.035))
+    elr = float(EG("EMBED_LR", 0.6))
+    hlr = float(EG("HEAD_LR", 0.008))
+    telr = float(EG("TIED_EMBED_LR", 0.035))
     teis = float(EG("TIED_EMBED_INIT_STD", 0.005))
-    matrix_lr = float(EG("MATRIX_LR", 0.025))
-    scalar_lr = float(EG("SCALAR_LR", 0.025))
-    muon_momentum = float(EG("MUON_MOMENTUM", 0.99))
-    muon_ns_steps = int(EG("MUON_NS_STEPS", 5))
-    muon_momentum_warmup_start = float(EG("MUON_MOMENTUM_WARMUP_START", 0.92))
-    muon_momentum_warmup_steps = int(EG("MUON_MOMENTUM_WARMUP_STEPS", 1500))
-    muon_wd = float(EG("MUON_WD", 0.04))
+    mlr = float(EG("MATRIX_LR", 0.025))
+    slr = float(EG("SCALAR_LR", 0.025))
+    mum = float(EG("MUON_MOMENTUM", 0.99))
+    mns = int(EG("MUON_NS_STEPS", 5))
+    mmst = float(EG("MUON_MOMENTUM_WARMUP_START", 0.92))
+    mmws = int(EG("MUON_MOMENTUM_WARMUP_STEPS", 1500))
+    mwd = float(EG("MUON_WD", 0.04))
     beta1 = float(EG("BETA1", 0.9))
     beta2 = float(EG("BETA2", 0.95))
-    adam_eps = float(EG("ADAM_EPS", 1e-8))
-    adam_wd = float(EG("ADAM_WD", 0.04))
-    grad_clip_norm = float(EG("GRAD_CLIP_NORM", 0.3))
+    aep = float(EG("ADAM_EPS", 1e-8))
+    awd = float(EG("ADAM_WD", 0.04))
+    gcn = float(EG("GRAD_CLIP_NORM", 0.3))
     se = bool(int(EG("SMEAR_ENABLED", "1")))
     be = bool(int(EG("BACKOUT_ENABLED", "0")))
-    backout_init = float(EG("BACKOUT_INIT", 0.2))
-    ema_decay = float(EG("EMA_DECAY", 0.997))
-    swa_enabled = bool(int(EG("SWA_ENABLED", "1")))
-    swa_interval = int(EG("SWA_INTERVAL", 50))
+    boi = float(EG("BACKOUT_INIT", 0.2))
+    ed = float(EG("EMA_DECAY", 0.997))
+    swe = bool(int(EG("SWA_ENABLED", "1")))
+    swi = int(EG("SWA_INTERVAL", 50))
     wdi = int(EG("WARMDOWN_ITERS", 3500))
     lqt = float(EG("LATE_QAT_THRESHOLD", 0.15))
     bgvs = int(EG("BIGRAM_VOCAB_SIZE", 2048))
     bgd = int(EG("BIGRAM_DIM", 128))
     xsn = int(EG("XSA_LAST_N", 11))
     rd = int(EG("ROPE_DIMS", 16))
-    ln_scale = bool(int(EG("LN_SCALE", "1")))
+    lns = bool(int(EG("LN_SCALE", "1")))
     vee = bool(int(EG("VE_ENABLED", "1")))
     ved = int(EG("VE_DIM", 128))
     vel = EG("VE_LAYERS", "9,10")
-    gptq_calib_batches = int(EG("GPTQ_CALIB_BATCHES", 256))
-    gptq_block_size = int(EG("GPTQ_BLOCK_SIZE", 128))
-    qat_clip_pct = float(EG("QAT_CLIP_PCT", 0.9995))
-    prune_pct = float(EG("PRUNE_PCT", 0.02))
+    gcb = int(EG("GPTQ_CALIB_BATCHES", 256))
+    gbs = int(EG("GPTQ_BLOCK_SIZE", 128))
+    qcp = float(EG("QAT_CLIP_PCT", 0.9995))
+    pp = float(EG("PRUNE_PCT", 0.02))
     spc = EG("SAVE_PRE_EXPORT_CHECKPOINT", "")
     eoc = EG("EXPORT_ONLY_CHECKPOINT", "")
 
@@ -966,7 +966,7 @@ def ree(a, bm, rank, ws, device, dd, master,
                     code, vt, bb, hs, ib, log0):
     cl = DTL(a.tf, rank, ws, device)
     hessians = chs(bm, cl, a, device, 8 // ws,
-                                num_batches=a.gptq_calib_batches)
+                                num_batches=a.gcb)
     hm = {}
     for name, module in bm.named_modules():
         if isinstance(module, CL):
@@ -977,7 +977,7 @@ def ree(a, bm, rank, ws, device, dd, master,
     sd_cpu = {k: v.detach().cpu() for k, v in bm.state_dict().items()}
     cb = len(code.encode("utf-8")); sl = 16_000_000
     qr, qm = qsd(sd_cpu, hessians=hm)
-    if a.prune_pct > 0:
+    if a.pp > 0:
         ai6 = []
         for name, info in qm.items():
             if _meta_kind(info) == "int6":
@@ -986,7 +986,7 @@ def ree(a, bm, rank, ws, device, dd, master,
                     ai6.append(qr[qname].flatten().abs().float())
         if ai6:
             all_vals = CAT(ai6)
-            k = max(1, int(a.prune_pct * all_vals.numel()))
+            k = max(1, int(a.pp * all_vals.numel()))
             threshold = all_vals.kthvalue(k).values.item()
             prc = 0
             for name, info in qm.items():
@@ -1096,13 +1096,13 @@ def ree(a, bm, rank, ws, device, dd, master,
     eval_sl = a.esl if a.esl > 0 else a.tsl
     vte = load_validation_tokens(a.val_files, eval_sl) if eval_sl != a.tsl else vt
     raw_logits_fn = CMP(bm.forward_logits, dynamic=False) if not bool(int(EG("TORCH_COMPILE_DISABLE", "0"))) else bm.forward_logits
-    warmup_x = Z(a.eval_batch_seqs, eval_sl, dtype=I64, device=device)
+    warmup_x = Z(a.ebs, eval_sl, dtype=I64, device=device)
     bm.eval()
     with IM(), AC(device_type="cuda", dtype=BF): _ = raw_logits_fn(warmup_x)
     SY(); t_eval = PC()
     q_vl, q_vb = eval_val_sliding(raw_logits_fn, rank, ws, device,
         vte, bb, hs, ib,
-        eval_sl, a.eval_stride, ebs=a.eval_batch_seqs)
+        eval_sl, a.evs, ebs=a.ebs)
     SY(); eval_time = PC() - t_eval
     log0(f"final_int6 val_loss:{q_vl:.4f} val_bpb:{q_vb:.4f} eval_time:{eval_time*1000:.0f}ms")
     log0(f"final_int6_exact val_loss:{q_vl:.8f} val_bpb:{q_vb:.8f}")
@@ -1126,26 +1126,26 @@ def main():
         from th.backends.cuda import enable_cudnn_sdp, enable_flash_sdp, enable_math_sdp, enable_mem_efficient_sdp
         enable_cudnn_sdp(False); enable_flash_sdp(True); enable_mem_efficient_sdp(False); enable_math_sdp(False)
     logfile = None
-    if master: os.makedirs("logs", exist_ok=True); logfile = f"logs/{a.run_id}.txt"; print(logfile)
+    if master: os.makedirs("logs", exist_ok=True); logfile = f"logs/{a.rid}.txt"; print(logfile)
     def log0(msg, console=True):
         if not master: return
         if console: print(msg)
         if logfile:
             with open(logfile, "a", encoding="utf-8") as f: print(msg, file=f)
-    random.seed(a.seed); np.random.seed(a.seed); th.manual_seed(a.seed); th.cuda.manual_seed_all(a.seed)
-    sp = spm.SentencePieceProcessor(model_file=a.tokenizer_path)
+    random.seed(a.sd); np.random.seed(a.sd); th.manual_seed(a.sd); th.cuda.manual_seed_all(a.sd)
+    sp = spm.SentencePieceProcessor(model_file=a.tp)
     vt = load_validation_tokens(a.vf, a.tsl)
     bb, hs, ib = build_sentencepiece_luts(sp, a.vs, device)
     CL._qat_enabled = False
-    CL._qat_clip_pct = a.qat_clip_pct
+    CL._qat_clip_pct = a.qcp
     bm = GPT(
         vs=a.vs, nl=a.nl, dm=a.dm,
         nh=a.nh, nkh=a.nkh, mm=a.mm,
         te=a.te, teis=a.teis,
         lsc=a.lsc, rb=a.rb, qgi=a.qgi,
-        se=a.se, be=a.be, backout_init=a.backout_init,
+        se=a.se, be=a.be, backout_init=a.boi,
         bgvs=a.bgvs, bgd=a.bgd,
-        xsn=a.xsn, rd=a.rd, ln_scale=a.ln_scale,
+        xsn=a.xsn, rd=a.rd, ln_scale=a.lns,
         vee=a.vee, ved=a.ved, vel=a.vel,
     ).to(device).bfloat16()
     for m in bm.modules():
@@ -1173,7 +1173,7 @@ def main():
         for s in bm.ve_layer_scales: scalar_params.append(s)
     if bm.vrl_enabled:
         for alpha in bm.vrl_alphas: scalar_params.append(alpha)
-    token_lr = a.tied_embed_lr if a.te else a.embed_lr
+    token_lr = a.telr if a.te else a.elr
     tok_param_groups = [{"params": [bm.tok_emb.weight], "lr": token_lr, "base_lr": token_lr}]
     if bm.bigram is not None:
         tok_param_groups.append({"params": [bm.bigram.embed.weight], "lr": token_lr, "base_lr": token_lr})
@@ -1181,15 +1181,15 @@ def main():
     if bm.ve_shared is not None:
         tok_param_groups.append({"params": [bm.ve_shared.embed.weight], "lr": token_lr, "base_lr": token_lr})
         if bm.ve_shared.proj is not None: matrix_params.append(bm.ve_shared.proj.weight)
-    optimizer_tok = th.optim.AdamW(tok_param_groups, betas=(a.beta1, a.beta2), eps=a.adam_eps, weight_decay=a.adam_wd, fused=True)
-    optimizer_muon = Muon(matrix_params, lr=a.matrix_lr, momentum=a.muon_momentum, ns_steps=a.muon_ns_steps, wd=a.muon_wd)
-    for group in optimizer_muon.param_groups: group["base_lr"] = a.matrix_lr
-    optimizer_scalar = th.optim.AdamW([{"params": scalar_params, "lr": a.scalar_lr, "base_lr": a.scalar_lr}],
-                                          betas=(a.beta1, a.beta2), eps=a.adam_eps, weight_decay=a.adam_wd, fused=True)
+    optimizer_tok = th.optim.AdamW(tok_param_groups, betas=(a.beta1, a.beta2), eps=a.aep, weight_decay=a.awd, fused=True)
+    optimizer_muon = Muon(matrix_params, lr=a.mlr, momentum=a.mum, ns_steps=a.mns, wd=a.mwd)
+    for group in optimizer_muon.param_groups: group["base_lr"] = a.mlr
+    optimizer_scalar = th.optim.AdamW([{"params": scalar_params, "lr": a.slr, "base_lr": a.slr}],
+                                          betas=(a.beta1, a.beta2), eps=a.aep, weight_decay=a.awd, fused=True)
     opts = [optimizer_tok, optimizer_muon, optimizer_scalar]
     if bm.lm_head is not None:
-        optimizer_head = th.optim.Adam([{"params": [bm.lm_head.weight], "lr": a.head_lr, "base_lr": a.head_lr}],
-                                           betas=(a.beta1, a.beta2), eps=a.adam_eps, fused=True)
+        optimizer_head = th.optim.Adam([{"params": [bm.lm_head.weight], "lr": a.hlr, "base_lr": a.hlr}],
+                                           betas=(a.beta1, a.beta2), eps=a.aep, fused=True)
         opts.insert(1, optimizer_head)
     tl = DTL(a.tf, rank, ws, device)
     def zero_grad_all():
@@ -1198,17 +1198,17 @@ def main():
     def lr_mul(step, elapsed_ms):
         if a.wdi <= 0: return 1.0
         if max_wallclock_ms is None:
-            wd0 = max(a.iterations - a.wdi, 0)
-            return max((a.iterations - step) / max(a.wdi, 1), 0.0) if step >= wd0 else 1.0
+            wd0 = max(a.it - a.wdi, 0)
+            return max((a.it - step) / max(a.wdi, 1), 0.0) if step >= wd0 else 1.0
         step_ms = elapsed_ms / max(step, 1); wd_ms = a.wdi * step_ms
         rem_ms = max(max_wallclock_ms - elapsed_ms, 0.0)
         return rem_ms / max(wd_ms, 1e-9) if rem_ms <= wd_ms else 1.0
 
-    if a.warmup_steps > 0:
+    if a.wus > 0:
         initial_model_state = {n: t.detach().cpu().clone() for n, t in bm.state_dict().items()}
         initial_optimizer_states = [copy.deepcopy(opt.state_dict()) for opt in opts]
         model.train()
-        for wi in range(a.warmup_steps):
+        for wi in range(a.wus):
             zero_grad_all()
             for ms in range(gas):
                 if dd: model.require_backward_grad_sync = ms == gas - 1
@@ -1227,17 +1227,17 @@ def main():
     swa_state, swa_count = None, 0
     SY(); t0 = PC(); step = 0
     while True:
-        last_step = step == a.iterations or (stop_after_step is not None and step >= stop_after_step)
-        should_validate = last_step or (a.val_loss_every > 0 and step % a.val_loss_every == 0)
+        last_step = step == a.it or (stop_after_step is not None and step >= stop_after_step)
+        should_validate = last_step or (a.vle > 0 and step % a.vle == 0)
         if should_validate:
             SY(); ttms += 1000.0 * (PC() - t0)
             vl, vb = eval_val(a, model, rank, ws, device, gas,
                               vt, bb, hs, ib)
-            log0(f"step:{step}/{a.iterations} val_loss:{vl:.4f} val_bpb:{vb:.4f} train_time:{ttms:.0f}ms step_avg:{ttms/max(step,1):.2f}ms")
+            log0(f"step:{step}/{a.it} val_loss:{vl:.4f} val_bpb:{vb:.4f} train_time:{ttms:.0f}ms step_avg:{ttms/max(step,1):.2f}ms")
             SY(); t0 = PC()
         if last_step:
-            if stop_after_step is not None and step < a.iterations:
-                log0(f"stop:wall train:{ttms:.0f}ms step:{step}/{a.iterations}")
+            if stop_after_step is not None and step < a.it:
+                log0(f"stop:wall train:{ttms:.0f}ms step:{step}/{a.it}")
             break
         elapsed_ms = ttms + 1000.0 * (PC() - t0)
         scale = lr_mul(step, elapsed_ms)
@@ -1250,28 +1250,28 @@ def main():
             with AC(device_type="cuda", dtype=BF, enabled=True): loss = model(x, y)
             train_loss += loss.detach(); (loss * grad_scale).backward()
         train_loss /= gas
-        frac = min(step / a.muon_momentum_warmup_steps, 1.0) if a.muon_momentum_warmup_steps > 0 else 1.0
+        frac = min(step / a.mmws, 1.0) if a.mmws > 0 else 1.0
         for group in optimizer_muon.param_groups:
-            group["momentum"] = (1-frac)*a.muon_momentum_warmup_start + frac*a.muon_momentum
+            group["momentum"] = (1-frac)*a.mmst + frac*a.mum
         for opt in opts:
             for group in opt.param_groups: group["lr"] = group["base_lr"] * scale
-        if a.grad_clip_norm > 0: th.nn.utils.clip_grad_norm_(bm.parameters(), a.grad_clip_norm)
+        if a.gcn > 0: th.nn.utils.clip_grad_norm_(bm.parameters(), a.gcn)
         for opt in opts: opt.step()
         zero_grad_all()
         with NG():
             for name, t in bm.state_dict().items():
-                ema_state[name].mul_(a.ema_decay).add_(t.detach().float(), alpha=1.0 - a.ema_decay)
+                ema_state[name].mul_(a.ed).add_(t.detach().float(), alpha=1.0 - a.ed)
         step += 1
         approx_ms = ttms + 1000.0 * (PC() - t0)
-        if a.swa_enabled and scale < 0.2 and step % a.swa_interval == 0:
+        if a.swe and scale < 0.2 and step % a.swi == 0:
             if swa_state is None:
                 swa_state = {n: t.detach().cpu().clone() for n, t in bm.state_dict().items()}
                 swa_count = 1
             else:
                 for n, t in bm.state_dict().items(): swa_state[n] += t.detach().cpu()
                 swa_count += 1
-        if a.train_log_every > 0 and (step <= 10 or step % a.train_log_every == 0):
-            log0(f"step:{step}/{a.iterations} train_loss:{train_loss.item():.4f} train_time:{approx_ms:.0f}ms step_avg:{approx_ms/step:.2f}ms")
+        if a.tle > 0 and (step <= 10 or step % a.tle == 0):
+            log0(f"step:{step}/{a.it} train_loss:{train_loss.item():.4f} train_time:{approx_ms:.0f}ms step_avg:{approx_ms/step:.2f}ms")
         reached_cap = max_wallclock_ms is not None and approx_ms >= max_wallclock_ms
         if dd and max_wallclock_ms is not None:
             rct = TT(int(reached_cap), device=device); ARD(rct, op=ROP.MAX); reached_cap = bool(rct.item())
