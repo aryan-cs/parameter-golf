@@ -272,9 +272,11 @@ def decode_quant_meta(blob: bytes) -> tuple[dict[str, object], list[str], bool]:
     return json.loads(blob.decode("utf-8")), [], False
 
 def encode_tensor_ref(tname: str, name_to_idx: dict[str, int]) -> tuple[int, int]:
-    if tname.endswith(".q"):
+    if tname in name_to_idx:
+        return name_to_idx[tname], 0
+    if tname.endswith(".q") and tname[:-2] in name_to_idx:
         base_name, suffix = tname[:-2], 1
-    elif tname.endswith(".scale"):
+    elif tname.endswith(".scale") and tname[:-6] in name_to_idx:
         base_name, suffix = tname[:-6], 2
     else:
         base_name, suffix = tname, 0

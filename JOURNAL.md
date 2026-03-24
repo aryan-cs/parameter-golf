@@ -653,3 +653,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: HEAD was `3e06011`, the worktree was clean, and `runpod/check_ready.py` still reported `OK` with both recovery wrappers pointing at the expected 5-config chains and 22 verified config files.
 - Decision: Keep the repo unchanged until credits land; the current bottleneck remains live H100 access rather than local code readiness.
 - Next step: Push this verification note, then resume the VRL recovery/export chain on the next pod the moment credits are available.
+
+- Timestamp: 2026-03-24 03:23 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL export compression
+- Objective: Use a temporary CPU `torch` import path to quantify the real remaining header savings offline and to sanity-check the compact tensor-ref encoder against the actual VRL model state.
+- Command or config: Ran `uv run --with torch` to import `candidates/non_ttt_vrl_gptq/train_gpt.py`, instantiate the default `GPT`, quantize its state dict without Hessians, and compare old JSON/header accounting against the new compact metadata + tensor-ref format. While doing that, hit a real bug where `encode_tensor_ref` misclassified passthrough tensors like `bigram.scale` as synthetic `.scale` suffix records; patched the encoder to prefer exact-name matches before applying suffix compression. Re-ran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py` and the CPU-torch probe after the fix.
+- Result: The compact header work is real but small: `meta_savings=381` bytes, `tensor_header_savings=4691` bytes, `total_header_savings=5072` bytes for the full VRL model. The packed-int6 change is still the dominant size lever, with `26,345,472` int6 values corresponding to `6,586,368` raw-byte savings versus old int8-byte storage. The tensor-ref encoder bug is now fixed before the next live run.
+- Decision: Keep the compact header path because it is correct and free, but treat packed int6 plus pruning as the actual byte-cap solution. Stop spending offline time on ever-smaller header tweaks.
+- Next step: Push the bug fix + measured header findings, then wait for the next H100 pod so the live artifact can validate the packed-int6 path under real compression.
