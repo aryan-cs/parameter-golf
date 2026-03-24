@@ -1,8 +1,8 @@
 from __future__ import annotations
 import copy, glob, io, json, lzma, math, os, random, struct, subprocess, sys, time, uuid, zlib
 try:
-    import zstandard as zstd; HAS_ZSTD = True
-except ImportError: HAS_ZSTD = False
+    import zstandard as zstd; HZ = True
+except ImportError: HZ = False
 from pathlib import Path
 import numpy as np
 import sentencepiece as spm
@@ -184,7 +184,7 @@ def mk(info):
 
 def eqm(meta: dict[str, object]) -> tuple[bytes, list[str]]:
     names = sorted(meta)
-    kind_map = {
+    km = {
         MP: 0,
         MC: 1,
         M6: 2,
@@ -195,7 +195,7 @@ def eqm(meta: dict[str, object]) -> tuple[bytes, list[str]]:
     parts = [QMB, PK("<H", len(names))]
     for name in names:
         kind = meta[name]
-        kc = kind_map.get(kind)
+        kc = km.get(kind)
         if kc is None:
             kn = mk(kind)
             if kn == "6": kc = 2
@@ -209,18 +209,18 @@ def eqm(meta: dict[str, object]) -> tuple[bytes, list[str]]:
 def dqm(blob: bytes) -> tuple[dict[str, object], list[str], bool]:
     if blob.startswith(QMB):
         o = len(QMB)
-        entry_count = UF("<H", blob, o)[0]; o += 2
-        kind_map = {
+        ec = UF("<H", blob, o)[0]; o += 2
+        km = {
             0: MP,
             1: MC,
             2: M6,
             3: M8,
         }
         meta, names = {}, []
-        for _ in range(entry_count):
-            name_len, kind_code = UF(F3, blob, o); o += 3
-            name = blob[o:o+name_len].decode(U); o += name_len
-            meta[name] = kind_map[kind_code]
+        for _ in range(ec):
+            nl, kc = UF(F3, blob, o); o += 3
+            name = blob[o:o+nl].decode(U); o += nl
+            meta[name] = km[kc]
             names.append(name)
         return meta, names, True
     return json.loads(blob.decode(U)), [], False
@@ -236,8 +236,8 @@ def etr(tname: str, nti: dict[str, int]) -> tuple[int, int]:
         bn, suffix = tname, 0
     return nti[bn], suffix
 
-def dtr(name_idx: int, suffix: int, names: list[str]) -> str:
-    bn = names[name_idx]
+def dtr(ni: int, suffix: int, names: list[str]) -> str:
+    bn = names[ni]
     if suffix == 1: return bn + QS
     if suffix == 2: return bn + SS
     return bn
@@ -478,7 +478,7 @@ def cmb(raw: bytes) -> tuple[bytes, int]:
         (KL, lzma.compress(raw, format=lzma.FORMAT_RAW, filters=LF)),
         (KG, zlib.compress(raw, level=9)),
     ]
-    if HAS_ZSTD:
+    if HZ:
         candidates.append((KZ, zstd.ZstdCompressor(level=19).compress(raw)))
     cid, payload = min(candidates, key=lambda item: len(item[1]))
     return QCB + bytes([cid]) + payload, cid
@@ -488,7 +488,7 @@ def dmb(blob: bytes) -> tuple[bytes, str]:
         cid = blob[len(QCB)]
         payload = blob[len(QCB) + 1:]
         if cid == KZ:
-            if not HAS_ZSTD:
+            if not HZ:
                 raise RE("zstd unavailable")
             return zstd.ZstdDecompressor().decompress(payload), mcn(cid)
         if cid == KG:
@@ -499,7 +499,7 @@ def dmb(blob: bytes) -> tuple[bytes, str]:
             except lzma.LZMAError:
                 return lzma.decompress(payload), "x"
         raise ER(f"bad codec {cid}")
-    if HAS_ZSTD:
+    if HZ:
         try:
             return zstd.ZstdDecompressor().decompress(blob), "zs"
         except Exception:
@@ -950,10 +950,10 @@ def ree(a, bm, rank, ws, dv, dd, m0,
                         qr[qname][mask] = 0
             ti6 = sum(qr[n + ".q"].numel() for n, i in qm.items() if mk(i) == "6" and n + ".q" in qr)
             log0(f"prune:{prc}/{ti6} ({100*prc/max(ti6,1):.1f}%) thr={threshold:.0f}")
-    meta_blob, meta_names = eqm(qm)
-    nti = {name: idx for idx, name in enumerate(meta_names)}
-    parts = [PK(F4, len(meta_blob)), meta_blob]
-    meta_bytes = 4 + len(meta_blob)
+    eb, en = eqm(qm)
+    nti = {name: idx for idx, name in enumerate(en)}
+    parts = [PK(F4, len(eb)), eb]
+    meta_bytes = 4 + len(eb)
     thb = 0
     p6b = 0
     opb = 0
@@ -973,8 +973,8 @@ def ree(a, bm, rank, ws, dv, dd, m0,
         else:
             t_np = t.contiguous().numpy() if t.dtype != BF else t.contiguous().view(U16).numpy()
             raw = t_np.tobytes()
-        name_idx, suffix = etr(tname, nti)
-        parts.append(PK(F5, name_idx, suffix, dt, t.ndim))
+        ni, suffix = etr(tname, nti)
+        parts.append(PK(F5, ni, suffix, dt, t.ndim))
         thb += 5 + 4 * t.ndim
         for d in t.shape: parts.append(PK(F4, d))
         parts.append(raw)
@@ -984,7 +984,7 @@ def ree(a, bm, rank, ws, dv, dd, m0,
         else:
             opb += len(raw)
     quant_raw = b"".join(parts)
-    model_blob, model_codec_id = cmb(quant_raw)
+    model_blob, mc = cmb(quant_raw)
     mb = len(model_blob); ts = cb + mb
     log0(
         "ab:"
@@ -994,7 +994,7 @@ def ree(a, bm, rank, ws, dv, dd, m0,
         f" op={opb}"
         f" rt={len(quant_raw)}"
         f" cm={mb}"
-        f" cd={mcn(model_codec_id)}"
+        f" cd={mcn(mc)}"
         f" t6={p6t}"
     )
     log0(f"sz:m={mb} c={cb} t={ts}({ts/1e6:.2f}M)")
@@ -1003,17 +1003,17 @@ def ree(a, bm, rank, ws, dv, dd, m0,
     if m0:
         with open(FM, "wb") as f: f.write(model_blob)
     if dd: BR()
-    with open(FM, "rb") as f: model_blob_loaded = f.read()
-    rd, _ = dmb(model_blob_loaded)
+    with open(FM, "rb") as f: md = f.read()
+    rd, _ = dmb(md)
     o = 0
-    meta_len = UF(F4, rd, o)[0]; o += 4
-    lm, meta_names, ctr = dqm(rd[o:o+meta_len]); o += meta_len
+    ml = UF(F4, rd, o)[0]; o += 4
+    lm, en, ctr = dqm(rd[o:o+ml]); o += ml
     drm = {0: (I8, np.int8), 1: (F16, np.float16), 2: (F32, np.float32), 3: (BF, np.uint16)}
     lr = {}
     while o < len(rd):
         if ctr:
-            name_idx, suffix, dt, ndim = UF(F5, rd, o); o += 5
-            tname = dtr(name_idx, suffix, meta_names)
+            ni, suffix, dt, ndim = UF(F5, rd, o); o += 5
+            tname = dtr(ni, suffix, en)
         else:
             name_len = UF("<H", rd, o)[0]; o += 2
             tname = rd[o:o+name_len].decode(U); o += name_len
