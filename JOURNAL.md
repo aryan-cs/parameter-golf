@@ -1841,3 +1841,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The current exact run improved again to `step:3500/9000 val_loss:2.0731 val_bpb:1.2278 train_time:2600169ms step_avg:742.91ms`, which is our best H200 intermediate score so far. The queued search is now more aggressive without becoming messy: it covers the two strongest surviving low-risk knobs and their combination, all on the exact same underlying stack.
 - Decision: Keep the current run untouched and keep the expanded queue in place. The current lane is still improving, and the new queue gives us a better chance of finding a modest local win on this single H200 without losing interpretability.
 - Next step: Let the current exact run complete, then let the queued `VALUE_RESIDUAL=1`, `BIGRAM_VOCAB_SIZE=3072`, and `VALUE_RESIDUAL=1 + BIGRAM_VOCAB_SIZE=3072` follow-ups run in sequence if the completed result is still not good enough.
+
+- Timestamp: 2026-03-24 18:57 UTC
+- Commit: `81823ce`
+- Lane: H200 exact-TTT monitoring
+- Objective: Check whether the exact `80`-shard TTT run is still improving materially into the later middle of training before the final evaluation phase.
+- Command or config: Let the live exact-TTT run advance to the `step:4000` validation interval and read the updated log from `records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs/h200_ttt_recordstack_80shard_seed1337.txt` while confirming the H200 remained saturated.
+- Result: The current exact run reached `step:4000/9000 val_loss:2.0664 val_bpb:1.2239 train_time:2972072ms step_avg:743.02ms`, improving again over the previous best intermediate checkpoint `1.2278` at `step:3500`. GPU telemetry remained healthy during the interval (`100%` utilization, about `24.2 GiB`, about `560 W`).
+- Decision: Keep the exact run untouched. The curve is still moving in the right direction, and there is still no sign of instability that would justify interrupting it before the final int6/sliding/legal-TTT evaluation.
+- Next step: Let this exact run finish, then compare the completed metrics and bytes against the queued `VALUE_RESIDUAL=1`, `BIGRAM_VOCAB_SIZE=3072`, and combo follow-ups as they execute.
