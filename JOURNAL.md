@@ -635,3 +635,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The next live run will tell us exactly where the remaining bytes are going, which will make it much easier to decide whether further pruning is needed or whether another format tweak is the right follow-up. Runpod readiness still reports `OK`.
 - Decision: Keep this logging in the main lane; it is low-risk and directly improves the speed of the next debug cycle if the first post-credit rerun is still close to the cap.
 - Next step: Push the instrumentation so the remote repo is fully launch-ready before credits land.
+
+- Timestamp: 2026-03-24 03:02 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL export readiness
+- Objective: Check whether there is any other safe offline improvement left before credits land, and document the actual remaining blocker honestly.
+- Command or config: Inspected the tail of `candidates/non_ttt_vrl_gptq/train_gpt.py` to confirm a clean `__main__` guard, then attempted an offline import of the training module via `uv run python` to estimate model/header structure directly. The import failed locally with `ModuleNotFoundError: No module named 'torch'`. Also reran the exporter syntax and readiness checks earlier in the work block.
+- Result: There are no more high-confidence offline changes left that can be validated on this machine without a CUDA-capable environment and `torch`. The repo is launch-ready, but real progress from here requires a fresh Runpod pod to measure the live artifact after the packed-int6, compact-header, and artifact-breakdown changes.
+- Decision: Stop speculative offline churn and wait for credits / a fresh pod instead of making unvalidated format changes.
+- Next step: Relaunch the VRL recovery/export chain on the next pod and use the new artifact breakdown logs to drive any remaining byte-cap sweeps.
