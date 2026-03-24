@@ -155,14 +155,13 @@ KG = 2
 KL = 3
 LF = [{
     "id": lzma.FILTER_LZMA2,
-    "dict_size": 9<<21,
+    "dict_size": 17<<20,
     "lc": 0,
-    "lp": 0,
-    "pb": 1,
+    "lp": 1,
+    "pb": 0,
     "mode": lzma.MODE_NORMAL,
-    "nice_len": 72,
+    "nice_len": 68,
     "mf": lzma.MF_HC4,
-    "depth": 1,
 }]
 
 def cpm(name):
