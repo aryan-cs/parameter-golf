@@ -1346,3 +1346,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The candidate file shrank from `52,593` bytes to `52,583` bytes, another `10` bytes of direct code-payload savings. This patch does not touch `LF`, `cmb()`, or the serialized artifact format; it only shortens human-readable diagnostic labels returned by `mcn()` and the legacy fallback name in `dmb()`. Readiness still passes: `runpod readiness check: OK`.
 - Decision: Keep the shorter labels. This is another free counted-size win with no effect on compressor choice, artifact bytes, or decompression logic.
 - Next step: Push this tiny hygiene pass so the repo stays on the smallest counted candidate while preserving the current best-known `l0762` exporter path for the next live export-only rerun.
+
+- Timestamp: 2026-03-24 06:42 CDT
+- Commit: `1535e60`
+- Lane: non-ttt VRL code-size hygiene
+- Objective: Reclaim another chunk of counted bytes by shortening long file-internal helper and method names that do not affect artifact format, checkpoint/state-dict keys, or runpod parsing.
+- Command or config: Renamed only internal helpers and method symbols in [train_gpt.py](/Users/aryan/Desktop/golf/candidates/non_ttt_vrl_gptq/train_gpt.py): `eval_val -> evv`, `_zigzag_encode_int6 -> ze6`, `_zigzag_decode_int6 -> zd6`, `forward_logits -> fwl`, and the local `transposed -> tr`. Then reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, reran `python3 runpod/check_ready.py`, and ran a small `uv run --with torch --with numpy --with sentencepiece --with zstandard` runtime smoke test that verified `ze6/zd6` round-trip on sample int6 values, `cmb()/dmb()` round-trip on sample bytes, and the renamed `bm.fwl()` path on a tiny CPU model.
+- Result: The candidate file shrank from `52,583` bytes to `52,452` bytes, another `131` bytes of direct code-payload savings. Compile and readiness checks still passed, and the runtime smoke test succeeded with `ok 28 1 s (2, 8, 64)`, confirming the renamed helpers and method still execute correctly in the local `uv` torch environment.
+- Decision: Keep the helper-name shrink. This is a meaningful counted-size win with no change to `LF`, `cmb()`, serialized tensor layout, or checkpoint field names.
+- Next step: Push this hygiene pass so the repo stays on the smallest counted candidate while preserving the current best-known `l0762` exporter path for the next live export-only rerun.
