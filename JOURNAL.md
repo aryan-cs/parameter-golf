@@ -464,3 +464,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The pod now has a four-stage queue: active `prune14`, then export-only `prune17`, then export-only `prune20`. The new watcher process is live as PID `183233`.
 - Decision: Keep the active prune14 run untouched and use the newly staged export-only `prune20` sweep only if `prune17` still misses the byte cap or degrades too much.
 - Next step: Wait for the first prune14 validation checkpoint and eventual saved checkpoint, then let the export-only chain consume that checkpoint automatically if the active run still fails the validity bar.
+
+- Timestamp: 2026-03-24 01:04 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL export orchestration
+- Objective: Extend the export-only fallback chain one more step so the pod can keep pushing toward byte-cap compliance without manual intervention if `prune20` is still slightly too large.
+- Command or config: Added `configs/runpod/non_ttt_vrl_gptq_1gpu_export_prune23.env` and `configs/runpod/non_ttt_vrl_gptq_8gpu_export_prune23.env`, synced the 1-GPU config to the pod, and launched `bash runpod/pod_queue_export_after_prefix.sh non_ttt_vrl_gptq 1337 non_ttt_vrl_gptq_1gpu_export_prune20 configs/runpod/non_ttt_vrl_gptq_1gpu_export_prune23.env`.
+- Result: The pod now has an additional export-only fallback beyond `prune20`. The new watcher is live as PID `184670`, so the staged chain is now: active `prune14`, then export-only `prune17`, then export-only `prune20`, then export-only `prune23`.
+- Decision: Keep the active training run unchanged and use `prune23` only if the earlier export-only sweeps still fail the byte cap or lose too much quality.
+- Next step: Wait for prune14's first validation checkpoint and saved checkpoint, then let the export-only chain consume that checkpoint automatically until one of the staged pruning levels clears the size cap with acceptable score retention.
