@@ -491,3 +491,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The pod now has an additional export-only fallback beyond `prune23`. The new watcher is live as PID `185836`, so the staged chain is now: active `prune14`, then export-only `prune17`, then export-only `prune20`, then export-only `prune23`, then export-only `prune26`.
 - Decision: Keep the active training run unchanged and only consume `prune26` if the earlier export-only sweeps are still over the byte cap or lose too much quality.
 - Next step: Wait for prune14's first validation checkpoint and eventual saved checkpoint, then let the export-only chain consume that checkpoint automatically until one staged pruning level yields a valid sub-16MB artifact with acceptable score retention.
+
+- Timestamp: 2026-03-24 01:14 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL export ablation
+- Objective: Compare the first `prune14` validation checkpoint against the earlier strong long-run baseline and confirm the export-only fallback chain is still live behind it.
+- Command or config: Monitored `runs/non_ttt_vrl_gptq/seed1337/20260324T055414Z/train.log` through the first validation and checked the live pod process table.
+- Result: `prune14` reached `step:1000/20000 val_bpb:1.3093` with `train_loss:2.2667`, which is essentially identical to the earlier long-run baseline at the same point (`1.3111`). The pod queue is still intact behind it: export-only `prune17`, `prune20`, `prune23`, and `prune26` are all waiting in sequence.
+- Decision: Keep `prune14` running. This checkpoint confirms the expected behavior that changing `PRUNE_PCT` does not perturb the training trajectory, so the run is still on pace to provide a high-quality checkpoint for the export-only pruning ladder.
+- Next step: Let `prune14` continue toward the saved checkpoint and final export, then consume that checkpoint through the staged export-only sweeps until one clears the byte cap with acceptable score retention.
