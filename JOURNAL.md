@@ -950,3 +950,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The candidate file shrank from `60,479` bytes to `60,163` bytes, another `316` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 60,163`, which is `-14,768` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
 - Decision: Keep the exception/diagnostic shortening pass in the main lane. It is another safe counted-size win and still preserves the success markers the export ladder tooling watches.
 - Next step: Push the exception/diagnostic shortening pass so the next live export rerun uses the smaller counted candidate source together with the stronger bitplane + raw-LZMA exporter path.
+
+- Timestamp: 2026-03-24 03:45 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL code-size hygiene
+- Objective: Reclaim another safe block of counted source bytes by shortening the hyperparameter object alias inside `main()` from `args` to `a`, while keeping runtime behavior and exporter behavior unchanged.
+- Command or config: Renamed the local config object in `main()` from `args` to `a`, updated the corresponding `main()` call sites and references, fixed the one loop-variable collision introduced by the rename, then reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, reran `python3 runpod/check_ready.py`, and reran the offline codec round-trip validator on the fixed-seed quantized VRL model skeleton.
+- Result: The candidate file shrank from `60,163` bytes to `59,877` bytes, another `286` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 59,877`, which is `-15,054` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
+- Decision: Keep the `main()` alias-shortening pass in the main lane. The gain is modest, but it is safe, validated, and continues moving the counted candidate source downward without touching the exporter format.
+- Next step: Push the `main()` alias-shortening pass so the next live export rerun uses the smaller counted candidate source together with the stronger bitplane + raw-LZMA exporter path.

@@ -1110,7 +1110,7 @@ def ree(args, bm, rank, ws, device, dd, master,
 
 def main():
     global z5
-    code = Path(__file__).read_text(encoding="utf-8"); args = H()
+    code = Path(__file__).read_text(encoding="utf-8"); a = H()
     z5 = CMP(z5)
     dd = "RANK" in os.environ and "WORLD_SIZE" in os.environ
     rank = int(EG("RANK", "0")); ws = int(EG("WORLD_SIZE", "1"))
@@ -1126,39 +1126,39 @@ def main():
         from th.backends.cuda import enable_cudnn_sdp, enable_flash_sdp, enable_math_sdp, enable_mem_efficient_sdp
         enable_cudnn_sdp(False); enable_flash_sdp(True); enable_mem_efficient_sdp(False); enable_math_sdp(False)
     logfile = None
-    if master: os.makedirs("logs", exist_ok=True); logfile = f"logs/{args.run_id}.txt"; print(logfile)
+    if master: os.makedirs("logs", exist_ok=True); logfile = f"logs/{a.run_id}.txt"; print(logfile)
     def log0(msg, console=True):
         if not master: return
         if console: print(msg)
         if logfile:
             with open(logfile, "a", encoding="utf-8") as f: print(msg, file=f)
-    random.seed(args.seed); np.random.seed(args.seed); th.manual_seed(args.seed); th.cuda.manual_seed_all(args.seed)
-    sp = spm.SentencePieceProcessor(model_file=args.tokenizer_path)
-    vt = load_validation_tokens(args.vf, args.tsl)
-    bb, hs, ib = build_sentencepiece_luts(sp, args.vs, device)
+    random.seed(a.seed); np.random.seed(a.seed); th.manual_seed(a.seed); th.cuda.manual_seed_all(a.seed)
+    sp = spm.SentencePieceProcessor(model_file=a.tokenizer_path)
+    vt = load_validation_tokens(a.vf, a.tsl)
+    bb, hs, ib = build_sentencepiece_luts(sp, a.vs, device)
     CL._qat_enabled = False
-    CL._qat_clip_pct = args.qat_clip_pct
+    CL._qat_clip_pct = a.qat_clip_pct
     bm = GPT(
-        vs=args.vs, nl=args.nl, dm=args.dm,
-        nh=args.nh, nkh=args.nkh, mm=args.mm,
-        te=args.te, teis=args.teis,
-        lsc=args.lsc, rb=args.rb, qgi=args.qgi,
-        se=args.se, be=args.be, backout_init=args.backout_init,
-        bgvs=args.bgvs, bgd=args.bgd,
-        xsn=args.xsn, rd=args.rd, ln_scale=args.ln_scale,
-        vee=args.vee, ved=args.ved, vel=args.vel,
+        vs=a.vs, nl=a.nl, dm=a.dm,
+        nh=a.nh, nkh=a.nkh, mm=a.mm,
+        te=a.te, teis=a.teis,
+        lsc=a.lsc, rb=a.rb, qgi=a.qgi,
+        se=a.se, be=a.be, backout_init=a.backout_init,
+        bgvs=a.bgvs, bgd=a.bgd,
+        xsn=a.xsn, rd=a.rd, ln_scale=a.ln_scale,
+        vee=a.vee, ved=a.ved, vel=a.vel,
     ).to(device).bfloat16()
     for m in bm.modules():
         if isinstance(m, CL): m.float()
     restore_low_dim_params_to_fp32(bm)
     compiled_model = CMP(bm, dynamic=False, fullgraph=True) if not bool(int(EG("TORCH_COMPILE_DISABLE", "0"))) else bm
     model = DDP(compiled_model, device_ids=[local_rank], broadcast_buffers=False) if dd else compiled_model
-    eoc = rcp(args.eoc)
+    eoc = rcp(a.eoc)
     if eoc:
         ckpt = th.load(eoc, map_location="cpu")
         model_state = ckpt["model_state"] if isinstance(ckpt, dict) and "model_state" in ckpt else ckpt
         bm.load_state_dict(model_state, strict=True)
-        ree(args, bm, rank, ws, device, dd, master,
+        ree(a, bm, rank, ws, device, dd, master,
                         code, vt, bb, hs, ib, log0)
         return
     block_named_params = list(bm.blocks.named_parameters())
@@ -1172,8 +1172,8 @@ def main():
         scalar_params.append(bm.ve_shared.scale)
         for s in bm.ve_layer_scales: scalar_params.append(s)
     if bm.vrl_enabled:
-        for a in bm.vrl_alphas: scalar_params.append(a)
-    token_lr = args.tied_embed_lr if args.te else args.embed_lr
+        for alpha in bm.vrl_alphas: scalar_params.append(alpha)
+    token_lr = a.tied_embed_lr if a.te else a.embed_lr
     tok_param_groups = [{"params": [bm.tok_emb.weight], "lr": token_lr, "base_lr": token_lr}]
     if bm.bigram is not None:
         tok_param_groups.append({"params": [bm.bigram.embed.weight], "lr": token_lr, "base_lr": token_lr})
@@ -1181,38 +1181,38 @@ def main():
     if bm.ve_shared is not None:
         tok_param_groups.append({"params": [bm.ve_shared.embed.weight], "lr": token_lr, "base_lr": token_lr})
         if bm.ve_shared.proj is not None: matrix_params.append(bm.ve_shared.proj.weight)
-    optimizer_tok = th.optim.AdamW(tok_param_groups, betas=(args.beta1, args.beta2), eps=args.adam_eps, weight_decay=args.adam_wd, fused=True)
-    optimizer_muon = Muon(matrix_params, lr=args.matrix_lr, momentum=args.muon_momentum, ns_steps=args.muon_ns_steps, wd=args.muon_wd)
-    for group in optimizer_muon.param_groups: group["base_lr"] = args.matrix_lr
-    optimizer_scalar = th.optim.AdamW([{"params": scalar_params, "lr": args.scalar_lr, "base_lr": args.scalar_lr}],
-                                          betas=(args.beta1, args.beta2), eps=args.adam_eps, weight_decay=args.adam_wd, fused=True)
+    optimizer_tok = th.optim.AdamW(tok_param_groups, betas=(a.beta1, a.beta2), eps=a.adam_eps, weight_decay=a.adam_wd, fused=True)
+    optimizer_muon = Muon(matrix_params, lr=a.matrix_lr, momentum=a.muon_momentum, ns_steps=a.muon_ns_steps, wd=a.muon_wd)
+    for group in optimizer_muon.param_groups: group["base_lr"] = a.matrix_lr
+    optimizer_scalar = th.optim.AdamW([{"params": scalar_params, "lr": a.scalar_lr, "base_lr": a.scalar_lr}],
+                                          betas=(a.beta1, a.beta2), eps=a.adam_eps, weight_decay=a.adam_wd, fused=True)
     opts = [optimizer_tok, optimizer_muon, optimizer_scalar]
     if bm.lm_head is not None:
-        optimizer_head = th.optim.Adam([{"params": [bm.lm_head.weight], "lr": args.head_lr, "base_lr": args.head_lr}],
-                                           betas=(args.beta1, args.beta2), eps=args.adam_eps, fused=True)
+        optimizer_head = th.optim.Adam([{"params": [bm.lm_head.weight], "lr": a.head_lr, "base_lr": a.head_lr}],
+                                           betas=(a.beta1, a.beta2), eps=a.adam_eps, fused=True)
         opts.insert(1, optimizer_head)
-    tl = DTL(args.tf, rank, ws, device)
+    tl = DTL(a.tf, rank, ws, device)
     def zero_grad_all():
         for opt in opts: opt.zero_grad(set_to_none=True)
-    max_wallclock_ms = 1000.0 * args.mws if args.mws > 0 else None
+    max_wallclock_ms = 1000.0 * a.mws if a.mws > 0 else None
     def lr_mul(step, elapsed_ms):
-        if args.wdi <= 0: return 1.0
+        if a.wdi <= 0: return 1.0
         if max_wallclock_ms is None:
-            wd0 = max(args.iterations - args.wdi, 0)
-            return max((args.iterations - step) / max(args.wdi, 1), 0.0) if step >= wd0 else 1.0
-        step_ms = elapsed_ms / max(step, 1); wd_ms = args.wdi * step_ms
+            wd0 = max(a.iterations - a.wdi, 0)
+            return max((a.iterations - step) / max(a.wdi, 1), 0.0) if step >= wd0 else 1.0
+        step_ms = elapsed_ms / max(step, 1); wd_ms = a.wdi * step_ms
         rem_ms = max(max_wallclock_ms - elapsed_ms, 0.0)
         return rem_ms / max(wd_ms, 1e-9) if rem_ms <= wd_ms else 1.0
 
-    if args.warmup_steps > 0:
+    if a.warmup_steps > 0:
         initial_model_state = {n: t.detach().cpu().clone() for n, t in bm.state_dict().items()}
         initial_optimizer_states = [copy.deepcopy(opt.state_dict()) for opt in opts]
         model.train()
-        for wi in range(args.warmup_steps):
+        for wi in range(a.warmup_steps):
             zero_grad_all()
             for ms in range(gas):
                 if dd: model.require_backward_grad_sync = ms == gas - 1
-                x, y = tl.next_batch(args.tbt, args.tsl, gas)
+                x, y = tl.next_batch(a.tbt, a.tsl, gas)
                 with AC(device_type="cuda", dtype=BF, enabled=True): wl = model(x, y)
                 (wl * grad_scale).backward()
             for opt in opts: opt.step()
@@ -1221,57 +1221,57 @@ def main():
         for opt, state in zip(opts, initial_optimizer_states, strict=True): opt.load_state_dict(state)
         zero_grad_all()
         if dd: model.require_backward_grad_sync = True
-        tl = DTL(args.tf, rank, ws, device)
+        tl = DTL(a.tf, rank, ws, device)
     ema_state = {name: t.detach().float().clone() for name, t in bm.state_dict().items()}
     ttms, stop_after_step = 0.0, None
     swa_state, swa_count = None, 0
     SY(); t0 = PC(); step = 0
     while True:
-        last_step = step == args.iterations or (stop_after_step is not None and step >= stop_after_step)
-        should_validate = last_step or (args.val_loss_every > 0 and step % args.val_loss_every == 0)
+        last_step = step == a.iterations or (stop_after_step is not None and step >= stop_after_step)
+        should_validate = last_step or (a.val_loss_every > 0 and step % a.val_loss_every == 0)
         if should_validate:
             SY(); ttms += 1000.0 * (PC() - t0)
-            vl, vb = eval_val(args, model, rank, ws, device, gas,
+            vl, vb = eval_val(a, model, rank, ws, device, gas,
                               vt, bb, hs, ib)
-            log0(f"step:{step}/{args.iterations} val_loss:{vl:.4f} val_bpb:{vb:.4f} train_time:{ttms:.0f}ms step_avg:{ttms/max(step,1):.2f}ms")
+            log0(f"step:{step}/{a.iterations} val_loss:{vl:.4f} val_bpb:{vb:.4f} train_time:{ttms:.0f}ms step_avg:{ttms/max(step,1):.2f}ms")
             SY(); t0 = PC()
         if last_step:
-            if stop_after_step is not None and step < args.iterations:
-                log0(f"stop:wall train:{ttms:.0f}ms step:{step}/{args.iterations}")
+            if stop_after_step is not None and step < a.iterations:
+                log0(f"stop:wall train:{ttms:.0f}ms step:{step}/{a.iterations}")
             break
         elapsed_ms = ttms + 1000.0 * (PC() - t0)
         scale = lr_mul(step, elapsed_ms)
-        if args.lqt > 0 and scale < args.lqt and not CL._qat_enabled:
+        if a.lqt > 0 and scale < a.lqt and not CL._qat_enabled:
             CL._qat_enabled = True
         zero_grad_all(); train_loss = Z((), device=device)
         for ms in range(gas):
             if dd: model.require_backward_grad_sync = ms == gas - 1
-            x, y = tl.next_batch(args.tbt, args.tsl, gas)
+            x, y = tl.next_batch(a.tbt, a.tsl, gas)
             with AC(device_type="cuda", dtype=BF, enabled=True): loss = model(x, y)
             train_loss += loss.detach(); (loss * grad_scale).backward()
         train_loss /= gas
-        frac = min(step / args.muon_momentum_warmup_steps, 1.0) if args.muon_momentum_warmup_steps > 0 else 1.0
+        frac = min(step / a.muon_momentum_warmup_steps, 1.0) if a.muon_momentum_warmup_steps > 0 else 1.0
         for group in optimizer_muon.param_groups:
-            group["momentum"] = (1-frac)*args.muon_momentum_warmup_start + frac*args.muon_momentum
+            group["momentum"] = (1-frac)*a.muon_momentum_warmup_start + frac*a.muon_momentum
         for opt in opts:
             for group in opt.param_groups: group["lr"] = group["base_lr"] * scale
-        if args.grad_clip_norm > 0: th.nn.utils.clip_grad_norm_(bm.parameters(), args.grad_clip_norm)
+        if a.grad_clip_norm > 0: th.nn.utils.clip_grad_norm_(bm.parameters(), a.grad_clip_norm)
         for opt in opts: opt.step()
         zero_grad_all()
         with NG():
             for name, t in bm.state_dict().items():
-                ema_state[name].mul_(args.ema_decay).add_(t.detach().float(), alpha=1.0 - args.ema_decay)
+                ema_state[name].mul_(a.ema_decay).add_(t.detach().float(), alpha=1.0 - a.ema_decay)
         step += 1
         approx_ms = ttms + 1000.0 * (PC() - t0)
-        if args.swa_enabled and scale < 0.2 and step % args.swa_interval == 0:
+        if a.swa_enabled and scale < 0.2 and step % a.swa_interval == 0:
             if swa_state is None:
                 swa_state = {n: t.detach().cpu().clone() for n, t in bm.state_dict().items()}
                 swa_count = 1
             else:
                 for n, t in bm.state_dict().items(): swa_state[n] += t.detach().cpu()
                 swa_count += 1
-        if args.train_log_every > 0 and (step <= 10 or step % args.train_log_every == 0):
-            log0(f"step:{step}/{args.iterations} train_loss:{train_loss.item():.4f} train_time:{approx_ms:.0f}ms step_avg:{approx_ms/step:.2f}ms")
+        if a.train_log_every > 0 and (step <= 10 or step % a.train_log_every == 0):
+            log0(f"step:{step}/{a.iterations} train_loss:{train_loss.item():.4f} train_time:{approx_ms:.0f}ms step_avg:{approx_ms/step:.2f}ms")
         reached_cap = max_wallclock_ms is not None and approx_ms >= max_wallclock_ms
         if dd and max_wallclock_ms is not None:
             rct = TT(int(reached_cap), device=device); ARD(rct, op=ROP.MAX); reached_cap = bool(rct.item())
@@ -1279,8 +1279,8 @@ def main():
     current_state = bm.state_dict()
     avg_state = {name: t.to(dtype=current_state[name].dtype) for name, t in ema_state.items()}
     bm.load_state_dict(avg_state, strict=True)
-    mspc(args.spc, bm.state_dict(), log0)
-    ree(args, bm, rank, ws, device, dd, master,
+    mspc(a.spc, bm.state_dict(), log0)
+    ree(a, bm, rank, ws, device, dd, master,
                     code, vt, bb, hs, ib, log0)
 
 if __name__ == "__main__":
