@@ -140,7 +140,7 @@ def vv(a, model, rk, ws, dv, gas,
     model.train(); return float(IT(vl)), float(bpt * tpb)
 
 CP = tuple(
-    p for p in "asc,ascs,msc,mscs,rm,rms,g,w,s.g,o,g.s,y,v.s,r".split(",") if p)
+    p for p in "u,t,r,g,w,s.g,o,g.s,y,v.s".split(",") if p)
 IC=lambda n:any(n==p or n.startswith(p+".") or n.endswith("."+p) or f".{p}." in n for p in CP)
 I8K = 65_536
 I8D = F16
@@ -602,8 +602,8 @@ class CSA(M):
         super().__init__()
         self.nh, self.nkh = nh, nkh; self.hd = dim // nh
         kv_dim = nkh * self.hd
-        self.cq = CL(dim, dim, bias=False); self.ck = CL(dim, kv_dim, bias=False)
-        self.cv = CL(dim, kv_dim, bias=False); self.p = CL(dim, dim, bias=False)
+        self.q = CL(dim, dim, bias=False); self.k = CL(dim, kv_dim, bias=False)
+        self.v = CL(dim, kv_dim, bias=False); self.p = CL(dim, dim, bias=False)
         self.p._zero_init = True
         self.g = P(FUL((nh,), qgi, dtype=F32))
         self.rd = 0
@@ -617,9 +617,9 @@ class CSA(M):
         return RS(y_g - proj, B, T, H, D)
     def forward(self, x, ve=None, vr=None):
         bsz, seqlen, dim = x.shape
-        q = RS(self.cq(x), bsz, seqlen, self.nh, self.hd)
-        k = RS(self.ck(x), bsz, seqlen, self.nkh, self.hd)
-        v = self.cv(x)
+        q = RS(self.q(x), bsz, seqlen, self.nh, self.hd)
+        k = RS(self.k(x), bsz, seqlen, self.nkh, self.hd)
+        v = self.v(x)
         if ve is not None: v = v + ve
         if vr is not None: v = v + vr
         v = RS(v, bsz, seqlen, self.nkh, self.hd)
@@ -693,16 +693,16 @@ class BL(M):
         self.an, self.mn = RN(), RN()
         self.a = CSA(dim, nh, nkh, rb, qgi)
         self.m = MLP(dim, mm)
-        self.asc = P(ON(dim, dtype=F32))
-        self.msc = P(ON(dim, dtype=F32))
-        self.rm = P(TF(SK((ON(dim), Z(dim)))))
+        self.u = P(ON(dim, dtype=F32))
+        self.t = P(ON(dim, dtype=F32))
+        self.r = P(TF(SK((ON(dim), Z(dim)))))
         self.lsf = 1.0 / math.sqrt(li + 1) if ln_scale else 1.0
     def forward(self, x, x0, ve=None, vr=None):
-        mix = TY(self.rm, x.dtype)
+        mix = TY(self.r, x.dtype)
         x_in = mix[0][None, None, :] * x + mix[1][None, None, :] * x0
         attn_out = self.a(self.an(x_in) * self.lsf, ve=ve, vr=vr)
-        x_out = x_in + TY(self.asc, x_in.dtype)[None, None, :] * attn_out
-        x_out = x_out + TY(self.msc, x_out.dtype)[None, None, :] * self.m(self.mn(x_out) * self.lsf)
+        x_out = x_in + TY(self.u, x_in.dtype)[None, None, :] * attn_out
+        x_out = x_out + TY(self.t, x_out.dtype)[None, None, :] * self.m(self.mn(x_out) * self.lsf)
         return x_out
 
 class GPT(M):
@@ -769,8 +769,8 @@ class GPT(M):
         for i, block in enumerate(self.b):
             with NG():
                 phase = SG(TT(3.0 * (i / max(nl-1, 1) - 0.5)))
-                block.rm.data[0] = phase * ON(block.rm.shape[1])
-                block.rm.data[1] = (1-phase) * ON(block.rm.shape[1])
+                block.r.data[0] = phase * ON(block.r.shape[1])
+                block.r.data[1] = (1-phase) * ON(block.r.shape[1])
     def gv(self, li, ids, vc):
         if self.v is None or li not in self.vli: return None
         if 've' not in vc: vc['ve'] = self.v(ids)
@@ -782,9 +782,9 @@ class GPT(M):
         v0 = None
         if self.vre:
             blk0 = self.b[0]
-            mix0 = TY(blk0.rm, x0.dtype)
+            mix0 = TY(blk0.r, x0.dtype)
             x_in0 = mix0[0][None, None, :] * x0 + mix0[1][None, None, :] * x0
-            v0 = blk0.a.cv(blk0.an(x_in0) * blk0.lsf)
+            v0 = blk0.a.v(blk0.an(x_in0) * blk0.lsf)
         vi = 0
         for i in range(self.nel):
             ve = self.gv(i, ids, vc)
