@@ -466,11 +466,11 @@ def ui6(raw: bytes | memoryview, shape: list[int]) -> Tensor:
 
 def mcn(cid: int) -> str:
     if cid == KZ:
-        return "z19"
+        return "s"
     if cid == KG:
-        return "zl9"
+        return "z"
     if cid == KL:
-        return "l0762"
+        return "l"
     return f"u{cid}"
 
 def cmb(raw: bytes) -> tuple[bytes, int]:
@@ -497,7 +497,7 @@ def dmb(blob: bytes) -> tuple[bytes, str]:
             try:
                 return lzma.decompress(payload, format=lzma.FORMAT_RAW, filters=LF), mcn(cid)
             except lzma.LZMAError:
-                return lzma.decompress(payload), "x32"
+                return lzma.decompress(payload), "x"
         raise ER(f"bad codec {cid}")
     if HAS_ZSTD:
         try:
