@@ -599,3 +599,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The readiness checker still passes, both recovery wrappers still reference the expected config chains, and the worktree is clean on top of commit `724c979`.
 - Decision: Hold the repo steady; there is no new local breakage to fix before a fresh pod is available.
 - Next step: Wait for credits, then relaunch immediately from the existing recovery scripts instead of making speculative offline changes.
+
+- Timestamp: 2026-03-24 02:27 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL export compression
+- Objective: Turn the packed-int6 serializer change into a concrete size estimate so we know whether the next live rerun is likely to clear the byte cap.
+- Command or config: Computed the raw storage difference for the logged int6 payload count from the best over-cap run (`26,345,472` int6 values), comparing old int8-byte storage against the new packed-6-bit representation.
+- Result: Packed int6 reduces that payload from `26,345,472` raw bytes to `19,759,104` raw bytes, a savings of `6,586,368` bytes before compression. Since the invalid run only missed the final cap by `333,801` bytes, this materially increases confidence that the new export format plus the prune ladder can produce a valid artifact.
+- Decision: Treat the packed-int6 serializer as a likely decisive size fix rather than a speculative micro-optimization.
+- Next step: Prioritize rerunning the VRL recovery chain with the new serializer as soon as Runpod credits and a fresh pod are available.
