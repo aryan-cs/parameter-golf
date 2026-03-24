@@ -1814,3 +1814,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The exact reproduction reached `step:2500/9000 val_loss:2.0955 val_bpb:1.2410 train_time:1855747ms step_avg:742.30ms`, which is the best intermediate result we have seen on this exact TTT lane so far. The run remains healthy at full GPU utilization (`100%`, about `24.2 GiB`, about `563 W`). The queued `VALUE_RESIDUAL=1` watcher is also alive, so the next low-risk lane will start automatically after this run exits.
 - Decision: Stay the course on the current exact run; it is still improving normally and is now clearly below the earlier proxy's `step:2000` territory. Keep the queued follow-up as the immediate next experiment rather than opening a broader, less interpretable hyperparameter sweep before we see the completed exact metrics and bytes.
 - Next step: Let the exact run complete, then compare its final sliding-window/legal-TTT result and artifact size against the queued `VALUE_RESIDUAL=1` follow-up once that starts.
+
+- Timestamp: 2026-03-24 18:38 UTC
+- Commit: `0b38170`
+- Lane: H200 exact-TTT monitoring
+- Objective: Check whether the exact `80`-shard TTT run continues to beat our earlier H200 proxy as it moves into the mid-training regime.
+- Command or config: Let the live run advance to the next validation interval and read the `step:3000` checkpoint from `records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs/h200_ttt_recordstack_80shard_seed1337.txt` while confirming the H200 remained saturated.
+- Result: The exact reproduction reached `step:3000/9000 val_loss:2.0805 val_bpb:1.2322 train_time:2228006ms step_avg:742.67ms`, improving cleanly over the earlier `step:2500` checkpoint (`1.2410`). GPU telemetry remained stable during the interval (`100%` utilization, about `24.2 GiB`, about `564 W`).
+- Decision: Keep the current exact run untouched. This is the best H200 intermediate score we have seen so far, and there is no sign of instability or plateau severe enough to justify interrupting the run before final evaluation.
+- Next step: Let this exact run finish and inspect the final int6/sliding/legal-TTT metrics and bytes; if the completed result still is not compelling enough, let the queued `VALUE_RESIDUAL=1` follow-up take over immediately.
