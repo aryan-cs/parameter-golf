@@ -473,3 +473,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The pod now has an additional export-only fallback beyond `prune20`. The new watcher is live as PID `184670`, so the staged chain is now: active `prune14`, then export-only `prune17`, then export-only `prune20`, then export-only `prune23`.
 - Decision: Keep the active training run unchanged and use `prune23` only if the earlier export-only sweeps still fail the byte cap or lose too much quality.
 - Next step: Wait for prune14's first validation checkpoint and saved checkpoint, then let the export-only chain consume that checkpoint automatically until one of the staged pruning levels clears the size cap with acceptable score retention.
+
+- Timestamp: 2026-03-24 01:08 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL export validation
+- Objective: Verify that the staged export-only sweeps truly bypass retraining and that the current queue depth matches the actual pod processes.
+- Command or config: Inspected `candidates/non_ttt_vrl_gptq/train_gpt.py` around the `EXPORT_ONLY_CHECKPOINT` path and checked the live pod process table for `pod_queue_export_after_prefix.sh`.
+- Result: The trainer short-circuits exactly as intended when `EXPORT_ONLY_CHECKPOINT` is set: it loads the saved model state, logs `export_only:loaded_checkpoint:...`, calls `run_export_eval(...)`, and returns before optimizer setup or the training loop. The live pod queue now matches the staged design: active `prune14`, then export-only `prune17`, then export-only `prune20`, then export-only `prune23`.
+- Decision: Keep the current queue intact; the fastest path to a valid score is to let prune14 produce a reusable checkpoint and consume it through the export-only pruning ladder rather than paying more full retrains.
+- Next step: Wait for prune14's first validation checkpoint and eventual saved checkpoint, then let the queued export-only sweeps test progressively stronger pruning until one lands under the 16 MB cap with acceptable score retention.
