@@ -1886,3 +1886,21 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The exact run improved again to `step:7500/9000 val_loss:1.9820 val_bpb:1.1738 train_time:5574858ms step_avg:743.31ms`, which is our best reproduced H200 score so far. The corrected watcher is now live again and waiting on the current `torchrun` PID before launching the new H100-step proxy queue.
 - Decision: Keep the current run untouched to completion. The late-training curve is still improving materially, and we now have both the current lane and the next better-matched proxy lane covered.
 - Next step: Let this run finish, harvest the final exact metrics and bytes, then let the corrected H100-step proxy follow-ups begin automatically.
+
+- Timestamp: 2026-03-24 21:08 UTC
+- Commit: `dcc52d8`
+- Lane: H200 exact-TTT completion
+- Objective: Harvest the completed exact-run metrics and determine whether the current lane produced a finished under-cap score that is already numerically competitive with the public leaderboard.
+- Command or config: Read the completed log `records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs/h200_ttt_recordstack_80shard_seed1337.txt`, extracted the final exact metrics with `scripts/prepare_submission_metadata.py`, and inspected the produced artifacts `final_model.pt` and `final_model.int6.ptz`.
+- Result: The finished exact run reached `step:9000/9000 val_bpb:1.1324`, then after EMA and quantization produced `final_int6_roundtrip_exact val_bpb:1.13969117`, `final_int6_sliding_window_exact val_bpb:1.11623907`, and `Total submission size int6+lzma: 15860692 bytes`. This is our best completed exact metric so far, it is under the 16 MB cap, and it is numerically below the current upstream `1.1194` bar.
+- Decision: Treat `1.11623907 @ 15,860,692 bytes` as the current best completed score from this H200 lane. The missing blocker is that the legal TTT phase did not finish logging, so the run is not yet packaged as a fully completed score-first TTT record.
+- Next step: Finish legal TTT on the already-saved artifact instead of retraining from scratch, because that is the fastest path to a complete final metric for this exact lane.
+
+- Timestamp: 2026-03-24 21:18 UTC
+- Commit: `dcc52d8`
+- Lane: H200 legal-TTT salvage
+- Objective: Recover the missing final `legal_ttt_exact` metric from the completed under-cap artifact without paying another full training run.
+- Command or config: Added `scripts/salvage_legal_ttt_eval.py` and `scripts/icrn_h200_resume_legal_ttt.sh`, which load `final_model.pt` plus `final_model.int6.ptz`, reconstruct the quantized eval model, and rerun only the legal score-first TTT evaluation with the exact lane settings (`BIGRAM_VOCAB_SIZE=1536`, `TTT_FREEZE_BLOCKS=0`, `TTT_EPOCHS=3`, `TTT_LR=0.002`, `EVAL_STRIDE=64`). Launched the salvage run and verified it is logging to `records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs/h200_ttt_recordstack_80shard_seed1337_resume_ttt.txt`.
+- Result: The salvage run is live and healthy. Early checkpoints match the original TTT curve closely: `ttt_chunk [1/1893] bpb=1.208063`, `ttt_chunk [11/1893] bpb=1.110716`, `ttt_chunk [21/1893] bpb=1.119648`.
+- Decision: Keep the H200 on this salvage eval until it finishes. Recovering the missing `legal_ttt_exact` on the best completed under-cap artifact is a higher-signal use of the GPU than starting another long training run immediately.
+- Next step: Let the resumed TTT eval finish, record the recovered `legal_ttt_exact`, and only then resume the corrected H100-step proxy training queue if further improvement is still needed.
