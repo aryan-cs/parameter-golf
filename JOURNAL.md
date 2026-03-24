@@ -410,3 +410,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: Future runs can now save a post-EMA full-precision checkpoint before GPTQ/export, and later pruning or export sweeps can start directly from that checkpoint instead of repeating training. The updated script and configs have already been synced to the pod, so the queued `prune14` run will inherit this capability.
 - Decision: Keep the active `prune11` run untouched, but use the new export-only infrastructure to accelerate the next round of byte-cap tuning if `prune11` or `prune14` still miss the limit.
 - Next step: Push the new export-only infrastructure to GitHub, then monitor `prune11` for its first validation checkpoint while keeping `prune14` as the staged next run.
+
+- Timestamp: 2026-03-24 00:34 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL export orchestration
+- Objective: Extend the queued compression path so we can sweep a stronger prune setting without paying another full retrain if `prune14` still misses the byte cap.
+- Command or config: Added `configs/runpod/non_ttt_vrl_gptq_1gpu_export_prune17.env`, `configs/runpod/non_ttt_vrl_gptq_8gpu_export_prune17.env`, and `runpod/pod_queue_export_after_prefix.sh`; syntax-checked the helper, synced it plus the new configs to the pod, and launched `bash runpod/pod_queue_export_after_prefix.sh non_ttt_vrl_gptq 1337 non_ttt_vrl_gptq_1gpu_long_prune14 configs/runpod/non_ttt_vrl_gptq_1gpu_export_prune17.env`.
+- Result: The pod now has a three-stage queue. `prune11` is active, `prune14` is waiting behind it, and the export-only `prune17` sweep is waiting behind `prune14`. Export queue log: `/workspace/golf/logs/non_ttt_vrl_gptq_1gpu_long_prune14_export_queue_20260324T053401Z.log`.
+- Decision: Keep the active training lane unchanged and use the new export-only queue as the next low-latency byte-cap hedge if the saved checkpoint from `prune14` is needed.
+- Next step: Monitor `prune11` for its first validation checkpoint and let the staged queue continue automatically unless a clearly better manual intervention appears.
