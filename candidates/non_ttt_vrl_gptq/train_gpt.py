@@ -566,7 +566,7 @@ def rf32(module):
 class RY(M):
     def __init__(self, dim, base=10000.0, tsl=1024, rd=0):
         super().__init__()
-        self.d = dim; self.b = base; self.t = tsl
+        self.b = base; self.t = tsl
         self.rd = rd if rd > 0 else dim
         inv_freq = 1.0 / (base ** (AR(0, self.rd, 2, dtype=F32) / self.rd))
         self.register_buffer("ifq", inv_freq, persistent=False)
@@ -711,9 +711,9 @@ class GPT(M):
                  rd=0, ln_scale=False,
                  vee=False, ved=128, vel="9,10"):
         super().__init__()
-        self.te, self.ti = te, teis
-        self.ls = lsc
-        self.se, self.be, self.num_layers = se, be, nl
+        self.t, self.ts = te, teis
+        self.l = lsc
+        self.nl = nl
         self.tok_emb = nn.Embedding(vs, dm)
         self.bigram = BHE(bgvs, bgd, dm) if bgvs > 0 else None
         self.smear = SGT(dm) if se else None
@@ -754,8 +754,8 @@ class GPT(M):
         if self.lm_head is not None: self.lm_head._zero_init = True
         self.iw()
     def iw(self):
-        if self.te:
-            NI.normal_(self.tok_emb.weight, mean=0.0, std=self.ti)
+        if self.t:
+            NI.normal_(self.tok_emb.weight, mean=0.0, std=self.ts)
         nl = len(self.blocks)
         for name, module in self.named_modules():
             if isinstance(module, nn.Linear):
@@ -775,7 +775,7 @@ class GPT(M):
         ve_idx = self.vli.index(li)
         return vc['ve'] * self.ve_layer_scales[ve_idx].to(dtype=vc['ve'].dtype)
     def rl(self, x, x0, ids):
-        skips, bo, xb = [], self.num_layers // 2, None
+        skips, bo, xb = [], self.nl // 2, None
         vc = {}
         v0 = None
         if self.vre:
@@ -816,13 +816,13 @@ class GPT(M):
     def forward(self, ids, tgt):
         x0 = self.eb(ids); x = self.rl(x0, x0, ids)
         x_flat = self.final_norm(x).reshape(-1, x.size(-1)); targets = tgt.reshape(-1)
-        logits_proj = LI(x_flat, self.tok_emb.weight) if self.te else self.lm_head(x_flat)
-        logits = self.ls * th.tanh(logits_proj / self.ls)
+        logits_proj = LI(x_flat, self.tok_emb.weight) if self.t else self.lm_head(x_flat)
+        logits = self.l * th.tanh(logits_proj / self.l)
         return F.cross_entropy(logits.float(), targets, reduction="mean")
     def fwl(self, ids):
         x0 = self.eb(ids); x = self.final_norm(self.rl(x0, x0, ids))
-        logits = LI(x, self.tok_emb.weight.to(x.dtype)) if self.te else self.lm_head(x)
-        return self.ls * th.tanh(logits / self.ls)
+        logits = LI(x, self.tok_emb.weight.to(x.dtype)) if self.t else self.lm_head(x)
+        return self.l * th.tanh(logits / self.l)
 
 def ch(bm, tl, args, dv, gas, nbc=256):
     hh = {}
