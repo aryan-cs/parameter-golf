@@ -617,3 +617,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The exporter now removes another layer of duplicated strings from the artifact format while preserving compatibility with older artifacts. This should shave additional bytes off the final packed model on top of the already-implemented packed-int6 payload savings.
 - Decision: Keep the compact metadata + tensor-ref table in the main lane; it is a low-risk size optimization that directly targets the remaining validity blocker.
 - Next step: Push this change, then relaunch the recovery chain on the next pod so we can measure the combined impact of packed int6, compact metadata, and the staged prune ladder.
+
+- Timestamp: 2026-03-24 02:43 America/Chicago
+- Commit: a9eea7b
+- Lane: non-ttt VRL export compression
+- Objective: Record the remote push for the compact metadata / tensor-ref header change so the journal matches the Git history.
+- Command or config: Ran `git commit -m "2026-03-24 runpod: compact export metadata table"` and `git push origin master` after the syntax and pure-Python codec checks passed.
+- Result: The exporter header compression work is now on `origin/master` at commit `a9eea7b`, and the worktree is clean again.
+- Decision: Keep the repo steady until Runpod credits land; the next meaningful step is a live rerun, not more speculative local churn.
+- Next step: Relaunch the recovery chain on a fresh pod and measure whether packed int6 + compact headers + staged prune sweeps finally produce a valid under-16MB artifact.
