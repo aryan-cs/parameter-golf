@@ -607,7 +607,7 @@ class CSA(M):
         self.rope_dims = 0
         self.rotary = RY(self.head_dim, base=rb, tsl=1024)
         self.use_xsa = False
-    def _xsa_efficient(self, y, v):
+    def xe(self, y, v):
         B, T, H, D = y.shape; Hkv = v.size(-2); group = H // Hkv
         y_g = y.reshape(B, T, Hkv, group, D)
         vn = F.normalize(v, dim=-1).unsqueeze(-2)
@@ -633,7 +633,7 @@ class CSA(M):
             qt, kt, vt = q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)
             y = F.scaled_dot_product_attention(qt, kt, vt, attn_mask=None, is_causal=True,
                                                enable_gqa=(self.nkh != self.num_heads)).transpose(1, 2)
-        if self.use_xsa: y = self._xsa_efficient(y, v)
+        if self.use_xsa: y = self.xe(y, v)
         return self.proj(y.reshape(bsz, seqlen, dim))
 
 class MLP(M):
@@ -662,13 +662,13 @@ class BHE(M):
         self.proj = CL(bgd, dm, bias=False) if bgd != dm else None
         if self.proj is not None: NI.zeros_(self.proj.weight)
         self.scale = P(TT(0.05, dtype=F32))
-    def bigram_hash(self, tokens):
+    def bh(self, tokens):
         t = tokens.to(th.int32); mod = self.bgvs - 1
         out = EL(t); out[..., 0] = mod
         out[..., 1:] = th.bitwise_xor(36313 * t[..., 1:], 27191 * t[..., :-1]) % mod
         return out.long()
     def forward(self, token_ids):
-        h = self.embed(self.bigram_hash(token_ids))
+        h = self.embed(self.bh(token_ids))
         if self.proj is not None: h = self.proj(h)
         return h * self.scale.to(dtype=h.dtype)
 
@@ -769,12 +769,12 @@ class GPT(M):
                 phase = SG(TT(3.0 * (i / max(nl-1, 1) - 0.5)))
                 block.resid_mix.data[0] = phase * ON(block.resid_mix.shape[1])
                 block.resid_mix.data[1] = (1-phase) * ON(block.resid_mix.shape[1])
-    def _get_ve(self, layer_idx, ids, ve_cache):
+    def gv(self, layer_idx, ids, ve_cache):
         if self.ve_shared is None or layer_idx not in self.vli: return None
         if 've' not in ve_cache: ve_cache['ve'] = self.ve_shared(ids)
         ve_idx = self.vli.index(layer_idx)
         return ve_cache['ve'] * self.ve_layer_scales[ve_idx].to(dtype=ve_cache['ve'].dtype)
-    def _run_layers(self, x, x0, ids):
+    def rl(self, x, x0, ids):
         skips, backout_layer, x_backout = [], self.num_layers // 2, None
         ve_cache = {}
         v0_raw = None
@@ -785,7 +785,7 @@ class GPT(M):
             v0_raw = blk0.attn.c_v(blk0.attn_norm(x_in0) * blk0.lsf)
         vrl_idx = 0
         for i in range(self.nel):
-            ve = self._get_ve(i, ids, ve_cache)
+            ve = self.gv(i, ids, ve_cache)
             v_res = None
             if i > 0 and v0_raw is not None:
                 alpha = SG(self.vrl_alphas[vrl_idx].to(dtype=x.dtype))
@@ -796,7 +796,7 @@ class GPT(M):
         for i in range(self.ndl):
             li = self.nel + i
             if skips: x = x + self.skip_weights[i].to(dtype=x.dtype)[None, None, :] * skips.pop()
-            ve = self._get_ve(li, ids, ve_cache)
+            ve = self.gv(li, ids, ve_cache)
             v_res = None
             if v0_raw is not None:
                 alpha = SG(self.vrl_alphas[vrl_idx].to(dtype=x.dtype))
@@ -807,54 +807,52 @@ class GPT(M):
         if self.backout_lambda is not None and x_backout is not None:
             x = x - self.backout_lambda.to(x.dtype) * x_backout
         return x
-    def _embed(self, ids):
+    def eb(self, ids):
         x = self.tok_emb(ids)
         if self.bigram is not None: x = x + self.bigram(ids)
         x = RM(x, (self.tok_emb.weight.shape[1],))
         if self.smear is not None: x = self.smear(x)
         return x
     def forward(self, ids, tgt):
-        x0 = self._embed(ids); x = self._run_layers(x0, x0, ids)
+        x0 = self.eb(ids); x = self.rl(x0, x0, ids)
         x_flat = self.final_norm(x).reshape(-1, x.size(-1)); targets = tgt.reshape(-1)
         logits_proj = LI(x_flat, self.tok_emb.weight) if self.te else self.lm_head(x_flat)
         logits = self.lsc * th.tanh(logits_proj / self.lsc)
         return F.cross_entropy(logits.float(), targets, reduction="mean")
     def fwl(self, ids):
-        x0 = self._embed(ids); x = self.final_norm(self._run_layers(x0, x0, ids))
+        x0 = self.eb(ids); x = self.final_norm(self.rl(x0, x0, ids))
         logits = LI(x, self.tok_emb.weight.to(x.dtype)) if self.te else self.lm_head(x)
         return self.lsc * th.tanh(logits / self.lsc)
 
-def ch(bm, tl, args, dv, gas, num_batches=256):
+def ch(bm, tl, args, dv, gas, nbc=256):
     hh = {}
     hooks = []
-    param_to_name = {}
     for name, module in bm.named_modules():
         if isinstance(module, CL):
             pn = name + WT
-            param_to_name[id(module)] = pn
             cols = module.weight.shape[1]
             hh[pn] = Z(cols, cols, dtype=F32, device='cpu')
-            def make_hook(mod_id, pname, ncols):
+            def mh(mod_id, pname, ncols):
                 count = [0]
-                def hook_fn(module, input, output):
+                def hf(module, input, output):
                     x = input[0].detach().float()
                     if x.ndim == 3:
                         x = x.reshape(-1, x.shape[-1])
                     xtx = (x.T @ x).cpu()
                     hh[pname] += xtx
                     count[0] += x.shape[0]
-                return hook_fn
-            h = module.register_forward_hook(make_hook(id(module), pn, cols))
+                return hf
+            h = module.register_forward_hook(mh(id(module), pn, cols))
             hooks.append(h)
     bm.eval()
     with IM(), AU():
-        for _ in range(num_batches):
+        for _ in range(nbc):
             x, y = tl.nb(args.tbt, args.tsl, gas)
             _ = bm(x, y)
     for h in hooks: h.remove()
     for name in hh:
         H = hh[name]
-        H /= num_batches
+        H /= nbc
         damp = 0.01 * DG(H).mean().clamp_min(1e-6)
         H += damp * EYE(H.shape[0])
         hh[name] = H
@@ -867,14 +865,14 @@ def evl(logits_fn, rank, ws, dv, vt,
     total = vt.numel() - 1; windows, p = [], 0
     while p + ql <= total:
         s = 0 if p == 0 else (ql - stride); windows.append((p, s)); p += stride
-    n = len(windows); per_rank = (n + ws - 1) // ws
-    my_windows = windows[rank*per_rank:min((rank+1)*per_rank, n)]
-    loss_sum = Z((), device=dv, dtype=F64)
-    tok_count = Z((), device=dv, dtype=F64)
-    byte_count = Z((), device=dv, dtype=F64)
+    n = len(windows); pr = (n + ws - 1) // ws
+    mw = windows[rank*pr:min((rank+1)*pr, n)]
+    ls = Z((), device=dv, dtype=F64)
+    tc = Z((), device=dv, dtype=F64)
+    bc = Z((), device=dv, dtype=F64)
     with IM():
-        for i in range(0, len(my_windows), ebs):
-            batch = my_windows[i:i+ebs]; bs = len(batch)
+        for i in range(0, len(mw), ebs):
+            batch = mw[i:i+ebs]; bs = len(batch)
             x_list = [vt[w:w+ql] for w, _ in batch]
             y_list = [vt[w+1:w+ql+1] for w, _ in batch]
             pad = ebs - bs
@@ -884,16 +882,16 @@ def evl(logits_fn, rank, ws, dv, vt,
             with AU(): logits = logits_fn(x)
             for b in range(bs):
                 s = batch[b][1]; sl, st = logits[b, s:], y[b, s:]
-                loss_sum += F.cross_entropy(sl.float(), st, reduction="sum").to(F64)
-                ns = st.numel(); tok_count += ns
+                ls += F.cross_entropy(sl.float(), st, reduction="sum").to(F64)
+                ns = st.numel(); tc += ns
                 prev, tgt = x[b, s:s+ns], st
                 tb = bb[tgt].to(I16)
                 tb += (hs[tgt] & ~ib[prev]).to(I16)
-                byte_count += tb.to(F64).sum()
+                bc += tb.to(F64).sum()
     if IA() and II():
-        for t in [loss_sum, tok_count, byte_count]: ARD(t, op=ROP.SUM)
-    vl = (loss_sum / tok_count).item()
-    return vl, vl / math.log(2.0) * (tok_count.item() / byte_count.item())
+        for t in [ls, tc, bc]: ARD(t, op=ROP.SUM)
+    vl = (ls / tc).item()
+    return vl, vl / math.log(2.0) * (tc.item() / bc.item())
 
 def rcp(spec: str) -> str:
     if not spec:
