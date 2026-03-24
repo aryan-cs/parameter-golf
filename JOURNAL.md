@@ -1859,3 +1859,21 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The exact run reached `step:4500/9000 val_loss:2.0586 val_bpb:1.2192 train_time:3343933ms step_avg:743.10ms`, which is another clean improvement over the previous best intermediate checkpoint `1.2239` at `step:4000`. This is our best reproduced H200 score so far.
 - Decision: Keep the current exact run untouched. The training curve is still improving, so the best use of the single H200 is to finish this run and harvest the final exact sliding/legal-TTT metrics before judging the queued follow-ups.
 - Next step: Let the current run finish, then let the queued `VALUE_RESIDUAL=1`, `BIGRAM_VOCAB_SIZE=3072`, and `VALUE_RESIDUAL=1 + BIGRAM_VOCAB_SIZE=3072` lanes run if the completed result still is not strong enough.
+
+- Timestamp: 2026-03-24 19:27 UTC
+- Commit: `818dae0`
+- Lane: H200 exact-TTT monitoring
+- Objective: Check whether the exact `80`-shard TTT run is still improving into the late-training regime strongly enough to stay our main bet.
+- Command or config: Let the current exact run advance through the `step:5000`, `step:5500`, `step:6000`, `step:6500`, and `step:7000` validation intervals, then read the updated log from `records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs/h200_ttt_recordstack_80shard_seed1337.txt`.
+- Result: The exact run kept improving steadily through the later checkpoints: `step:5000 val_bpb:1.2159`, `step:5500 val_bpb:1.2128`, `step:6000 val_bpb:1.2054`, `step:6500 val_bpb:1.1938`, and `step:7000 val_bpb:1.1852`. This is now our best reproduced H200 score so far and shows that the lane is still gaining meaningfully well past the midpoint.
+- Decision: Keep the current exact run untouched. The curve is now strong enough that interrupting it for queued follow-ups would be clearly premature.
+- Next step: Let this exact run complete and inspect the final int6/sliding/legal-TTT metrics and bytes before evaluating the queued follow-up lanes.
+
+- Timestamp: 2026-03-24 19:39 UTC
+- Commit: `818dae0`
+- Lane: H200 proxy schedule correction
+- Objective: Explain why the single-H200 proxy is still far behind the upstream `8xH100` seed-`1337` curve even though the copied trainer and hyperparameters match, and redirect the next queued GPU time toward the highest-signal fix.
+- Command or config: Diffed `records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/train_gpt.py` against the upstream record copy and verified that the only code differences are the safe attention fallback and optional extra stride-64 final eval. Compared the live H200 log against `records/track_10min_16mb/2026-03-23_LeakyReLU_LegalTTT_ParallelMuon/train_seed1337.log` and noticed the key mismatch is scheduling: the public run uses `ITERATIONS=9000` with `MAX_WALLCLOCK_SECONDS=600`, which on `8xH100` stops around `7179` steps and therefore enters wallclock warmdown much earlier in terms of step count. Our H200 proxy used `MAX_WALLCLOCK_SECONDS=0`, so with `ITERATIONS=9000` it stayed on the high-LR step schedule far too long. Added `scripts/icrn_h200_ttt_h100_proxy.sh` plus `VALUE_RESIDUAL=1`, `BIGRAM_VOCAB_SIZE=3072`, and combo wrappers that proxy the public schedule with `ITERATIONS=7185`, `MAX_WALLCLOCK_SECONDS=0`, and the same `WARMDOWN_ITERS=3500`. Repointed `scripts/queue_h200_followups_after_current.sh` so the next automatic queue becomes: H100-step proxy -> H100-step proxy + VR1 -> H100-step proxy + Bigram3072 -> H100-step proxy + VR1 + Bigram3072.
+- Result: We now have a much more faithful single-H200 proxy plan for the public `8xH100` schedule. The exact current run remains useful for longer-run signal, but the next queued experiments will stop wasting time on a schedule that is structurally mismatched to the record-setting lane.
+- Decision: Keep the current exact run alive to completion, but promote the H100-step proxy to the front of the automatic follow-up queue because it is the highest-signal explanation for the remaining gap.
+- Next step: Restart the queue watcher so it uses the new H100-step proxy order, then let the current run finish and begin the corrected proxy lane automatically.
