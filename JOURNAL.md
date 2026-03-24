@@ -347,3 +347,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The run stopped at `step:6926/20000 val_loss:1.9199 val_bpb:1.1370 train_time:5400568ms`, then immediately entered the export path with `ema:applying EMA weights` and `gptq:calibrating with 256 batches...`.
 - Decision: Keep the baseline export running to completion; this is now our strongest live signal by a wide margin and close enough to the public frontier that the completed quantized artifact is the most important remaining unknown.
 - Next step: Wait for the final post-quant metric from this baseline run, then let the already-queued no-prune follow-up start automatically if the export gap is still too large.
+
+- Timestamp: 2026-03-24 00:13 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL export ablation
+- Objective: Correct the queued follow-up after the baseline export exposed a byte-cap failure mode.
+- Command or config: Observed the baseline export log after GPTQ: `prune:zeroed 2288232/26345472 int6 weights (8.7%) threshold=0` and `model:16271727 code:62074 total:16333801 (16.33 MB)`, then added `configs/runpod/non_ttt_vrl_gptq_1gpu_long_prune11.env` and `configs/runpod/non_ttt_vrl_gptq_8gpu_prune11.env` with `PRUNE_PCT=0.11`.
+- Result: We now have a replacement follow-up that targets the actual problem. The baseline is about `333,801` bytes over the limit, and the previous queued no-prune follow-up would almost certainly have made the artifact larger, not smaller.
+- Decision: Replace the queued no-prune follow-up on the pod with the new `prune11` follow-up so the next run spends GPU time on a byte-cap-compliant direction.
+- Next step: Sync the new configs, swap the waiting pod script to launch `non_ttt_vrl_gptq_1gpu_long_prune11.env`, and then keep monitoring the current baseline for its final post-quant metric.
