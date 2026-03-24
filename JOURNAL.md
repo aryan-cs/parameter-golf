@@ -905,3 +905,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The candidate file shrank from `62,810` bytes to `62,736` bytes, another `74` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 62,736`, which is `-12,195` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
 - Decision: Keep the distributed/compile alias pass in the main lane. The gain is small, but it is free, safe, and still moves the counted source in the right direction.
 - Next step: Push the distributed/compile alias pass so the next live export rerun uses the smaller counted candidate source together with the stronger bitplane + raw-LZMA exporter path.
+
+- Timestamp: 2026-03-24 03:32 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL code-size hygiene
+- Objective: Reclaim another larger block of counted source bytes by removing internal docstrings that do not affect runtime, checkpoints, or artifact format.
+- Command or config: Removed the internal docstrings from the GPTQ/int6 percentile/int8 embedding/calibration helpers in `candidates/non_ttt_vrl_gptq/train_gpt.py`, then reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, reran `python3 runpod/check_ready.py`, and reran the offline codec round-trip validator on the fixed-seed quantized VRL model skeleton.
+- Result: The candidate file shrank from `62,736` bytes to `62,202` bytes, another `534` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 62,202`, which is `-12,729` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
+- Decision: Keep the docstring-removal pass in the main lane. It is another clean counted-size win with no observed exporter regression.
+- Next step: Push the docstring-removal pass so the next live export rerun uses the smaller counted candidate source together with the stronger bitplane + raw-LZMA exporter path.

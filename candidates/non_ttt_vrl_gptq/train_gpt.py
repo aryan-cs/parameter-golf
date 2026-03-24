@@ -291,9 +291,6 @@ def dtr(name_idx: int, suffix: int, names: list[str]) -> str:
     return base_name
 
 def quantize_int6_gptq(weight, hessian=None, clip_range=31, block_size=128):
-    """Full GPTQ: Hessian-aware int6 quantization with Cholesky error compensation.
-    Based on the reference implementation from IST-DASLab/gptq (ICLR 2023).
-    If hessian is None, falls back to GPTQ-lite (percentile search)."""
     t32 = weight.float()
     if t32.ndim != 2 or hessian is None:
         return _quantize_int6_percentile(t32, clip_range)
@@ -350,7 +347,6 @@ def quantize_int6_gptq(weight, hessian=None, clip_range=31, block_size=128):
     return best_q, best_scale
 
 def _quantize_int6_percentile(t32, clip_range=31):
-    """Fallback: GPTQ-lite percentile search (for 1D or no-Hessian cases)."""
     if t32.ndim == 2:
         best_q, best_s, best_err = None, None, float('inf')
         for pct in [0.9990, 0.9995, 0.9999, 0.99999, 1.0]:
@@ -371,7 +367,6 @@ def _quantize_int6_percentile(t32, clip_range=31):
     return q, scale
 
 def quantize_float_tensor(t):
-    """Standard int8 quantization for embeddings."""
     t32 = t.float()
     if t32.ndim == 2:
         clip_q = 99.99984 / 100.0
@@ -387,7 +382,6 @@ def quantize_float_tensor(t):
     return q, scale
 
 def qsd(sd, hessians=None):
-    """Mixed int6/int8 quantization. Uses Full GPTQ when Hessian data available."""
     result, meta = {}, {}
     int6_cats = {"mlp", "attn", "bigram", "ve"}
     for name, tensor in sd.items():
@@ -879,7 +873,6 @@ class GPT(M):
         return self.lsc * th.tanh(logits / self.lsc)
 
 def chs(bm, tl, args, device, gas, num_batches=256):
-    """Run calibration batches through the model, collecting H = X^T X for each CL."""
     hessians = {}  # param_name -> H matrix (cols x cols)
     hooks = []
     param_to_name = {}
