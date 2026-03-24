@@ -11,7 +11,7 @@ from torch import Tensor, nn
 from torch.nn.parallel import DistributedDataParallel as DDP
 EG=os.environ.get; JP=os.path.join; PC=time.perf_counter
 BF=th.bfloat16; F16=th.float16; F32=th.float32; F64=th.float64; I8=th.int8; I16=th.int16; I64=th.int64; BO=th.bool; U16=th.uint16
-AC=th.autocast; IM=th.inference_mode; Z=th.zeros; TT=th.tensor; QT=th.quantile; EM=th.empty; FN=th.from_numpy; SK=th.stack
+AC=th.autocast; IM=th.inference_mode; Z=th.zeros; TT=th.tensor; QT=th.quantile; EM=th.empty; FN=th.from_numpy; SK=th.stack; PK=struct.pack; UF=struct.unpack_from; ER=ValueError
 P=nn.Parameter; PL=nn.ParameterList; M=nn.Module; ML=nn.ModuleList; NI=nn.init; NG=th.no_grad; CLP=th.clamp; DG=th.diag; CMP=th.compile; SY=th.cuda.synchronize
 IA=dist.is_available; II=dist.is_initialized; BR=dist.barrier; GWS=dist.get_world_size; GRK=dist.get_rank; IGP=dist.init_process_group; DGP=dist.destroy_process_group; ARD=dist.all_reduce; ROP=dist.ReduceOp
 ZL=th.zeros_like; EL=th.empty_like; AR=th.arange; SG=th.sigmoid; CAT=th.cat; ON=th.ones; FUL=th.full; EYE=th.eye
@@ -155,7 +155,7 @@ def lvt(pattern, sl):
     if not files: raise FileNotFoundError(f"no:{pattern}")
     tokens = CAT([lds(file) for file in files]).contiguous()
     usable = ((tokens.numel() - 1) // sl) * sl
-    if usable <= 0: raise ValueError(f"val<{sl}")
+    if usable <= 0: raise ER(f"val<{sl}")
     return tokens[:usable + 1]
 
 def eval_val(a, model, rank, ws, dv, gas,
@@ -240,7 +240,7 @@ def eqm(meta: dict[str, object]) -> tuple[bytes, list[str]]:
         "passthrough": 0,
         "passthrough_ctrl": 1,
     }
-    parts = [QMB, struct.pack("<H", len(names))]
+    parts = [QMB, PK("<H", len(names))]
     for name in names:
         kind = meta[name]
         kind_code = kind_map.get(kind)
@@ -248,16 +248,16 @@ def eqm(meta: dict[str, object]) -> tuple[bytes, list[str]]:
             kind_name = mk(kind)
             if kind_name == "int6": kind_code = 2
             elif kind_name == "int8": kind_code = 3
-            else: raise ValueError(f"bad meta {name}:{kind!r}")
+            else: raise ER(f"bad meta {name}:{kind!r}")
         name_bytes = name.encode("utf-8")
-        parts.append(struct.pack("<HB", len(name_bytes), kind_code))
+        parts.append(PK("<HB", len(name_bytes), kind_code))
         parts.append(name_bytes)
     return b"".join(parts), names
 
 def dqm(blob: bytes) -> tuple[dict[str, object], list[str], bool]:
     if blob.startswith(QMB):
         o = len(QMB)
-        entry_count = struct.unpack_from("<H", blob, o)[0]; o += 2
+        entry_count = UF("<H", blob, o)[0]; o += 2
         kind_map = {
             0: MP,
             1: MC,
@@ -266,7 +266,7 @@ def dqm(blob: bytes) -> tuple[dict[str, object], list[str], bool]:
         }
         meta, names = {}, []
         for _ in range(entry_count):
-            name_len, kind_code = struct.unpack_from("<HB", blob, o); o += 3
+            name_len, kind_code = UF("<HB", blob, o); o += 3
             name = blob[o:o+name_len].decode("utf-8"); o += name_len
             meta[name] = kind_map[kind_code]
             names.append(name)
@@ -424,7 +424,7 @@ def _zigzag_encode_int6(arr_i16: np.ndarray) -> np.ndarray:
     if arr.size == 0:
         return np.empty((0,), dtype=np.uint8)
     if arr.min() < -31 or arr.max() > 31:
-        raise ValueError("int6 range")
+        raise ER("int6 range")
     out = np.where(arr >= 0, arr * 2, (-arr) * 2 - 1)
     return out.astype(np.uint8, copy=False)
 
@@ -440,7 +440,7 @@ def pi6l(t: Tensor) -> bytes:
     if arr.size == 0:
         return b""
     if arr.min() < -31 or arr.max() > 31:
-        raise ValueError("int6 range")
+        raise ER("int6 range")
     u = (arr + 31).astype(np.uint8, copy=False)
     pad = (-u.size) % 4
     if pad:
@@ -463,7 +463,7 @@ def ui6l(raw: bytes | memoryview, shape: list[int]) -> Tensor:
     packed_u8 = np.frombuffer(raw, dtype=np.uint8)
     groups = (numel + 3) // 4
     if packed_u8.size != groups * 3:
-        raise ValueError(f"bad int6 sz {groups*3}!={packed_u8.size}")
+        raise ER(f"bad int6 sz {groups*3}!={packed_u8.size}")
     triplets = packed_u8.reshape(-1, 3).astype(np.uint32, copy=False)
     packed = triplets[:, 0] | (triplets[:, 1] << 8) | (triplets[:, 2] << 16)
     u = np.empty(groups * 4, dtype=np.uint8)
@@ -501,7 +501,7 @@ def ui6(raw: bytes | memoryview, shape: list[int]) -> Tensor:
     packed_u8 = np.frombuffer(raw, dtype=np.uint8)
     expected = plane_bytes * 6
     if packed_u8.size != expected:
-        raise ValueError(f"bad int6 sz {expected}!={packed_u8.size}")
+        raise ER(f"bad int6 sz {expected}!={packed_u8.size}")
     u = np.zeros(padded, dtype=np.uint8)
     o = 0
     for bit in range(6):
@@ -546,7 +546,7 @@ def dmb(blob: bytes) -> tuple[bytes, str]:
                 return lzma.decompress(payload, format=lzma.FORMAT_RAW, filters=LF), mcn(cid)
             except lzma.LZMAError:
                 return lzma.decompress(payload), "legacy_lzma_hc4_32mb_xz"
-        raise ValueError(f"bad codec {cid}")
+        raise ER(f"bad codec {cid}")
     if HAS_ZSTD:
         try:
             return zstd.ZstdDecompressor().decompress(blob), "legacy_zstd22"
@@ -557,9 +557,9 @@ def dmb(blob: bytes) -> tuple[bytes, str]:
 def lds(file):
     hb = 256 * np.dtype("<i4").itemsize
     header = np.fromfile(file, dtype="<i4", count=256)
-    if header.size != 256 or int(header[0]) != 20240520 or int(header[1]) != 1: raise ValueError(f"bad hdr {file}")
+    if header.size != 256 or int(header[0]) != 20240520 or int(header[1]) != 1: raise ER(f"bad hdr {file}")
     nt = int(header[2])
-    if file.stat().st_size != hb + nt * np.dtype("<u2").itemsize: raise ValueError(f"bad size {file}")
+    if file.stat().st_size != hb + nt * np.dtype("<u2").itemsize: raise ER(f"bad size {file}")
     return FN(np.fromfile(file, dtype="<u2", count=nt, offset=hb).astype(np.uint16, copy=False))
 
 class TS:
@@ -1000,7 +1000,7 @@ def ree(a, bm, rank, ws, dv, dd, m0,
             log0(f"prune:{prc}/{ti6} ({100*prc/max(ti6,1):.1f}%) thr={threshold:.0f}")
     meta_blob, meta_names = eqm(qm)
     nti = {name: idx for idx, name in enumerate(meta_names)}
-    parts = [struct.pack("<I", len(meta_blob)), meta_blob]
+    parts = [PK("<I", len(meta_blob)), meta_blob]
     meta_bytes = 4 + len(meta_blob)
     thb = 0
     p6b = 0
@@ -1022,9 +1022,9 @@ def ree(a, bm, rank, ws, dv, dd, m0,
             t_np = t.contiguous().numpy() if t.dtype != BF else t.contiguous().view(U16).numpy()
             raw = t_np.tobytes()
         name_idx, suffix = etr(tname, nti)
-        parts.append(struct.pack("<HBBB", name_idx, suffix, dt, t.ndim))
+        parts.append(PK("<HBBB", name_idx, suffix, dt, t.ndim))
         thb += 5 + 4 * t.ndim
-        for d in t.shape: parts.append(struct.pack("<I", d))
+        for d in t.shape: parts.append(PK("<I", d))
         parts.append(raw)
         if pi:
             p6b += len(raw)
@@ -1054,21 +1054,21 @@ def ree(a, bm, rank, ws, dv, dd, m0,
     with open("final_model.int6.ptz", "rb") as f: model_blob_loaded = f.read()
     rd, _ = dmb(model_blob_loaded)
     o = 0
-    meta_len = struct.unpack_from("<I", rd, o)[0]; o += 4
+    meta_len = UF("<I", rd, o)[0]; o += 4
     lm, meta_names, ctr = dqm(rd[o:o+meta_len]); o += meta_len
     drm = {0: (I8, np.int8), 1: (F16, np.float16), 2: (F32, np.float32), 3: (BF, np.uint16)}
     lr = {}
     while o < len(rd):
         if ctr:
-            name_idx, suffix, dt, ndim = struct.unpack_from("<HBBB", rd, o); o += 5
+            name_idx, suffix, dt, ndim = UF("<HBBB", rd, o); o += 5
             tname = dtr(name_idx, suffix, meta_names)
         else:
-            name_len = struct.unpack_from("<H", rd, o)[0]; o += 2
+            name_len = UF("<H", rd, o)[0]; o += 2
             tname = rd[o:o+name_len].decode("utf-8"); o += name_len
-            dt, ndim = struct.unpack_from("<BB", rd, o); o += 2
+            dt, ndim = UF("<BB", rd, o); o += 2
         shape = []
         for _ in range(ndim):
-            shape.append(struct.unpack_from("<I", rd, o)[0]); o += 4
+            shape.append(UF("<I", rd, o)[0]); o += 4
         if dt == 4:
             numel = int(np.prod(shape, dtype=np.int64))
             nbytes = ((numel + 3) // 4) * 3
@@ -1115,7 +1115,7 @@ def main():
     dd = "RANK" in os.environ and "WORLD_SIZE" in os.environ
     rank = int(EG("RANK", "0")); ws = int(EG("WORLD_SIZE", "1"))
     lrk = int(EG("LOCAL_RANK", "0"))
-    if ws <= 0 or 8 % ws != 0: raise ValueError(f"bad WS={ws}")
+    if ws <= 0 or 8 % ws != 0: raise ER(f"bad WS={ws}")
     gas = 8 // ws; grad_scale = 1.0 / gas
     if not th.cuda.is_available(): raise RuntimeError("cuda req")
     dv = th.device("cuda", lrk); th.cuda.set_device(dv)
