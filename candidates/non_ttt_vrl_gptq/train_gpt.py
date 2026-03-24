@@ -11,7 +11,7 @@ from torch import Tensor, nn
 from torch.nn.parallel import DistributedDataParallel as DDP
 EG=os.environ.get; JP=os.path.join; PC=time.perf_counter
 BF=th.bfloat16; F16=th.float16; F32=th.float32; F64=th.float64; I8=th.int8; I16=th.int16; I64=th.int64; BO=th.bool; U16=th.uint16
-AC=th.autocast; IM=th.inference_mode; Z=th.zeros; TT=th.tensor; QT=th.quantile; EM=th.empty; FN=th.from_numpy; SK=th.stack; PK=struct.pack; UF=struct.unpack_from; ER=ValueError
+AC=th.autocast; IM=th.inference_mode; Z=th.zeros; TT=th.tensor; QT=th.quantile; EM=th.empty; FN=th.from_numpy; SK=th.stack; PK=struct.pack; UF=struct.unpack_from; ER=ValueError; CU="cuda"; AU=lambda e=1:AC(device_type=CU,dtype=BF,enabled=e)
 P=nn.Parameter; PL=nn.ParameterList; M=nn.Module; ML=nn.ModuleList; NI=nn.init; NG=th.no_grad; CLP=th.clamp; DG=th.diag; CMP=th.compile; SY=th.cuda.synchronize
 IA=dist.is_available; II=dist.is_initialized; BR=dist.barrier; GWS=dist.get_world_size; GRK=dist.get_rank; IGP=dist.init_process_group; DGP=dist.destroy_process_group; ARD=dist.all_reduce; ROP=dist.ReduceOp
 ZL=th.zeros_like; EL=th.empty_like; AR=th.arange; SG=th.sigmoid; CAT=th.cat; ON=th.ones; FUL=th.full; EYE=th.eye
@@ -173,7 +173,7 @@ def eval_val(a, model, rank, ws, dv, gas,
             bse = min(bss + lbs, se)
             local = vt[bss*sl:(bse*sl)+1].to(device=dv, dtype=I64, non_blocking=True)
             x, y = local[:-1].reshape(-1, sl), local[1:].reshape(-1, sl)
-            with AC(device_type="cuda", dtype=BF, enabled=True):
+            with AU():
                 bl = model(x, y).detach()
             vls += bl.to(F64) * float(y.numel())
             vtc += float(y.numel())
@@ -895,7 +895,7 @@ def ch(bm, tl, args, dv, gas, num_batches=256):
             h = module.register_forward_hook(make_hook(id(module), pn, cols))
             hooks.append(h)
     bm.eval()
-    with IM(), AC(device_type="cuda", dtype=BF):
+    with IM(), AU():
         for _ in range(num_batches):
             x, y = tl.next_batch(args.tbt, args.tsl, gas)
             _ = bm(x, y)
@@ -929,7 +929,7 @@ def evl(logits_fn, rank, ws, dv, vt,
             if pad > 0: x_list.extend([x_list[-1]]*pad); y_list.extend([y_list[-1]]*pad)
             x = SK(x_list).to(device=dv, dtype=I64)
             y = SK(y_list).to(device=dv, dtype=I64)
-            with AC(device_type="cuda", dtype=BF): logits = logits_fn(x)
+            with AU(): logits = logits_fn(x)
             for b in range(bs):
                 s = batch[b][1]; sl, st = logits[b, s:], y[b, s:]
                 loss_sum += F.cross_entropy(sl.float(), st, reduction="sum").to(F64)
@@ -1098,7 +1098,7 @@ def ree(a, bm, rank, ws, dv, dd, m0,
     rlf = CMP(bm.forward_logits, dynamic=False) if not bool(int(EG("TORCH_COMPILE_DISABLE", "0"))) else bm.forward_logits
     warmup_x = Z(a.ebs, eval_sl, dtype=I64, device=dv)
     bm.eval()
-    with IM(), AC(device_type="cuda", dtype=BF): _ = rlf(warmup_x)
+    with IM(), AU(): _ = rlf(warmup_x)
     SY(); t_eval = PC()
     q_vl, q_vb = evl(rlf, rank, ws, dv,
         vte, bb, hs, ib,
@@ -1118,7 +1118,7 @@ def main():
     if ws <= 0 or 8 % ws != 0: raise ER(f"bad WS={ws}")
     gas = 8 // ws; grad_scale = 1.0 / gas
     if not th.cuda.is_available(): raise RuntimeError("cuda req")
-    dv = th.device("cuda", lrk); th.cuda.set_device(dv)
+    dv = th.device(CU, lrk); th.cuda.set_device(dv)
     if dd: IGP(backend="nccl", device_id=dv); BR()
     m0 = rank == 0
     th.backends.cuda.matmul.allow_tf32 = True; th.backends.cudnn.allow_tf32 = True
@@ -1214,7 +1214,7 @@ def main():
             for ms in range(gas):
                 if dd: model.require_backward_grad_sync = ms == gas - 1
                 x, y = tl.next_batch(a.tbt, a.tsl, gas)
-                with AC(device_type="cuda", dtype=BF, enabled=True): wl = model(x, y)
+                with AU(): wl = model(x, y)
                 (wl * grad_scale).backward()
             for opt in opts: opt.step()
             zga()
@@ -1248,7 +1248,7 @@ def main():
         for ms in range(gas):
             if dd: model.require_backward_grad_sync = ms == gas - 1
             x, y = tl.next_batch(a.tbt, a.tsl, gas)
-            with AC(device_type="cuda", dtype=BF, enabled=True): loss = model(x, y)
+            with AU(): loss = model(x, y)
             trl += loss.detach(); (loss * grad_scale).backward()
         trl /= gas
         frac = min(step / a.mmws, 1.0) if a.mmws > 0 else 1.0
