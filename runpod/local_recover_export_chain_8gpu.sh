@@ -26,9 +26,11 @@ ssh "${SSH_ARGS[@]}" "$REMOTE" "
   bash runpod/pod_launch_export_chain.sh \
     non_ttt_vrl_gptq \
     1337 \
-    configs/runpod/non_ttt_vrl_gptq_8gpu_prune14.env \
+    configs/runpod/non_ttt_vrl_gptq_8gpu.env \
+    configs/runpod/non_ttt_vrl_gptq_8gpu_export_prune05.env \
+    configs/runpod/non_ttt_vrl_gptq_8gpu_export_prune08.env \
+    configs/runpod/non_ttt_vrl_gptq_8gpu_export_prune11.env \
+    configs/runpod/non_ttt_vrl_gptq_8gpu_export_prune14.env \
     configs/runpod/non_ttt_vrl_gptq_8gpu_export_prune17.env \
-    configs/runpod/non_ttt_vrl_gptq_8gpu_export_prune20.env \
-    configs/runpod/non_ttt_vrl_gptq_8gpu_export_prune23.env \
-    configs/runpod/non_ttt_vrl_gptq_8gpu_export_prune26.env
+    configs/runpod/non_ttt_vrl_gptq_8gpu_export_prune20.env
 "

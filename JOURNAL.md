@@ -671,3 +671,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The raw payload is dominated by packed int6 weights: `int6_q=19,759,104` bytes, `int8_q=524,288`, `passthrough_direct_float16=248,008`, `int6_scale=84,992`, `int8_scale=2,048`, total raw payload `20,618,444` bytes. This confirms there is no other hidden payload class close to int6 in size; the remaining validity fight is overwhelmingly about the int6 block and pruning/compression behavior, not some overlooked float payload.
 - Decision: Treat the exporter work as complete for now. There is no new large offline size lever beyond the already-implemented packed-int6 path and the staged prune sweeps.
 - Next step: Wait for the next H100 pod and use the new `artifact_breakdown` logs to see how much of the packed-int6 raw win survives final compression in the real artifact.
+
+- Timestamp: 2026-03-24 03:48 America/Chicago
+- Commit: uncommitted
+- Lane: runpod restart strategy
+- Objective: Update the recovery plan so the next live restart preserves more quality now that packed int6 is in place, instead of assuming we still need to start from an aggressively pruned source run.
+- Command or config: Patched `configs/runpod/non_ttt_vrl_gptq_1gpu_long.env` and `configs/runpod/non_ttt_vrl_gptq_8gpu.env` to set `SAVE_PRE_EXPORT_CHECKPOINT=1`, added new export-only configs for `prune05`, `prune08`, `prune11`, and `prune14` on both `1gpu` and `8gpu`, updated `runpod/local_recover_export_chain.sh`, `runpod/local_recover_export_chain_8gpu.sh`, and `RUNPOD_READY.md` to launch from the baseline `PRUNE_PCT=0.02` source run and then walk a gentler export ladder `05 -> 08 -> 11 -> 14 -> 17 -> 20`. Reran `python3 runpod/check_ready.py`.
+- Result: The restart plan now preserves the strongest available recipe first and only spends score on heavier pruning if the new exporter still needs it. Readiness still passes, and the recovery wrappers now validate against 7 config refs each with 30 config files total.
+- Decision: Use the baseline-first ladder as the new default relaunch path. Starting from `prune14` is no longer justified now that packed int6 is in the exporter.
+- Next step: Push the gentler recovery plan so the repo is ready to relaunch immediately when fresh H100 credits arrive.

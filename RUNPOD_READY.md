@@ -20,7 +20,7 @@
 - Byte-cap strategy:
   - packed int6 payloads
   - compact metadata
-  - export-only prune ladder `17 -> 20 -> 23 -> 26`
+  - export-only prune ladder `05 -> 08 -> 11 -> 14 -> 17 -> 20`
 
 ## When Credits Land
 
@@ -41,8 +41,8 @@ bash runpod/local_recover_export_chain.sh root@HOST /workspace/golf PORT 80
 This will:
 - sync the repo
 - bootstrap the pod
-- launch `non_ttt_vrl_gptq_1gpu_long_prune14`
-- queue export-only `prune17 -> prune20 -> prune23 -> prune26`
+- launch `non_ttt_vrl_gptq_1gpu_long`
+- queue export-only `prune05 -> prune08 -> prune11 -> prune14 -> prune17 -> prune20`
 
 ### 8x H100 SXM recovery
 
@@ -55,8 +55,8 @@ bash runpod/local_recover_export_chain_8gpu.sh root@HOST /workspace/golf PORT 80
 This will:
 - sync the repo
 - bootstrap the pod
-- launch `non_ttt_vrl_gptq_8gpu_prune14`
-- queue export-only `prune17 -> prune20 -> prune23 -> prune26`
+- launch `non_ttt_vrl_gptq_8gpu`
+- queue export-only `prune05 -> prune08 -> prune11 -> prune14 -> prune17 -> prune20`
 
 ## After Launch
 
