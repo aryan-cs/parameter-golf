@@ -1238,3 +1238,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The candidate file shrank from `52,955` bytes to `52,908` bytes, another `47` bytes of direct code-payload savings. The wrapped export blob stayed exactly unchanged at `blob_size=4246542`, the chooser still selected the same codec path, and the CPU harness still reported exact `roundtrip=True` with the same SHA-256 `4bbb418b6d8265d42710b1cc6939d16e812ecfd150f5bae08b04dd32336fe3a6`.
 - Decision: Keep the shorter codec-label spellings in the main lane. This is a free counted-size win with no measured effect on the artifact bytes or recovery tooling.
 - Next step: Push this tiny hygiene pass so the next live export-only resume runs with the smallest counted source and the same best-known exporter behavior.
+
+- Timestamp: 2026-03-24 05:35 CDT
+- Commit: `4804a19`
+- Lane: non-ttt VRL code-size hygiene
+- Objective: Reclaim another safe counted-size block by shortening internal quantization category strings that never leave the compact artifact format.
+- Command or config: Changed [train_gpt.py](/Users/aryan/Desktop/golf/candidates/non_ttt_vrl_gptq/train_gpt.py) so `cpm()` returns one-character internal category codes (`e/m/b/a/v/o`) instead of longer strings like `embed`, `mlp`, `bigram`, `attn`, `ve`, and `other`. Also changed `mk()` to return one-character internal codes (`p/c/6/8`) instead of longer strings like `passthrough`, `passthrough_ctrl`, `int6`, and `int8`, and updated the internal comparisons in `eqm`, `qsd`, `dsd`, and the prune/export paths accordingly. Then reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, reran `python3 runpod/check_ready.py`, and reran the chooser-level CPU export round-trip harness under `uv`.
+- Result: The candidate file shrank from `52,908` bytes to `52,804` bytes, another `104` bytes of direct code-payload savings. The wrapped export blob again stayed exactly unchanged at `blob_size=4246542`, the chooser still selected the same codec path, and the CPU harness still reported exact `roundtrip=True` with the same SHA-256 `4bbb418b6d8265d42710b1cc6939d16e812ecfd150f5bae08b04dd32336fe3a6`.
+- Decision: Keep the shorter internal quant category codes in the main lane. This is another free counted-size win with no measured effect on artifact bytes, compatibility, or recovery tooling.
+- Next step: Push this pass so the next live export-only resume uses the smallest counted candidate we currently have together with the unchanged best-known exporter path.
