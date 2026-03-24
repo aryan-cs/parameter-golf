@@ -140,7 +140,7 @@ def vv(a, model, rk, ws, dv, gas,
     model.train(); return float(IT(vl)), float(bpt * tpb)
 
 CP = tuple(
-    p for p in "asc,ascs,msc,mscs,rm,rms,q_gain,skw,skws,smear,bol,bgm.scale,vls,vsh.scale,vrl_alphas".split(",") if p)
+    p for p in "asc,ascs,msc,mscs,rm,rms,qgn,skw,skws,smear,bol,bgm.scale,vls,vsh.scale,vra".split(",") if p)
 I8K = 65_536
 I8D = F16
 MP = "p"
@@ -604,7 +604,7 @@ class CSA(M):
         self.c_q = CL(dim, dim, bias=False); self.c_k = CL(dim, kv_dim, bias=False)
         self.c_v = CL(dim, kv_dim, bias=False); self.proj = CL(dim, dim, bias=False)
         self.proj._zero_init = True
-        self.q_gain = P(FUL((nh,), qgi, dtype=F32))
+        self.qgn = P(FUL((nh,), qgi, dtype=F32))
         self.rd = 0
         self.rotary = RY(self.hd, base=rb, tsl=1024)
         self.ux = False
@@ -626,7 +626,7 @@ class CSA(M):
         cos, sin = self.rotary(seqlen, x.device, q.dtype)
         q = are(q, cos, sin, self.rd)
         k = are(k, cos, sin, self.rd)
-        q = q * TY(self.q_gain, q.dtype)[None, None, :, None]
+        q = q * TY(self.qgn, q.dtype)[None, None, :, None]
         if HAS_FA3:
             y = _fa3_func(q, k, v, causal=True)
             if isinstance(y, tuple): y = y[0]
@@ -746,11 +746,11 @@ class GPT(M):
         self.final_norm = RN()
         self.vre = nl > 1
         if self.vre:
-            self.vrl_alphas = PL([
+            self.vra = PL([
                 P(TT(0.0, dtype=F32)) for _ in range(nl - 1)
             ])
         else:
-            self.vrl_alphas = PL()
+            self.vra = PL()
         self.lmh = None if te else CL(dm, vs, bias=False)
         if self.lmh is not None: self.lmh._zero_init = True
         self.iw()
@@ -789,7 +789,7 @@ class GPT(M):
             ve = self.gv(i, ids, vc)
             v_res = None
             if i > 0 and v0 is not None:
-                alpha = SG(TY(self.vrl_alphas[vi], x.dtype))
+                alpha = SG(TY(self.vra[vi], x.dtype))
                 v_res = alpha * v0
                 vi += 1
             x = self.bs[i](x, x0, ve=ve, vr=v_res); skips.append(x)
@@ -800,7 +800,7 @@ class GPT(M):
             ve = self.gv(li, ids, vc)
             v_res = None
             if v0 is not None:
-                alpha = SG(TY(self.vrl_alphas[vi], x.dtype))
+                alpha = SG(TY(self.vra[vi], x.dtype))
                 v_res = alpha * v0
                 vi += 1
             x = self.bs[li](x, x0, ve=ve, vr=v_res)
@@ -1120,7 +1120,7 @@ def main():
         spa.append(bm.vsh.scale)
         for s in bm.vls: spa.append(s)
     if bm.vre:
-        for alpha in bm.vrl_alphas: spa.append(alpha)
+        for alpha in bm.vra: spa.append(alpha)
     tlr = a.telr if a.te else a.elr
     tpg = [{PA: [bm.tke.weight], "lr": tlr, BL: tlr}]
     if bm.bgm is not None:
