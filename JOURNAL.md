@@ -482,3 +482,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The trainer short-circuits exactly as intended when `EXPORT_ONLY_CHECKPOINT` is set: it loads the saved model state, logs `export_only:loaded_checkpoint:...`, calls `run_export_eval(...)`, and returns before optimizer setup or the training loop. The live pod queue now matches the staged design: active `prune14`, then export-only `prune17`, then export-only `prune20`, then export-only `prune23`.
 - Decision: Keep the current queue intact; the fastest path to a valid score is to let prune14 produce a reusable checkpoint and consume it through the export-only pruning ladder rather than paying more full retrains.
 - Next step: Wait for prune14's first validation checkpoint and eventual saved checkpoint, then let the queued export-only sweeps test progressively stronger pruning until one lands under the 16 MB cap with acceptable score retention.
+
+- Timestamp: 2026-03-24 01:12 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL export orchestration
+- Objective: Extend the export-only fallback ladder one more step so the pod can keep ratcheting pruning upward automatically if `prune23` still misses the byte cap.
+- Command or config: Added `configs/runpod/non_ttt_vrl_gptq_1gpu_export_prune26.env` and `configs/runpod/non_ttt_vrl_gptq_8gpu_export_prune26.env`, synced the 1-GPU config to the pod, and launched `bash runpod/pod_queue_export_after_prefix.sh non_ttt_vrl_gptq 1337 non_ttt_vrl_gptq_1gpu_export_prune23 configs/runpod/non_ttt_vrl_gptq_1gpu_export_prune26.env`.
+- Result: The pod now has an additional export-only fallback beyond `prune23`. The new watcher is live as PID `185836`, so the staged chain is now: active `prune14`, then export-only `prune17`, then export-only `prune20`, then export-only `prune23`, then export-only `prune26`.
+- Decision: Keep the active training run unchanged and only consume `prune26` if the earlier export-only sweeps are still over the byte cap or lose too much quality.
+- Next step: Wait for prune14's first validation checkpoint and eventual saved checkpoint, then let the export-only chain consume that checkpoint automatically until one staged pruning level yields a valid sub-16MB artifact with acceptable score retention.
