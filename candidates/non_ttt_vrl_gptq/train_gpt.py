@@ -11,7 +11,7 @@ from torch import Tensor, nn
 from torch.nn.parallel import DistributedDataParallel as DDP
 EG=os.environ.get; JP=os.path.join; PC=time.perf_counter
 BF=th.bfloat16; F16=th.float16; F32=th.float32; F64=th.float64; I8=th.int8; I16=th.int16; I64=th.int64; BO=th.bool; U16=th.uint16
-AC=th.autocast; IM=th.inference_mode; Z=th.zeros; TT=th.tensor; QT=th.quantile; EM=th.empty; FN=th.from_numpy; SK=th.stack; PK=struct.pack; UF=struct.unpack_from; ER=ValueError; CU="cuda"; AU=lambda e=1:AC(device_type=CU,dtype=BF,enabled=e); DC=lambda t:t.detach().cpu(); DL=lambda t:DC(t).clone(); DX=lambda t:DC(t).contiguous(); AS=lambda x,d:x.astype(d,copy=False); NM=lambda s:int(np.prod(s,dtype=np.int64))
+AC=th.autocast; IM=th.inference_mode; Z=th.zeros; TT=th.tensor; QT=th.quantile; EM=th.empty; FN=th.from_numpy; SK=th.stack; PK=struct.pack; UF=struct.unpack_from; ER=ValueError; CU="cuda"; AU=lambda e=1:AC(device_type=CU,dtype=BF,enabled=e); DC=lambda t:t.detach().cpu(); DL=lambda t:DC(t).clone(); DX=lambda t:DC(t).contiguous(); AS=lambda x,d:x.astype(d,copy=False); NM=lambda s:int(np.prod(s,dtype=np.int64)); FB=np.frombuffer; NE=np.empty; NZ=np.zeros; RM=F.rms_norm; LI=F.linear; PT=Path; GG=glob.glob
 P=nn.Parameter; PL=nn.ParameterList; M=nn.Module; ML=nn.ModuleList; NI=nn.init; NG=th.no_grad; CLP=th.clamp; DG=th.diag; CMP=th.compile; SY=th.cuda.synchronize
 IA=dist.is_available; II=dist.is_initialized; BR=dist.barrier; GWS=dist.get_world_size; GRK=dist.get_rank; IGP=dist.init_process_group; DGP=dist.destroy_process_group; ARD=dist.all_reduce; ROP=dist.ReduceOp
 ZL=th.zeros_like; EL=th.empty_like; AR=th.arange; SG=th.sigmoid; CAT=th.cat; ON=th.ones; FUL=th.full; EYE=th.eye
@@ -137,8 +137,8 @@ class MU(th.optim.Optimizer):
 
 def bsl(sp, vs, dv):
     sv = int(sp.vocab_size()); ts = max(sv, vs)
-    bbn = np.zeros((ts,), dtype=N6)
-    hln = np.zeros((ts,), dtype=np.bool_)
+    bbn = NZ((ts,), dtype=N6)
+    hln = NZ((ts,), dtype=np.bool_)
     ibn = np.ones((ts,), dtype=np.bool_)
     for tid in range(sv):
         if sp.is_control(tid) or sp.is_unknown(tid) or sp.is_unused(tid): continue
@@ -152,7 +152,7 @@ def bsl(sp, vs, dv):
             TT(ibn, dtype=BO, device=dv))
 
 def lvt(pattern, sl):
-    files = [Path(p) for p in sorted(glob.glob(pattern))]
+    files = [PT(p) for p in sorted(GG(pattern))]
     if not files: raise FileNotFoundError(f"no:{pattern}")
     tokens = CAT([lds(file) for file in files]).contiguous()
     usable = ((tokens.numel() - 1) // sl) * sl
@@ -423,7 +423,7 @@ def dsd(result, meta, template_sd):
 def _zigzag_encode_int6(arr_i16: np.ndarray) -> np.ndarray:
     arr = AS(arr_i16, N6)
     if arr.size == 0:
-        return np.empty((0,), dtype=N8)
+        return NE((0,), dtype=N8)
     if arr.min() < -31 or arr.max() > 31:
         raise ER("int6 range")
     out = np.where(arr >= 0, arr * 2, (-arr) * 2 - 1)
@@ -451,7 +451,7 @@ def pi6l(t: Tensor) -> bytes:
               | (groups[:, 1] << 6)
               | (groups[:, 2] << 12)
               | (groups[:, 3] << 18))
-    out = np.empty(packed.size * 3, dtype=N8)
+    out = NE(packed.size * 3, dtype=N8)
     out[0::3] = (packed & 0xFF).astype(N8)
     out[1::3] = ((packed >> 8) & 0xFF).astype(N8)
     out[2::3] = ((packed >> 16) & 0xFF).astype(N8)
@@ -461,13 +461,13 @@ def ui6l(raw: bytes | memoryview, shape: list[int]) -> Tensor:
     numel = NM(shape)
     if numel == 0:
         return EM(shape, dtype=I8)
-    packed_u8 = np.frombuffer(raw, dtype=N8)
+    packed_u8 = FB(raw, dtype=N8)
     groups = (numel + 3) // 4
     if packed_u8.size != groups * 3:
         raise ER(f"bad int6 sz {groups*3}!={packed_u8.size}")
     triplets = AS(packed_u8.reshape(-1, 3), np.uint32)
     packed = triplets[:, 0] | (triplets[:, 1] << 8) | (triplets[:, 2] << 16)
-    u = np.empty(groups * 4, dtype=N8)
+    u = NE(groups * 4, dtype=N8)
     u[0::4] = (packed & 0x3F).astype(N8)
     u[1::4] = ((packed >> 6) & 0x3F).astype(N8)
     u[2::4] = ((packed >> 12) & 0x3F).astype(N8)
@@ -499,11 +499,11 @@ def ui6(raw: bytes | memoryview, shape: list[int]) -> Tensor:
         return EM(shape, dtype=I8)
     padded = ((numel + 7) // 8) * 8
     plane_bytes = padded // 8
-    packed_u8 = np.frombuffer(raw, dtype=N8)
+    packed_u8 = FB(raw, dtype=N8)
     expected = plane_bytes * 6
     if packed_u8.size != expected:
         raise ER(f"bad int6 sz {expected}!={packed_u8.size}")
-    u = np.zeros(padded, dtype=N8)
+    u = NZ(padded, dtype=N8)
     o = 0
     for bit in range(6):
         plane = packed_u8[o:o + plane_bytes]
@@ -565,7 +565,7 @@ def lds(file):
 
 class TS:
     def __init__(self, pat):
-        self.files = [Path(p) for p in sorted(glob.glob(pat))]
+        self.files = [PT(p) for p in sorted(GG(pat))]
         if not self.files: raise FileNotFoundError(f"no:{pat}")
         self.file_idx = 0; self.tokens = lds(self.files[0]); self.pos = 0
     def _advance_file(self):
@@ -590,7 +590,7 @@ class DTL:
 
 class RN(M):
     def __init__(self, eps=None): super().__init__(); self.eps = eps
-    def forward(self, x): return F.rms_norm(x, (x.size(-1),), eps=self.eps)
+    def forward(self, x): return RM(x, (x.size(-1),), eps=self.eps)
 
 class CL(nn.Linear):
     _qat_enabled: bool = False
@@ -604,7 +604,7 @@ class CL(nn.Linear):
                 scale = (row_clip / 31.0).clamp_min(1.0 / 31.0)
                 w_q = (CLP(th.round(w32 / scale[:, None]), -31, 31) * scale[:, None]).to(x.dtype)
             w = w + (w_q - w).detach()
-        return F.linear(x, w, self.bias.to(x.dtype) if self.bias is not None else None)
+        return LI(x, w, self.bias.to(x.dtype) if self.bias is not None else None)
 
 def rf32(module):
     with NG():
@@ -670,7 +670,7 @@ class CSA(M):
         if v_embed is not None: v = v + v_embed
         if v_residual is not None: v = v + v_residual
         v = v.reshape(bsz, seqlen, self.num_kv_heads, self.head_dim)
-        q, k = F.rms_norm(q, (q.size(-1),)), F.rms_norm(k, (k.size(-1),))
+        q, k = RM(q, (q.size(-1),)), RM(k, (k.size(-1),))
         cos, sin = self.rotary(seqlen, x.device, q.dtype)
         q = are(q, cos, sin, self.rope_dims)
         k = are(k, cos, sin, self.rope_dims)
@@ -859,18 +859,18 @@ class GPT(M):
     def _embed(self, ids):
         x = self.tok_emb(ids)
         if self.bigram is not None: x = x + self.bigram(ids)
-        x = F.rms_norm(x, (self.tok_emb.weight.shape[1],))
+        x = RM(x, (self.tok_emb.weight.shape[1],))
         if self.smear is not None: x = self.smear(x)
         return x
     def forward(self, ids, tgt):
         x0 = self._embed(ids); x = self._run_layers(x0, x0, ids)
         x_flat = self.final_norm(x).reshape(-1, x.size(-1)); targets = tgt.reshape(-1)
-        logits_proj = F.linear(x_flat, self.tok_emb.weight) if self.te else self.lm_head(x_flat)
+        logits_proj = LI(x_flat, self.tok_emb.weight) if self.te else self.lm_head(x_flat)
         logits = self.lsc * th.tanh(logits_proj / self.lsc)
         return F.cross_entropy(logits.float(), targets, reduction="mean")
     def forward_logits(self, ids):
         x0 = self._embed(ids); x = self.final_norm(self._run_layers(x0, x0, ids))
-        logits = F.linear(x, self.tok_emb.weight.to(x.dtype)) if self.te else self.lm_head(x)
+        logits = LI(x, self.tok_emb.weight.to(x.dtype)) if self.te else self.lm_head(x)
         return self.lsc * th.tanh(logits / self.lsc)
 
 def ch(bm, tl, args, dv, gas, num_batches=256):
@@ -948,7 +948,7 @@ def rcp(spec: str) -> str:
     if not spec:
         return ""
     if spec == "1":
-        return str(Path(EG("OUT_DIR", ".")) / "pre_export_model.pt")
+        return str(PT(EG("OUT_DIR", ".")) / "pre_export_model.pt")
     return spec
 
 def mspc(path_spec: str, sd: dict[str, th.Tensor], log0):
@@ -956,7 +956,7 @@ def mspc(path_spec: str, sd: dict[str, th.Tensor], log0):
     if not ckpt_path:
         return ""
     ckpt = {"model_state": {k: DC(v) for k, v in sd.items()}}
-    path = Path(ckpt_path)
+    path = PT(ckpt_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.with_suffix(path.suffix + ".tmp")
     th.save(ckpt, tmp_path)
@@ -1086,7 +1086,7 @@ def ree(a, bm, rank, ws, dv, dd, m0,
             torch_dt, np_dt = drm[dt]
             numel = NM(shape)
             nbytes = numel * np.dtype(np_dt).itemsize
-            arr = np.frombuffer(rd, dtype=np_dt, count=numel, offset=o).copy()
+            arr = FB(rd, dtype=np_dt, count=numel, offset=o).copy()
             o += nbytes
             t = FN(arr).reshape(shape)
             if torch_dt == BF: t = t.view(BF)
@@ -1110,7 +1110,7 @@ def ree(a, bm, rank, ws, dv, dd, m0,
 
 def main():
     global z5
-    code = Path(__file__).read_text(encoding="utf-8"); a = H()
+    code = PT(__file__).read_text(encoding="utf-8"); a = H()
     z5 = CMP(z5)
     dd = "RANK" in os.environ and "WORLD_SIZE" in os.environ
     rank = int(EG("RANK", "0")); ws = int(EG("WORLD_SIZE", "1"))
