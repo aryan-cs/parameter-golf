@@ -75,10 +75,8 @@ class Hyperparameters:
     ve_enabled = bool(int(os.environ.get("VE_ENABLED", "1")))
     ve_dim = int(os.environ.get("VE_DIM", 128))
     ve_layers = os.environ.get("VE_LAYERS", "9,10")
-    # GPTQ calibration
     gptq_calib_batches = int(os.environ.get("GPTQ_CALIB_BATCHES", 256))
     gptq_block_size = int(os.environ.get("GPTQ_BLOCK_SIZE", 128))
-    # QAT-export alignment: STE clip percentile matches GPTQ export
     qat_clip_pct = float(os.environ.get("QAT_CLIP_PCT", 0.9995))
     prune_pct = float(os.environ.get("PRUNE_PCT", 0.02))  # post-quant magnitude pruning
     save_pre_export_checkpoint = os.environ.get("SAVE_PRE_EXPORT_CHECKPOINT", "")
@@ -295,27 +293,21 @@ def quantize_int6_gptq(weight, hessian=None, clip_range=31, block_size=128):
         return _quantize_int6_percentile(t32, clip_range)
     rows, cols = t32.shape
     H = hessian.float().clone()
-    # Kill dead columns
     dead = torch.diag(H) == 0
     H[dead, dead] = 1
-    # Add damping
     damp = 0.01 * torch.mean(torch.diag(H))
     H[torch.arange(cols), torch.arange(cols)] += damp
-    # Column reordering by descending activation (actorder — most important first)
     perm = torch.argsort(torch.diag(H), descending=True)
     inv_perm = torch.argsort(perm)
     W = t32[:, perm].clone()
     W[:, dead[perm]] = 0
     H = H[perm][:, perm]
-    # Compute Hessian inverse via Cholesky
     try:
         Hinv = torch.linalg.cholesky(H)
         Hinv = torch.cholesky_inverse(Hinv)
         Hinv = torch.linalg.cholesky(Hinv, upper=True)
     except torch.linalg.LinAlgError:
-        # Cholesky failed — fall back to GPTQ-lite
         return _quantize_int6_percentile(t32, clip_range)
-    # Determine per-row scale via percentile search on ORIGINAL weights
     best_q = None; best_scale = None; best_err = float('inf')
     for pct in [0.9990, 0.9995, 0.9999, 0.99999, 1.0]:
         if pct < 1.0:
@@ -324,7 +316,6 @@ def quantize_int6_gptq(weight, hessian=None, clip_range=31, block_size=128):
             row_clip = t32.abs().amax(dim=1)
         s = (row_clip / clip_range).clamp_min(1.0 / clip_range).to(torch.float16)
         sf = s.float()
-        # GPTQ block-wise quantization with Cholesky error compensation
         Q = torch.zeros_like(W, dtype=torch.int8)
         W_work = W.clone()
         for i1 in range(0, cols, block_size):
@@ -343,15 +334,12 @@ def quantize_int6_gptq(weight, hessian=None, clip_range=31, block_size=128):
                 W1[:, i:] -= err.unsqueeze(1) * Hinv1[i, i:].unsqueeze(0)
                 Err1[:, i] = err
             Q[:, i1:i2] = Q1
-            # Propagate block error to remaining columns
             if i2 < cols:
                 W_work[:, i2:] -= Err1 @ Hinv[i1:i2, i2:]
-        # Evaluate reconstruction error (element-wise, on permuted weights)
         recon = Q.float() * sf[:, None]
         mse = (W - recon).pow(2).mean().item()
         if mse < best_err:
             best_q, best_scale, best_err = Q, s, mse
-    # Undo column permutation
     best_q = best_q[:, inv_perm]
     return best_q, best_scale
 
@@ -557,8 +545,6 @@ def decompress_model_blob(blob: bytes) -> tuple[bytes, str]:
             try:
                 return lzma.decompress(payload, format=lzma.FORMAT_RAW, filters=LZMA_FILTERS), _model_codec_name(codec_id)
             except lzma.LZMAError:
-                # Backward compatibility for earlier wrapped-XZ artifacts written
-                # before the raw LZMA2 switch.
                 return lzma.decompress(payload), "legacy_lzma_hc4_32mb_xz"
         raise ValueError(f"unknown model codec id: {codec_id}")
     if HAS_ZSTD:
@@ -903,7 +889,6 @@ def collect_hessians(base_model, train_loader, args, device, grad_accum_steps, n
                     x = input[0].detach().float()
                     if x.ndim == 3:
                         x = x.reshape(-1, x.shape[-1])  # (B*T, D)
-                    # Accumulate H = X^T X on CPU to save GPU memory
                     xtx = (x.T @ x).cpu()
                     hessians[pname] += xtx
                     count[0] += x.shape[0]
@@ -916,7 +901,6 @@ def collect_hessians(base_model, train_loader, args, device, grad_accum_steps, n
             x, y = train_loader.next_batch(args.train_batch_tokens, args.train_seq_len, grad_accum_steps)
             _ = base_model(x, y)
     for h in hooks: h.remove()
-    # Normalize and add damping
     for name in hessians:
         H = hessians[name]
         H /= num_batches  # average

@@ -734,3 +734,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The candidate file shrank from `74,931` bytes to `73,185` bytes, a direct savings of `1,746` bytes on the counted code payload. Compile and readiness checks still passed unchanged.
 - Decision: Keep the code-size trim in the main lane. The savings are small compared with the model blob wins, but they are free and directly increase submission headroom.
 - Next step: Push the code-size trim so the next live rerun benefits from both the smaller model blob and the smaller counted source file.
+
+- Timestamp: 2026-03-24 02:16 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL code-size hygiene
+- Objective: Remove the remaining pure comment-only lines from the candidate now that the bigger structural trim already proved safe.
+- Command or config: Deleted the remaining standalone comment lines from `candidates/non_ttt_vrl_gptq/train_gpt.py`, then measured the exact byte delta against `HEAD`, reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, and reran `python3 runpod/check_ready.py`.
+- Result: The candidate file shrank from `73,185` bytes to `72,334` bytes, an additional `851` bytes of code-payload savings with no behavior change. Compile and readiness checks still passed.
+- Decision: Keep the extra comment trim in the main lane. It is pure headroom.
+- Next step: Push the final comment-only trim so the next live rerun uses the smallest safe candidate source we have.
