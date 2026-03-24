@@ -14,3 +14,6 @@ RUN_ID="${RUN_ID_VR1:-h200_ttt_recordstack_vr1_80shard_seed1337}" \
 
 RUN_ID="${RUN_ID_BG3072:-h200_ttt_recordstack_bg3072_80shard_seed1337}" \
   bash "$ROOT_DIR/scripts/icrn_h200_ttt_bigram3072.sh"
+
+RUN_ID="${RUN_ID_VR1_BG3072:-h200_ttt_recordstack_vr1_bg3072_80shard_seed1337}" \
+  bash "$ROOT_DIR/scripts/icrn_h200_ttt_vr1_bigram3072.sh"

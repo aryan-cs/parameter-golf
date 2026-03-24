@@ -1832,3 +1832,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The follow-up queue is now: current exact TTT lane -> `VALUE_RESIDUAL=1` -> `BIGRAM_VOCAB_SIZE=3072`. This is a stronger use of the H200 because both queued knobs are already supported by the code, plausibly helpful, and cheap enough in complexity to interpret if they win or lose.
 - Decision: Keep the chained queue in place. It preserves momentum on the single GPU and narrows the search to two specific surviving hypotheses instead of broad random exploration.
 - Next step: Let the current exact run finish, then compare its completed metrics against the queued `VALUE_RESIDUAL=1` and `BIGRAM_VOCAB_SIZE=3072` follow-ups as they come in.
+
+- Timestamp: 2026-03-24 18:49 UTC
+- Commit: `ce1ce7e`
+- Lane: H200 exact-TTT monitoring / expanded queue
+- Objective: Capture the newest exact-run checkpoint and broaden the queued low-risk follow-up plan to include the obvious interaction between the two strongest remaining single-knob hypotheses.
+- Command or config: Read the live exact run through the `step:3500` validation interval. Added `scripts/icrn_h200_ttt_vr1_bigram3072.sh`, a combo lane that enables both `VALUE_RESIDUAL=1` and `BIGRAM_VOCAB_SIZE=3072`, and restarted `scripts/queue_h200_followups_after_current.sh` so the chained plan is now current exact run -> `VALUE_RESIDUAL=1` -> `BIGRAM_VOCAB_SIZE=3072` -> `VALUE_RESIDUAL=1 + BIGRAM_VOCAB_SIZE=3072`.
+- Result: The current exact run improved again to `step:3500/9000 val_loss:2.0731 val_bpb:1.2278 train_time:2600169ms step_avg:742.91ms`, which is our best H200 intermediate score so far. The queued search is now more aggressive without becoming messy: it covers the two strongest surviving low-risk knobs and their combination, all on the exact same underlying stack.
+- Decision: Keep the current run untouched and keep the expanded queue in place. The current lane is still improving, and the new queue gives us a better chance of finding a modest local win on this single H200 without losing interpretability.
+- Next step: Let the current exact run complete, then let the queued `VALUE_RESIDUAL=1`, `BIGRAM_VOCAB_SIZE=3072`, and `VALUE_RESIDUAL=1 + BIGRAM_VOCAB_SIZE=3072` follow-ups run in sequence if the completed result is still not good enough.
