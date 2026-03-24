@@ -1337,3 +1337,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The candidate file moved from `52,592` bytes to `52,593` bytes, a `+1` byte source increase. On the same deterministic skeleton, the old `HEAD` blob was `blob_size=4221908`, `raw_size=20623636`, `codec=l183`, `sha256=44436f8709ee07385c7c2c761a37d2b3ca7c91fc0c071a9576db320750c96726`; the new working-copy blob fell to `blob_size=4221527`, `raw_size=20623636`, `codec=l0762`, `sha256=fa5a818c31c5de1dac25c8d1f6d04813548b364a2fb96d752474ee5202475e8f`, for a chooser-level wrapped-blob delta of `-381` bytes. Exact round-trip still passed. The live recovery wrapper is still blocked only by balance: `You need at least $0.45 (current: $0.40, deficit: $0.05).`
 - Decision: Keep `l0762` as the new main-lane exporter default. This is a real measured chooser-level blob win on the deterministic skeleton, even though it slightly increases counted source by one byte.
 - Next step: Push this tighter filter setting so the next real resume from the surviving `final_model.pt` uses the smaller exporter immediately, then rerun `local_resume_existing_export.sh` as soon as the Runpod balance blocker is cleared.
+
+- Timestamp: 2026-03-24 06:39 CDT
+- Commit: `269a10f`
+- Lane: non-ttt VRL code-size hygiene
+- Objective: Reclaim a few more counted bytes after the `l0762` exporter win without touching artifact bytes, by shortening only the diagnostic codec labels and fallback decompression tag.
+- Command or config: Shortened the diagnostic codec strings in [train_gpt.py](/Users/aryan/Desktop/golf/candidates/non_ttt_vrl_gptq/train_gpt.py) from `z19`/`zl9`/`l0762`/`x32` to `s`/`z`/`l`/`x`. Then reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py` and reran `python3 runpod/check_ready.py`.
+- Result: The candidate file shrank from `52,593` bytes to `52,583` bytes, another `10` bytes of direct code-payload savings. This patch does not touch `LF`, `cmb()`, or the serialized artifact format; it only shortens human-readable diagnostic labels returned by `mcn()` and the legacy fallback name in `dmb()`. Readiness still passes: `runpod readiness check: OK`.
+- Decision: Keep the shorter labels. This is another free counted-size win with no effect on compressor choice, artifact bytes, or decompression logic.
+- Next step: Push this tiny hygiene pass so the repo stays on the smallest counted candidate while preserving the current best-known `l0762` exporter path for the next live export-only rerun.
