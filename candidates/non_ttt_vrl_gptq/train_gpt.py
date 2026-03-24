@@ -157,7 +157,7 @@ KG = 2
 KL = 3
 LF = [{
     "id": lzma.FILTER_LZMA2,
-    "dict_size": 16<<20,
+    "dict_size": 17<<20,
     "lc": 0,
     "lp": 1,
     "pb": 0,
