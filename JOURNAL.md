@@ -401,3 +401,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The pod now has a second staged fallback ready. Queue log: `/workspace/golf/logs/non_ttt_vrl_gptq_1gpu_long_prune14_queue_20260324T052543Z.log`.
 - Decision: Keep `prune11` as the active experiment and treat `prune14` as the next byte-cap hedge rather than jumping straight to a more disruptive architectural change.
 - Next step: Monitor prune11 for its first validation checkpoint, then compare its eventual artifact size against the over-cap `1.1159` baseline and let prune14 take over automatically only if needed.
+
+- Timestamp: 2026-03-24 00:27 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL export infrastructure
+- Objective: Stop paying full 5400-second retrains for export-only pruning changes once the next strong model snapshot exists.
+- Command or config: Patched `candidates/non_ttt_vrl_gptq/train_gpt.py` to support `SAVE_PRE_EXPORT_CHECKPOINT` and `EXPORT_ONLY_CHECKPOINT`, added `maybe_save_pre_export_checkpoint()` plus an `run_export_eval()` path, syntax-checked it with `uv run python -m py_compile`, and updated the queued `prune14` configs to set `SAVE_PRE_EXPORT_CHECKPOINT=1`.
+- Result: Future runs can now save a post-EMA full-precision checkpoint before GPTQ/export, and later pruning or export sweeps can start directly from that checkpoint instead of repeating training. The updated script and configs have already been synced to the pod, so the queued `prune14` run will inherit this capability.
+- Decision: Keep the active `prune11` run untouched, but use the new export-only infrastructure to accelerate the next round of byte-cap tuning if `prune11` or `prune14` still miss the limit.
+- Next step: Push the new export-only infrastructure to GitHub, then monitor `prune11` for its first validation checkpoint while keeping `prune14` as the staged next run.

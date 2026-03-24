@@ -95,6 +95,8 @@ class Hyperparameters:
     # QAT-export alignment: STE clip percentile matches GPTQ export
     qat_clip_pct = float(os.environ.get("QAT_CLIP_PCT", 0.9995))
     prune_pct = float(os.environ.get("PRUNE_PCT", 0.02))  # post-quant magnitude pruning
+    save_pre_export_checkpoint = os.environ.get("SAVE_PRE_EXPORT_CHECKPOINT", "")
+    export_only_checkpoint = os.environ.get("EXPORT_ONLY_CHECKPOINT", "")
 
 # ── SIMPLE MUON (Newton-Schulz5) ──
 def zeropower_via_newtonschulz5(G: Tensor, steps: int = 10, eps: float = 1e-7) -> Tensor:
@@ -756,6 +758,133 @@ def eval_val_sliding(logits_fn, rank, world_size, device, val_tokens,
     vl = (loss_sum / tok_count).item()
     return vl, vl / math.log(2.0) * (tok_count.item() / byte_count.item())
 
+def resolve_checkpoint_path(spec: str) -> str:
+    if not spec:
+        return ""
+    if spec == "1":
+        return str(Path(os.environ.get("OUT_DIR", ".")) / "pre_export_model.pt")
+    return spec
+
+def maybe_save_pre_export_checkpoint(path_spec: str, state_dict: dict[str, torch.Tensor], log0):
+    ckpt_path = resolve_checkpoint_path(path_spec)
+    if not ckpt_path:
+        return ""
+    ckpt = {"model_state": {k: v.detach().cpu() for k, v in state_dict.items()}}
+    path = Path(ckpt_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    torch.save(ckpt, tmp_path)
+    os.replace(tmp_path, path)
+    log0(f"saved_pre_export_checkpoint:{path}")
+    return str(path)
+
+def run_export_eval(args, base_model, rank, world_size, device, distributed, master_process,
+                    code, val_tokens, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut, log0):
+    log0(f"gptq:calibrating with {args.gptq_calib_batches} batches...")
+    calib_loader = DistributedTokenLoader(args.train_files, rank, world_size, device)
+    hessians = collect_hessians(base_model, calib_loader, args, device, 8 // world_size,
+                                num_batches=args.gptq_calib_batches)
+    hessian_map = {}
+    for name, module in base_model.named_modules():
+        if isinstance(module, CastedLinear):
+            sd_name = name + ".weight"
+            h_name = name + ".weight"
+            if h_name in hessians:
+                hessian_map[sd_name] = hessians[h_name]
+    log0(f"gptq:collected hessians for {len(hessian_map)} layers")
+
+    sd_cpu = {k: v.detach().cpu() for k, v in base_model.state_dict().items()}
+    code_bytes = len(code.encode("utf-8")); size_limit = 16_000_000
+    quant_result, quant_meta = quantize_state_dict_mixed(sd_cpu, hessians=hessian_map)
+    if args.prune_pct > 0:
+        all_int6_vals = []
+        for name, info in quant_meta.items():
+            if isinstance(info, dict) and info.get("type") == "int6":
+                qname = name + ".q"
+                if qname in quant_result:
+                    all_int6_vals.append(quant_result[qname].flatten().abs().float())
+        if all_int6_vals:
+            all_vals = torch.cat(all_int6_vals)
+            k = max(1, int(args.prune_pct * all_vals.numel()))
+            threshold = all_vals.kthvalue(k).values.item()
+            pruned_count = 0
+            for name, info in quant_meta.items():
+                if isinstance(info, dict) and info.get("type") == "int6":
+                    qname = name + ".q"
+                    if qname in quant_result:
+                        mask = quant_result[qname].abs() <= int(threshold)
+                        pruned_count += mask.sum().item()
+                        quant_result[qname][mask] = 0
+            total_int6 = sum(quant_result[n + ".q"].numel() for n, i in quant_meta.items() if isinstance(i, dict) and i.get("type") == "int6" and n + ".q" in quant_result)
+            log0(f"prune:zeroed {pruned_count}/{total_int6} int6 weights ({100*pruned_count/max(total_int6,1):.1f}%) threshold={threshold:.0f}")
+    meta_json = json.dumps(quant_meta).encode("utf-8")
+    parts = [struct.pack("<I", len(meta_json)), meta_json]
+    tensor_order = sorted(quant_result.keys())
+    for tname in tensor_order:
+        t = quant_result[tname]
+        name_bytes = tname.encode("utf-8")
+        dtype_map = {torch.int8: 0, torch.float16: 1, torch.float32: 2, torch.bfloat16: 3}
+        dt = dtype_map.get(t.dtype, 2)
+        t_np = t.contiguous().numpy() if t.dtype != torch.bfloat16 else t.contiguous().view(torch.uint16).numpy()
+        raw = t_np.tobytes()
+        parts.append(struct.pack("<H", len(name_bytes)))
+        parts.append(name_bytes)
+        parts.append(struct.pack("<BB", dt, t.ndim))
+        for d in t.shape: parts.append(struct.pack("<I", d))
+        parts.append(raw)
+    quant_raw = b"".join(parts)
+    if HAS_ZSTD:
+        model_blob = zstd.ZstdCompressor(level=22).compress(quant_raw)
+    else:
+        model_blob = zlib.compress(quant_raw, level=9)
+    model_bytes = len(model_blob); total_size = code_bytes + model_bytes
+    log0(f"model:{model_bytes} code:{code_bytes} total:{total_size} ({total_size/1e6:.2f} MB)")
+    if total_size > size_limit: log0(f"WARNING: Total size {total_size} exceeds 16MB limit by {total_size - size_limit} bytes!")
+    else: log0(f"Size OK: {total_size/1e6:.2f} MB")
+    if master_process:
+        with open("final_model.int6.ptz", "wb") as f: f.write(model_blob)
+    if distributed: dist.barrier()
+    with open("final_model.int6.ptz", "rb") as f: model_blob_loaded = f.read()
+    if HAS_ZSTD: raw_data = zstd.ZstdDecompressor().decompress(model_blob_loaded)
+    else: raw_data = zlib.decompress(model_blob_loaded)
+    offset = 0
+    meta_len = struct.unpack_from("<I", raw_data, offset)[0]; offset += 4
+    loaded_meta = json.loads(raw_data[offset:offset+meta_len].decode("utf-8")); offset += meta_len
+    dtype_rmap = {0: (torch.int8, np.int8), 1: (torch.float16, np.float16), 2: (torch.float32, np.float32), 3: (torch.bfloat16, np.uint16)}
+    loaded_result = {}
+    while offset < len(raw_data):
+        name_len = struct.unpack_from("<H", raw_data, offset)[0]; offset += 2
+        tname = raw_data[offset:offset+name_len].decode("utf-8"); offset += name_len
+        dt, ndim = struct.unpack_from("<BB", raw_data, offset); offset += 2
+        shape = []
+        for _ in range(ndim):
+            shape.append(struct.unpack_from("<I", raw_data, offset)[0]); offset += 4
+        torch_dt, np_dt = dtype_rmap[dt]
+        numel = 1
+        for s in shape: numel *= s
+        nbytes = numel * np.dtype(np_dt).itemsize
+        arr = np.frombuffer(raw_data, dtype=np_dt, count=numel, offset=offset).copy()
+        offset += nbytes
+        t = torch.from_numpy(arr).reshape(shape)
+        if torch_dt == torch.bfloat16: t = t.view(torch.bfloat16)
+        loaded_result[tname] = t
+    deq_state = dequantize_state_dict_mixed(loaded_result, loaded_meta, sd_cpu)
+    base_model.load_state_dict(deq_state, strict=True)
+    eval_sl = args.eval_seq_len if args.eval_seq_len > 0 else args.train_seq_len
+    val_tokens_eval = load_validation_tokens(args.val_files, eval_sl) if eval_sl != args.train_seq_len else val_tokens
+    raw_logits_fn = torch.compile(base_model.forward_logits, dynamic=False) if not bool(int(os.environ.get("TORCH_COMPILE_DISABLE", "0"))) else base_model.forward_logits
+    warmup_x = torch.zeros(args.eval_batch_seqs, eval_sl, dtype=torch.int64, device=device)
+    base_model.eval()
+    with torch.inference_mode(), torch.autocast(device_type="cuda", dtype=torch.bfloat16): _ = raw_logits_fn(warmup_x)
+    torch.cuda.synchronize(); t_eval = time.perf_counter()
+    q_vl, q_vb = eval_val_sliding(raw_logits_fn, rank, world_size, device,
+        val_tokens_eval, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut,
+        eval_sl, args.eval_stride, eval_batch_seqs=args.eval_batch_seqs)
+    torch.cuda.synchronize(); eval_time = time.perf_counter() - t_eval
+    log0(f"final_int6_zstd_roundtrip val_loss:{q_vl:.4f} val_bpb:{q_vb:.4f} eval_time:{eval_time*1000:.0f}ms")
+    log0(f"final_int6_zstd_roundtrip_exact val_loss:{q_vl:.8f} val_bpb:{q_vb:.8f}")
+    if distributed: dist.destroy_process_group()
+
 # ── MAIN ──
 def main():
     global zeropower_via_newtonschulz5
@@ -807,6 +936,15 @@ def main():
     restore_low_dim_params_to_fp32(base_model)
     compiled_model = torch.compile(base_model, dynamic=False, fullgraph=True) if not bool(int(os.environ.get("TORCH_COMPILE_DISABLE", "0"))) else base_model
     model = DDP(compiled_model, device_ids=[local_rank], broadcast_buffers=False) if distributed else compiled_model
+    export_only_checkpoint = resolve_checkpoint_path(args.export_only_checkpoint)
+    if export_only_checkpoint:
+        ckpt = torch.load(export_only_checkpoint, map_location="cpu")
+        model_state = ckpt["model_state"] if isinstance(ckpt, dict) and "model_state" in ckpt else ckpt
+        base_model.load_state_dict(model_state, strict=True)
+        log0(f"export_only:loaded_checkpoint:{export_only_checkpoint}")
+        run_export_eval(args, base_model, rank, world_size, device, distributed, master_process,
+                        code, val_tokens, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut, log0)
+        return
     # Optimizer setup
     block_named_params = list(base_model.blocks.named_parameters())
     matrix_params = [p for n, p in block_named_params if p.ndim == 2 and not any(pat in n for pat in CONTROL_TENSOR_NAME_PATTERNS)]
@@ -941,116 +1079,9 @@ def main():
     current_state = base_model.state_dict()
     avg_state = {name: t.to(dtype=current_state[name].dtype) for name, t in ema_state.items()}
     base_model.load_state_dict(avg_state, strict=True)
-
-    # v41: GPTQ calibration — collect Hessians AFTER applying EMA weights
-    log0(f"gptq:calibrating with {args.gptq_calib_batches} batches...")
-    calib_loader = DistributedTokenLoader(args.train_files, rank, world_size, device)
-    hessians = collect_hessians(base_model, calib_loader, args, device, grad_accum_steps,
-                                num_batches=args.gptq_calib_batches)
-    # Map module names to state_dict names for Hessian lookup
-    hessian_map = {}
-    for name, module in base_model.named_modules():
-        if isinstance(module, CastedLinear):
-            sd_name = name + ".weight"
-            h_name = name + ".weight"
-            if h_name in hessians:
-                hessian_map[sd_name] = hessians[h_name]
-    log0(f"gptq:collected hessians for {len(hessian_map)} layers")
-
-    # QUANTIZE + SAVE (raw binary serialization)
-    sd_cpu = {k: v.detach().cpu() for k, v in base_model.state_dict().items()}
-    code_bytes = len(code.encode("utf-8")); size_limit = 16_000_000
-    quant_result, quant_meta = quantize_state_dict_mixed(sd_cpu, hessians=hessian_map)
-    # Post-quant magnitude pruning: zero out smallest int6 weights for better compression
-    if args.prune_pct > 0:
-        all_int6_vals = []
-        for name, info in quant_meta.items():
-            if isinstance(info, dict) and info.get("type") == "int6":
-                qname = name + ".q"
-                if qname in quant_result:
-                    all_int6_vals.append(quant_result[qname].flatten().abs().float())
-        if all_int6_vals:
-            all_vals = torch.cat(all_int6_vals)
-            k = max(1, int(args.prune_pct * all_vals.numel()))
-            threshold = all_vals.kthvalue(k).values.item()
-            pruned_count = 0
-            for name, info in quant_meta.items():
-                if isinstance(info, dict) and info.get("type") == "int6":
-                    qname = name + ".q"
-                    if qname in quant_result:
-                        mask = quant_result[qname].abs() <= int(threshold)
-                        pruned_count += mask.sum().item()
-                        quant_result[qname][mask] = 0
-            total_int6 = sum(quant_result[n + ".q"].numel() for n, i in quant_meta.items() if isinstance(i, dict) and i.get("type") == "int6" and n + ".q" in quant_result)
-            log0(f"prune:zeroed {pruned_count}/{total_int6} int6 weights ({100*pruned_count/max(total_int6,1):.1f}%) threshold={threshold:.0f}")
-    meta_json = json.dumps(quant_meta).encode("utf-8")
-    parts = [struct.pack("<I", len(meta_json)), meta_json]
-    tensor_order = sorted(quant_result.keys())
-    for tname in tensor_order:
-        t = quant_result[tname]
-        name_bytes = tname.encode("utf-8")
-        dtype_map = {torch.int8: 0, torch.float16: 1, torch.float32: 2, torch.bfloat16: 3}
-        dt = dtype_map.get(t.dtype, 2)
-        t_np = t.contiguous().numpy() if t.dtype != torch.bfloat16 else t.contiguous().view(torch.uint16).numpy()
-        raw = t_np.tobytes()
-        parts.append(struct.pack("<H", len(name_bytes)))
-        parts.append(name_bytes)
-        parts.append(struct.pack("<BB", dt, t.ndim))
-        for d in t.shape: parts.append(struct.pack("<I", d))
-        parts.append(raw)
-    quant_raw = b"".join(parts)
-    if HAS_ZSTD:
-        model_blob = zstd.ZstdCompressor(level=22).compress(quant_raw); comp_name = "zstd22"
-    else:
-        model_blob = zlib.compress(quant_raw, level=9); comp_name = "zlib9"
-    model_bytes = len(model_blob); total_size = code_bytes + model_bytes
-    log0(f"model:{model_bytes} code:{code_bytes} total:{total_size} ({total_size/1e6:.2f} MB)")
-    if total_size > size_limit: log0(f"WARNING: Total size {total_size} exceeds 16MB limit by {total_size - size_limit} bytes!")
-    else: log0(f"Size OK: {total_size/1e6:.2f} MB")
-    if master_process:
-        with open("final_model.int6.ptz", "wb") as f: f.write(model_blob)
-    if distributed: dist.barrier()
-    # ROUNDTRIP DEQUANTIZE
-    with open("final_model.int6.ptz", "rb") as f: model_blob_loaded = f.read()
-    if HAS_ZSTD: raw_data = zstd.ZstdDecompressor().decompress(model_blob_loaded)
-    else: raw_data = zlib.decompress(model_blob_loaded)
-    offset = 0
-    meta_len = struct.unpack_from("<I", raw_data, offset)[0]; offset += 4
-    loaded_meta = json.loads(raw_data[offset:offset+meta_len].decode("utf-8")); offset += meta_len
-    dtype_rmap = {0: (torch.int8, np.int8), 1: (torch.float16, np.float16), 2: (torch.float32, np.float32), 3: (torch.bfloat16, np.uint16)}
-    loaded_result = {}
-    while offset < len(raw_data):
-        name_len = struct.unpack_from("<H", raw_data, offset)[0]; offset += 2
-        tname = raw_data[offset:offset+name_len].decode("utf-8"); offset += name_len
-        dt, ndim = struct.unpack_from("<BB", raw_data, offset); offset += 2
-        shape = []
-        for _ in range(ndim):
-            shape.append(struct.unpack_from("<I", raw_data, offset)[0]); offset += 4
-        torch_dt, np_dt = dtype_rmap[dt]
-        numel = 1
-        for s in shape: numel *= s
-        nbytes = numel * np.dtype(np_dt).itemsize
-        arr = np.frombuffer(raw_data, dtype=np_dt, count=numel, offset=offset).copy()
-        offset += nbytes
-        t = torch.from_numpy(arr).reshape(shape)
-        if torch_dt == torch.bfloat16: t = t.view(torch.bfloat16)
-        loaded_result[tname] = t
-    deq_state = dequantize_state_dict_mixed(loaded_result, loaded_meta, sd_cpu)
-    base_model.load_state_dict(deq_state, strict=True)
-    eval_sl = args.eval_seq_len if args.eval_seq_len > 0 else args.train_seq_len
-    val_tokens_eval = load_validation_tokens(args.val_files, eval_sl) if eval_sl != args.train_seq_len else val_tokens
-    raw_logits_fn = torch.compile(base_model.forward_logits, dynamic=False) if not bool(int(os.environ.get("TORCH_COMPILE_DISABLE", "0"))) else base_model.forward_logits
-    warmup_x = torch.zeros(args.eval_batch_seqs, eval_sl, dtype=torch.int64, device=device)
-    base_model.eval()
-    with torch.inference_mode(), torch.autocast(device_type="cuda", dtype=torch.bfloat16): _ = raw_logits_fn(warmup_x)
-    torch.cuda.synchronize(); t_eval = time.perf_counter()
-    q_vl, q_vb = eval_val_sliding(raw_logits_fn, rank, world_size, device,
-        val_tokens_eval, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut,
-        eval_sl, args.eval_stride, eval_batch_seqs=args.eval_batch_seqs)
-    torch.cuda.synchronize(); eval_time = time.perf_counter() - t_eval
-    log0(f"final_int6_zstd_roundtrip val_loss:{q_vl:.4f} val_bpb:{q_vb:.4f} eval_time:{eval_time*1000:.0f}ms")
-    log0(f"final_int6_zstd_roundtrip_exact val_loss:{q_vl:.8f} val_bpb:{q_vb:.8f}")
-    if distributed: dist.destroy_process_group()
+    maybe_save_pre_export_checkpoint(args.save_pre_export_checkpoint, base_model.state_dict(), log0)
+    run_export_eval(args, base_model, rank, world_size, device, distributed, master_process,
+                    code, val_tokens, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut, log0)
 
 if __name__ == "__main__":
     main()
