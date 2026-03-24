@@ -1151,13 +1151,14 @@ def main():
     for m in bm.modules():
         if isinstance(m, CL): m.float()
     rf32(bm)
+    gs = bm.state_dict; ls = bm.load_state_dict
     cm = CMP(bm, dynamic=False, fullgraph=True) if not bool(int(EG("TORCH_COMPILE_DISABLE", "0"))) else bm
     model = DDP(cm, device_ids=[lrk], broadcast_buffers=False) if dd else cm
     eoc = rcp(a.eoc)
     if eoc:
         ckpt = th.load(eoc, map_location="cpu")
         ms = ckpt["model_state"] if isinstance(ckpt, dict) and "model_state" in ckpt else ckpt
-        bm.load_state_dict(ms, strict=True)
+        ls(ms, strict=True)
         ree(a, bm, rank, ws, dv, dd, m0,
                         code, vt, bb, hs, ib, log0)
         return
@@ -1205,7 +1206,7 @@ def main():
         return rem_ms / max(wd_ms, 1e-9) if rem_ms <= wd_ms else 1.0
 
     if a.wus > 0:
-        ims = {n: t.detach().cpu().clone() for n, t in bm.state_dict().items()}
+        ims = {n: t.detach().cpu().clone() for n, t in gs().items()}
         ios = [copy.deepcopy(opt.state_dict()) for opt in opts]
         model.train()
         for wi in range(a.wus):
@@ -1217,12 +1218,12 @@ def main():
                 (wl * grad_scale).backward()
             for opt in opts: opt.step()
             zga()
-        bm.load_state_dict(ims, strict=True)
+        ls(ims, strict=True)
         for opt, state in zip(opts, ios, strict=True): opt.load_state_dict(state)
         zga()
         if dd: model.require_backward_grad_sync = True
         tl = DTL(a.tf, rank, ws, dv)
-    ema_state = {name: t.detach().float().clone() for name, t in bm.state_dict().items()}
+    ema_state = {name: t.detach().float().clone() for name, t in gs().items()}
     ttms, sas = 0.0, None
     swa_state, swa_count = None, 0
     SY(); t0 = PC(); step = 0
@@ -1259,16 +1260,16 @@ def main():
         for opt in opts: opt.step()
         zga()
         with NG():
-            for name, t in bm.state_dict().items():
+            for name, t in gs().items():
                 ema_state[name].mul_(a.ed).add_(t.detach().float(), alpha=1.0 - a.ed)
         step += 1
         ams = ttms + 1000.0 * (PC() - t0)
         if a.swe and scale < 0.2 and step % a.swi == 0:
             if swa_state is None:
-                swa_state = {n: t.detach().cpu().clone() for n, t in bm.state_dict().items()}
+                swa_state = {n: t.detach().cpu().clone() for n, t in gs().items()}
                 swa_count = 1
             else:
-                for n, t in bm.state_dict().items(): swa_state[n] += t.detach().cpu()
+                for n, t in gs().items(): swa_state[n] += t.detach().cpu()
                 swa_count += 1
         if a.tle > 0 and (step <= 10 or step % a.tle == 0):
             log0(f"step:{step}/{a.it} train_loss:{trl.item():.4f} train_time:{ams:.0f}ms step_avg:{ams/step:.2f}ms")
@@ -1276,10 +1277,10 @@ def main():
         if dd and mwm is not None:
             rct = TT(int(rc), device=dv); ARD(rct, op=ROP.MAX); rc = bool(rct.item())
         if sas is None and rc: sas = step
-    cs = bm.state_dict()
+    cs = gs()
     avg_state = {name: t.to(dtype=cs[name].dtype) for name, t in ema_state.items()}
-    bm.load_state_dict(avg_state, strict=True)
-    mspc(a.spc, bm.state_dict(), log0)
+    ls(avg_state, strict=True)
+    mspc(a.spc, gs(), log0)
     ree(a, bm, rank, ws, dv, dd, m0,
                     code, vt, bb, hs, ib, log0)
 
