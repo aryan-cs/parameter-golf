@@ -465,12 +465,12 @@ def ui6(raw: bytes | memoryview, shape: list[int]) -> Tensor:
 
 def mcn(cid: int) -> str:
     if cid == KZ:
-        return "zstd19"
+        return "z19"
     if cid == KG:
-        return "zlib9"
+        return "zl9"
     if cid == KL:
-        return "lzma_raw_hc3_16mb_lc2_n64"
-    return f"unknown({cid})"
+        return "lz_hc3_16_l2_n64"
+    return f"u({cid})"
 
 def cmb(raw: bytes) -> tuple[bytes, int]:
     candidates = [
@@ -496,14 +496,14 @@ def dmb(blob: bytes) -> tuple[bytes, str]:
             try:
                 return lzma.decompress(payload, format=lzma.FORMAT_RAW, filters=LF), mcn(cid)
             except lzma.LZMAError:
-                return lzma.decompress(payload), "legacy_lzma_hc4_32mb_xz"
+                return lzma.decompress(payload), "lx_hc4_32_xz"
         raise ER(f"bad codec {cid}")
     if HAS_ZSTD:
         try:
-            return zstd.ZstdDecompressor().decompress(blob), "legacy_zstd22"
+            return zstd.ZstdDecompressor().decompress(blob), "lzs22"
         except Exception:
             pass
-    return zlib.decompress(blob), "legacy_zlib9"
+    return zlib.decompress(blob), "lzl9"
 
 def lds(file):
     hb = 256 * np.dtype("<i4").itemsize
