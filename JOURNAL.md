@@ -500,3 +500,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: `prune14` reached `step:1000/20000 val_bpb:1.3093` with `train_loss:2.2667`, which is essentially identical to the earlier long-run baseline at the same point (`1.3111`). The pod queue is still intact behind it: export-only `prune17`, `prune20`, `prune23`, and `prune26` are all waiting in sequence.
 - Decision: Keep `prune14` running. This checkpoint confirms the expected behavior that changing `PRUNE_PCT` does not perturb the training trajectory, so the run is still on pace to provide a high-quality checkpoint for the export-only pruning ladder.
 - Next step: Let `prune14` continue toward the saved checkpoint and final export, then consume that checkpoint through the staged export-only sweeps until one clears the byte cap with acceptable score retention.
+
+- Timestamp: 2026-03-24 01:20 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL runpod recovery
+- Objective: Recover cleanly from a pod connectivity loss without losing the staged export-only orchestration work.
+- Command or config: Probed the direct pod endpoint with `ssh` and `nc`, probed the Runpod relay, then added `runpod/pod_queue_export_ladder.sh` and validated it with `bash -n`.
+- Result: The direct TCP endpoint began returning `Connection refused`, and the Runpod relay reported `container not found`, which indicates the current pod is no longer available. The new helper script can recreate an entire export-only watcher ladder on a fresh pod with one command instead of restaging each watcher manually.
+- Decision: Treat the current live run as interrupted until a replacement pod is available; keep the repo in a ready-to-recover state rather than assuming the old pod will come back.
+- Next step: Use the new ladder helper on the next pod to reestablish the staged export-only queue quickly once fresh Runpod access is available.
