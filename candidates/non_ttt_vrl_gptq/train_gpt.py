@@ -17,7 +17,7 @@ IA=dist.is_available; II=dist.is_initialized; BR=dist.barrier; GWS=dist.get_worl
 ZL=th.zeros_like; EL=th.empty_like; AR=th.arange; SG=th.sigmoid; CAT=th.cat; ON=th.ones; FUL=th.full; EYE=th.eye
 TF=lambda t:t.float(); RS=lambda t,*s:t.reshape(*s); TY=lambda t,d:t.to(dtype=d); IT=lambda t:t.item()
 N8=np.uint8; N6=np.int16; N1=np.int8; N4=np.uint32; NB=1
-U="utf-8"; FM="final_model.int6.ptz"; MS="model_state"; MB="momentum_buffer"; TD="TORCH_COMPILE_DISABLE"; PA="params"; BL="base_lr"; QS=".q"; SS=".scale"; WT=".k"; F4="<I"; F3="<HB"; F5="<HBBB"; LT="little"
+U="utf-8"; FM="final_model.int6.ptz"; MS="model_state"; MB="momentum_buffer"; TD="TORCH_COMPILE_DISABLE"; PA="params"; BL="base_lr"; QS=".q"; SS=".scale"; WT=".k"; F4="<I"; F2="<BB"; F3="<HB"; F5="<HBBB"; F6="<BBBB"; LT="little"
 try:
     from flash_attn_interface import flash_attn_func as _fa3_func
     HAS_FA3 = True
@@ -148,7 +148,8 @@ MP = "p"
 MC = "c"
 M6 = 6
 M8 = 8
-QMB = b"QMB1"
+Q0 = b"QMB1"
+QMB = b"QMB2"
 QCB = b"QCB1"
 KZ = 1
 KG = 2
@@ -193,7 +194,8 @@ def eq(meta: dict[str, object]) -> tuple[bytes, list[str]]:
         "passthrough": 0,
         "passthrough_ctrl": 1,
     }
-    parts = [QMB, PK("<H", len(names))]
+    m2 = len(names) < 256 and max((len(name) for name in names), default=0) < 256
+    parts = [QMB if m2 else Q0, PK("<B" if m2 else "<H", len(names))]
     for name in names:
         kind = meta[name]
         kc = km.get(kind)
@@ -203,13 +205,29 @@ def eq(meta: dict[str, object]) -> tuple[bytes, list[str]]:
             elif kn == "8": kc = 3
             else: raise ER(f"bad meta {name}:{kind!r}")
         xb = name.encode(U)
-        parts.append(PK(F3, len(xb), kc))
+        parts.append(PK(F2 if m2 else F3, len(xb), kc))
         parts.append(xb)
     return b"".join(parts), names
 
-def dq(blob: bytes) -> tuple[dict[str, object], list[str], bool]:
+def dq(blob: bytes) -> tuple[dict[str, object], list[str], int]:
     if blob.startswith(QMB):
         o = len(QMB)
+        ec = UF("<B", blob, o)[0]; o += 1
+        km = {
+            0: MP,
+            1: MC,
+            2: M6,
+            3: M8,
+        }
+        meta, names = {}, []
+        for _ in range(ec):
+            nl, kc = UF(F2, blob, o); o += 2
+            name = blob[o:o+nl].decode(U); o += nl
+            meta[name] = km[kc]
+            names.append(name)
+        return meta, names, 2
+    if blob.startswith(Q0):
+        o = len(Q0)
         ec = UF("<H", blob, o)[0]; o += 2
         km = {
             0: MP,
@@ -223,8 +241,8 @@ def dq(blob: bytes) -> tuple[dict[str, object], list[str], bool]:
             name = blob[o:o+nl].decode(U); o += nl
             meta[name] = km[kc]
             names.append(name)
-        return meta, names, True
-    return json.loads(blob.decode(U)), [], False
+        return meta, names, 1
+    return json.loads(blob.decode(U)), [], 0
 
 def tr(tname: str, nti: dict[str, int]) -> tuple[int, int]:
     if tname in nti:
@@ -1013,7 +1031,10 @@ def re(a, bm, rk, ws, dv, dd, m0,
     drm = {0: (I8, np.int8), 1: (F16, np.float16), 2: (F32, np.float32), 3: (BF, np.uint16)}
     lr = {}
     while o < len(rd):
-        if ctr:
+        if ctr == 2:
+            ni, suffix, dt, ndim = UF(F6, rd, o); o += 4
+            tname = rt(ni, suffix, en)
+        elif ctr:
             ni, suffix, dt, ndim = UF(F5, rd, o); o += 5
             tname = rt(ni, suffix, en)
         else:
