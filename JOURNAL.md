@@ -995,3 +995,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The candidate file shrank from `58,400` bytes to `57,955` bytes, another `445` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 57,955`, which is `-16,976` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
 - Decision: Keep the helper-symbol shortening pass in the main lane. It is another safe counted-size win with no observed exporter regression.
 - Next step: Push the helper-symbol shortening pass so the next live export rerun uses the smallest counted candidate source we have so far together with the stronger bitplane + raw-LZMA exporter path.
+
+- Timestamp: 2026-03-24 03:59 America/Chicago
+- Commit: `847d649`
+- Lane: non-ttt VRL code-size hygiene
+- Objective: Reclaim one more small block of counted source bytes by shortening a few remaining internal class/helper symbols used only inside the candidate file.
+- Command or config: Renamed the remaining long internal class/helper symbols in `candidates/non_ttt_vrl_gptq/train_gpt.py` (including `Muon`, `TokenStream`, `RMSNorm`, `Rotary`, `SmearGate`, `Block`, `chs`, and `eval_val_sliding`) to shorter in-file aliases, updated the call sites, then reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, reran `python3 runpod/check_ready.py`, and reran the offline codec round-trip validator on the fixed-seed quantized VRL model skeleton.
+- Result: The candidate file shrank from `57,955` bytes to `57,855` bytes, another `100` bytes of direct code-payload savings. Total counted source savings now stand at `74,931 -> 57,855`, which is `-17,076` bytes. Compile and readiness checks still passed, and the offline validator remained unchanged (`codec=lzma_raw_hc3_16mb`, `blob_size=4299069`, `roundtrip=True`).
+- Decision: Keep the class/helper-symbol shortening pass in the main lane. The gain is smaller than the last few passes, but it is validated, free, and still moves the counted candidate source down.
+- Next step: Push the class/helper-symbol shortening pass so the next live export rerun uses the smallest counted candidate source we have so far together with the stronger bitplane + raw-LZMA exporter path.
