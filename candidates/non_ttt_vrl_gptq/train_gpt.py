@@ -102,13 +102,13 @@ def bsl(sp, vs, dv):
             TT(hln, dtype=BO, device=dv),
             TT(ibn, dtype=BO, device=dv))
 
-def lvt(pattern, sl):
-    files = [PT(p) for p in sorted(GG(pattern))]
-    if not files: raise FE(f"no:{pattern}")
-    tokens = CAT([lds(file) for file in files]).contiguous()
-    usable = ((tokens.numel() - 1) // sl) * sl
-    if usable <= 0: raise ER(f"val<{sl}")
-    return tokens[:usable + 1]
+def lvt(pat, sl):
+    fs = [PT(p) for p in sorted(GG(pat))]
+    if not fs: raise FE(f"no:{pat}")
+    ts = CAT([lds(f) for f in fs]).contiguous()
+    u = ((ts.numel() - 1) // sl) * sl
+    if u <= 0: raise ER(f"val<{sl}")
+    return ts[:u + 1]
 
 def evv(a, model, rk, ws, dv, gas,
              vt, bb, hs, ib, esl=0):
@@ -123,8 +123,8 @@ def evv(a, model, rk, ws, dv, gas,
     with IM():
         for bss in range(ss, se, lbs):
             bse = min(bss + lbs, se)
-            local = vt[bss*sl:(bse*sl)+1].to(device=dv, dtype=I64, non_blocking=NB)
-            x, y = local[:-1].reshape(-1, sl), local[1:].reshape(-1, sl)
+            lc = vt[bss*sl:(bse*sl)+1].to(device=dv, dtype=I64, non_blocking=NB)
+            x, y = lc[:-1].reshape(-1, sl), lc[1:].reshape(-1, sl)
             with AU():
                 bl = model(x, y).detach()
             vls += bl.to(F64) * float(y.numel())
@@ -134,9 +134,9 @@ def evv(a, model, rk, ws, dv, gas,
             vbc += tb.to(F64).sum()
     if IA() and II():
         for t in [vls, vtc, vbc]: ARD(t, op=ROP.SUM)
-    val_loss = vls / vtc
-    bpt = val_loss.item() / math.log(2.0); tpb = vtc.item() / vbc.item()
-    model.train(); return float(val_loss.item()), float(bpt * tpb)
+    vl = vls / vtc
+    bpt = vl.item() / math.log(2.0); tpb = vtc.item() / vbc.item()
+    model.train(); return float(vl.item()), float(bpt * tpb)
 
 CP = tuple(
     p for p in "attn_scale,attn_scales,mlp_scale,mlp_scales,resid_mix,resid_mixes,q_gain,skip_weight,skip_weights,smear,backout_lambda,bigram.scale,ve_layer_scales,ve_shared.scale,vrl_alphas".split(",") if p)
@@ -859,29 +859,29 @@ def ch(bm, tl, args, dv, gas, nbc=256):
     bm.train()
     return hh
 
-def evl(logits_fn, rk, ws, dv, vt,
+def evl(lfn, rk, ws, dv, vt,
                      bb, hs, ib,
                      ql, stride, ebs=256):
-    total = vt.numel() - 1; windows, p = [], 0
-    while p + ql <= total:
-        s = 0 if p == 0 else (ql - stride); windows.append((p, s)); p += stride
-    n = len(windows); pr = (n + ws - 1) // ws
-    mw = windows[rk*pr:min((rk+1)*pr, n)]
+    tt = vt.numel() - 1; ww, p = [], 0
+    while p + ql <= tt:
+        s = 0 if p == 0 else (ql - stride); ww.append((p, s)); p += stride
+    n = len(ww); pr = (n + ws - 1) // ws
+    mw = ww[rk*pr:min((rk+1)*pr, n)]
     ls = Z((), device=dv, dtype=F64)
     tc = Z((), device=dv, dtype=F64)
     bc = Z((), device=dv, dtype=F64)
     with IM():
         for i in range(0, len(mw), ebs):
-            batch = mw[i:i+ebs]; bs = len(batch)
-            x_list = [vt[w:w+ql] for w, _ in batch]
-            y_list = [vt[w+1:w+ql+1] for w, _ in batch]
+            bt = mw[i:i+ebs]; bs = len(bt)
+            xl = [vt[w:w+ql] for w, _ in bt]
+            yl = [vt[w+1:w+ql+1] for w, _ in bt]
             pad = ebs - bs
-            if pad > 0: x_list.extend([x_list[-1]]*pad); y_list.extend([y_list[-1]]*pad)
-            x = SK(x_list).to(device=dv, dtype=I64)
-            y = SK(y_list).to(device=dv, dtype=I64)
-            with AU(): logits = logits_fn(x)
+            if pad > 0: xl.extend([xl[-1]]*pad); yl.extend([yl[-1]]*pad)
+            x = SK(xl).to(device=dv, dtype=I64)
+            y = SK(yl).to(device=dv, dtype=I64)
+            with AU(): logits = lfn(x)
             for b in range(bs):
-                s = batch[b][1]; sl, st = logits[b, s:], y[b, s:]
+                s = bt[b][1]; sl, st = logits[b, s:], y[b, s:]
                 ls += F.cross_entropy(sl.float(), st, reduction="sum").to(F64)
                 ns = st.numel(); tc += ns
                 prev, tgt = x[b, s:s+ns], st
@@ -926,26 +926,26 @@ def ree(a, bm, rk, ws, dv, dd, m0,
     cb = len(code.encode(U)); sl = 16_000_000
     qr, qm = qsd(sd_cpu, hh=hm)
     if a.pp > 0:
-        ai6 = []
+        a6 = []
         for name, info in qm.items():
             if mk(info) == "6":
                 qname = name + ".q"
                 if qname in qr:
-                    ai6.append(qr[qname].flatten().abs().float())
-        if ai6:
-            all_vals = CAT(ai6)
-            k = max(1, int(a.pp * all_vals.numel()))
-            threshold = all_vals.kthvalue(k).values.item()
+                    a6.append(qr[qname].flatten().abs().float())
+        if a6:
+            av = CAT(a6)
+            k = max(1, int(a.pp * av.numel()))
+            thr = av.kthvalue(k).values.item()
             prc = 0
             for name, info in qm.items():
                 if mk(info) == "6":
                     qname = name + ".q"
                     if qname in qr:
-                        mask = qr[qname].abs() <= int(threshold)
+                        mask = qr[qname].abs() <= int(thr)
                         prc += mask.sum().item()
                         qr[qname][mask] = 0
             ti6 = sum(qr[n + ".q"].numel() for n, i in qm.items() if mk(i) == "6" and n + ".q" in qr)
-            log0(f"prune:{prc}/{ti6} ({100*prc/max(ti6,1):.1f}%) thr={threshold:.0f}")
+            log0(f"prune:{prc}/{ti6} ({100*prc/max(ti6,1):.1f}%) thr={thr:.0f}")
     eb, en = eqm(qm)
     nti = {name: idx for idx, name in enumerate(en)}
     parts = [PK(F4, len(eb)), eb]
