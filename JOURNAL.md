@@ -1247,3 +1247,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The candidate file shrank from `52,908` bytes to `52,804` bytes, another `104` bytes of direct code-payload savings. The wrapped export blob again stayed exactly unchanged at `blob_size=4246542`, the chooser still selected the same codec path, and the CPU harness still reported exact `roundtrip=True` with the same SHA-256 `4bbb418b6d8265d42710b1cc6939d16e812ecfd150f5bae08b04dd32336fe3a6`.
 - Decision: Keep the shorter internal quant category codes in the main lane. This is another free counted-size win with no measured effect on artifact bytes, compatibility, or recovery tooling.
 - Next step: Push this pass so the next live export-only resume uses the smallest counted candidate we currently have together with the unchanged best-known exporter path.
+
+- Timestamp: 2026-03-24 05:37 CDT
+- Commit: `0f1cdbf`
+- Lane: non-ttt VRL code-size hygiene
+- Objective: Reclaim another safe counted-size block by aliasing repeated long literals that are only used inside the candidate source and do not affect artifact bytes.
+- Command or config: Added tiny aliases in [train_gpt.py](/Users/aryan/Desktop/golf/candidates/non_ttt_vrl_gptq/train_gpt.py) for repeated literals such as `"utf-8"`, `"final_model.int6.ptz"`, `"model_state"`, `"momentum_buffer"`, and `"TORCH_COMPILE_DISABLE"`, then updated the repeated call sites in checkpoint save/load, log-file writes, metadata encode/decode, compile toggles, and the optimizer state path. Then reran `uv run python -m py_compile candidates/non_ttt_vrl_gptq/train_gpt.py`, reran `python3 runpod/check_ready.py`, and reran the chooser-level CPU export round-trip harness under `uv`.
+- Result: The candidate file shrank from `52,804` bytes to `52,701` bytes, another `103` bytes of direct code-payload savings. The wrapped export blob remained exactly unchanged at `blob_size=4246542`, the chooser still selected the same codec path `lz_hc3_16_l2_n64`, and the CPU harness again reported exact `roundtrip=True` with the same SHA-256 `4bbb418b6d8265d42710b1cc6939d16e812ecfd150f5bae08b04dd32336fe3a6`.
+- Decision: Keep the repeated-literal aliases in the main lane. This is another free counted-size win with no measured effect on artifact bytes or recovery behavior.
+- Next step: Push this pass so the next live export-only resume uses the smallest counted candidate we have so far together with the unchanged best-known exporter path.
