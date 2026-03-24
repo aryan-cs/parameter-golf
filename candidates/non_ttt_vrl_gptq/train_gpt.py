@@ -273,16 +273,16 @@ def dqm(blob: bytes) -> tuple[dict[str, object], list[str], bool]:
         return meta, names, True
     return json.loads(blob.decode("utf-8")), [], False
 
-def etr(tname: str, name_to_idx: dict[str, int]) -> tuple[int, int]:
-    if tname in name_to_idx:
-        return name_to_idx[tname], 0
-    if tname.endswith(".q") and tname[:-2] in name_to_idx:
-        base_name, suffix = tname[:-2], 1
-    elif tname.endswith(".scale") and tname[:-6] in name_to_idx:
-        base_name, suffix = tname[:-6], 2
+def etr(tname: str, nti: dict[str, int]) -> tuple[int, int]:
+    if tname in nti:
+        return nti[tname], 0
+    if tname.endswith(".q") and tname[:-2] in nti:
+        bn, suffix = tname[:-2], 1
+    elif tname.endswith(".scale") and tname[:-6] in nti:
+        bn, suffix = tname[:-6], 2
     else:
-        base_name, suffix = tname, 0
-    return name_to_idx[base_name], suffix
+        bn, suffix = tname, 0
+    return nti[bn], suffix
 
 def dtr(name_idx: int, suffix: int, names: list[str]) -> str:
     bn = names[name_idx]
@@ -512,14 +512,14 @@ def ui6(raw: bytes | memoryview, shape: list[int]) -> Tensor:
     arr = _zigzag_decode_int6(u[:numel])
     return FN(arr.astype(np.int8, copy=False).reshape(shape))
 
-def mcn(codec_id: int) -> str:
-    if codec_id == KZ:
+def mcn(cid: int) -> str:
+    if cid == KZ:
         return "zstd19"
-    if codec_id == KG:
+    if cid == KG:
         return "zlib9"
-    if codec_id == KL:
+    if cid == KL:
         return "lzma_raw_hc3_16mb"
-    return f"unknown({codec_id})"
+    return f"unknown({cid})"
 
 def cmb(raw: bytes) -> tuple[bytes, int]:
     candidates = [
@@ -528,25 +528,25 @@ def cmb(raw: bytes) -> tuple[bytes, int]:
     ]
     if HAS_ZSTD:
         candidates.append((KZ, zstd.ZstdCompressor(level=19).compress(raw)))
-    codec_id, payload = min(candidates, key=lambda item: len(item[1]))
-    return QCB + bytes([codec_id]) + payload, codec_id
+    cid, payload = min(candidates, key=lambda item: len(item[1]))
+    return QCB + bytes([cid]) + payload, cid
 
 def dmb(blob: bytes) -> tuple[bytes, str]:
     if blob.startswith(QCB):
-        codec_id = blob[len(QCB)]
+        cid = blob[len(QCB)]
         payload = blob[len(QCB) + 1:]
-        if codec_id == KZ:
+        if cid == KZ:
             if not HAS_ZSTD:
                 raise RuntimeError("zstd unavailable")
-            return zstd.ZstdDecompressor().decompress(payload), mcn(codec_id)
-        if codec_id == KG:
-            return zlib.decompress(payload), mcn(codec_id)
-        if codec_id == KL:
+            return zstd.ZstdDecompressor().decompress(payload), mcn(cid)
+        if cid == KG:
+            return zlib.decompress(payload), mcn(cid)
+        if cid == KL:
             try:
-                return lzma.decompress(payload, format=lzma.FORMAT_RAW, filters=LF), mcn(codec_id)
+                return lzma.decompress(payload, format=lzma.FORMAT_RAW, filters=LF), mcn(cid)
             except lzma.LZMAError:
                 return lzma.decompress(payload), "legacy_lzma_hc4_32mb_xz"
-        raise ValueError(f"bad codec {codec_id}")
+        raise ValueError(f"bad codec {cid}")
     if HAS_ZSTD:
         try:
             return zstd.ZstdDecompressor().decompress(blob), "legacy_zstd22"
@@ -563,9 +563,9 @@ def lds(file):
     return FN(np.fromfile(file, dtype="<u2", count=nt, offset=hb).astype(np.uint16, copy=False))
 
 class TS:
-    def __init__(self, pattern):
-        self.files = [Path(p) for p in sorted(glob.glob(pattern))]
-        if not self.files: raise FileNotFoundError(f"no:{pattern}")
+    def __init__(self, pat):
+        self.files = [Path(p) for p in sorted(glob.glob(pat))]
+        if not self.files: raise FileNotFoundError(f"no:{pat}")
         self.file_idx = 0; self.tokens = lds(self.files[0]); self.pos = 0
     def _advance_file(self):
         self.file_idx = (self.file_idx + 1) % len(self.files); self.tokens = lds(self.files[self.file_idx]); self.pos = 0
@@ -578,8 +578,8 @@ class TS:
         return chunks[0] if len(chunks) == 1 else CAT(chunks)
 
 class DTL:
-    def __init__(self, pattern, rank, ws, dv):
-        self.rank, self.ws, self.dv = rank, ws, dv; self.stream = TS(pattern)
+    def __init__(self, pat, rank, ws, dv):
+        self.rank, self.ws, self.dv = rank, ws, dv; self.stream = TS(pat)
     def next_batch(self, gt, sl, gas):
         prs = gt // (self.ws * gas) + 1
         chunk = self.stream.take(prs * self.ws)
@@ -873,15 +873,15 @@ class GPT(M):
         return self.lsc * th.tanh(logits / self.lsc)
 
 def ch(bm, tl, args, dv, gas, num_batches=256):
-    hessians = {}
+    hh = {}
     hooks = []
     param_to_name = {}
     for name, module in bm.named_modules():
         if isinstance(module, CL):
-            param_name = name + ".weight"
-            param_to_name[id(module)] = param_name
+            pn = name + ".weight"
+            param_to_name[id(module)] = pn
             cols = module.weight.shape[1]
-            hessians[param_name] = Z(cols, cols, dtype=F32, device='cpu')
+            hh[pn] = Z(cols, cols, dtype=F32, device='cpu')
             def make_hook(mod_id, pname, ncols):
                 count = [0]
                 def hook_fn(module, input, output):
@@ -889,10 +889,10 @@ def ch(bm, tl, args, dv, gas, num_batches=256):
                     if x.ndim == 3:
                         x = x.reshape(-1, x.shape[-1])
                     xtx = (x.T @ x).cpu()
-                    hessians[pname] += xtx
+                    hh[pname] += xtx
                     count[0] += x.shape[0]
                 return hook_fn
-            h = module.register_forward_hook(make_hook(id(module), param_name, cols))
+            h = module.register_forward_hook(make_hook(id(module), pn, cols))
             hooks.append(h)
     bm.eval()
     with IM(), AC(device_type="cuda", dtype=BF):
@@ -900,14 +900,14 @@ def ch(bm, tl, args, dv, gas, num_batches=256):
             x, y = tl.next_batch(args.tbt, args.tsl, gas)
             _ = bm(x, y)
     for h in hooks: h.remove()
-    for name in hessians:
-        H = hessians[name]
+    for name in hh:
+        H = hh[name]
         H /= num_batches
         damp = 0.01 * DG(H).mean().clamp_min(1e-6)
         H += damp * EYE(H.shape[0])
-        hessians[name] = H
+        hh[name] = H
     bm.train()
-    return hessians
+    return hh
 
 def evl(logits_fn, rank, ws, dv, vt,
                      bb, hs, ib,
@@ -962,7 +962,7 @@ def mspc(path_spec: str, sd: dict[str, th.Tensor], log0):
     os.replace(tmp_path, path)
     return str(path)
 
-def ree(a, bm, rank, ws, dv, dd, master,
+def ree(a, bm, rank, ws, dv, dd, m0,
                     code, vt, bb, hs, ib, log0):
     cl = DTL(a.tf, rank, ws, dv)
     hh = ch(bm, cl, a, dv, 8 // ws,
@@ -1048,7 +1048,7 @@ def ree(a, bm, rank, ws, dv, dd, master,
     log0(f"sz:m={mb} c={cb} t={ts}({ts/1e6:.2f}M)")
     if ts > sl: log0(f"warn:size {ts}+{ts - sl}")
     else: log0(f"size_ok:{ts/1e6:.2f} MB")
-    if master:
+    if m0:
         with open("final_model.int6.ptz", "wb") as f: f.write(model_blob)
     if dd: BR()
     with open("final_model.int6.ptz", "rb") as f: model_blob_loaded = f.read()
@@ -1095,12 +1095,12 @@ def ree(a, bm, rank, ws, dv, dd, master,
     bm.load_state_dict(deq_state, strict=True)
     eval_sl = a.esl if a.esl > 0 else a.tsl
     vte = lvt(a.val_files, eval_sl) if eval_sl != a.tsl else vt
-    raw_logits_fn = CMP(bm.forward_logits, dynamic=False) if not bool(int(EG("TORCH_COMPILE_DISABLE", "0"))) else bm.forward_logits
+    rlf = CMP(bm.forward_logits, dynamic=False) if not bool(int(EG("TORCH_COMPILE_DISABLE", "0"))) else bm.forward_logits
     warmup_x = Z(a.ebs, eval_sl, dtype=I64, device=dv)
     bm.eval()
-    with IM(), AC(device_type="cuda", dtype=BF): _ = raw_logits_fn(warmup_x)
+    with IM(), AC(device_type="cuda", dtype=BF): _ = rlf(warmup_x)
     SY(); t_eval = PC()
-    q_vl, q_vb = evl(raw_logits_fn, rank, ws, dv,
+    q_vl, q_vb = evl(rlf, rank, ws, dv,
         vte, bb, hs, ib,
         eval_sl, a.evs, ebs=a.ebs)
     SY(); eval_time = PC() - t_eval
@@ -1120,15 +1120,15 @@ def main():
     if not th.cuda.is_available(): raise RuntimeError("cuda req")
     dv = th.device("cuda", lrk); th.cuda.set_device(dv)
     if dd: IGP(backend="nccl", device_id=dv); BR()
-    master = rank == 0
+    m0 = rank == 0
     th.backends.cuda.matmul.allow_tf32 = True; th.backends.cudnn.allow_tf32 = True
     if not HAS_FA3:
         from th.backends.cuda import enable_cudnn_sdp, enable_flash_sdp, enable_math_sdp, enable_mem_efficient_sdp
         enable_cudnn_sdp(False); enable_flash_sdp(True); enable_mem_efficient_sdp(False); enable_math_sdp(False)
     lf = None
-    if master: os.makedirs("logs", exist_ok=True); lf = f"logs/{a.rid}.txt"; print(lf)
+    if m0: os.makedirs("logs", exist_ok=True); lf = f"logs/{a.rid}.txt"; print(lf)
     def log0(msg, console=True):
-        if not master: return
+        if not m0: return
         if console: print(msg)
         if lf:
             with open(lf, "a", encoding="utf-8") as f: print(msg, file=f)
@@ -1156,9 +1156,9 @@ def main():
     eoc = rcp(a.eoc)
     if eoc:
         ckpt = th.load(eoc, map_location="cpu")
-        model_state = ckpt["model_state"] if isinstance(ckpt, dict) and "model_state" in ckpt else ckpt
-        bm.load_state_dict(model_state, strict=True)
-        ree(a, bm, rank, ws, dv, dd, master,
+        ms = ckpt["model_state"] if isinstance(ckpt, dict) and "model_state" in ckpt else ckpt
+        bm.load_state_dict(ms, strict=True)
+        ree(a, bm, rank, ws, dv, dd, m0,
                         code, vt, bb, hs, ib, log0)
         return
     bnp = list(bm.blocks.named_parameters())
@@ -1280,7 +1280,7 @@ def main():
     avg_state = {name: t.to(dtype=cs[name].dtype) for name, t in ema_state.items()}
     bm.load_state_dict(avg_state, strict=True)
     mspc(a.spc, bm.state_dict(), log0)
-    ree(a, bm, rank, ws, dv, dd, master,
+    ree(a, bm, rank, ws, dv, dd, m0,
                     code, vt, bb, hs, ib, log0)
 
 if __name__ == "__main__":
