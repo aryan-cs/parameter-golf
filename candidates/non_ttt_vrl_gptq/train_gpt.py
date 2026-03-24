@@ -15,6 +15,7 @@ AC=th.autocast; IM=th.inference_mode; Z=th.zeros; TT=th.tensor; QT=th.quantile; 
 P=nn.Parameter; PL=nn.ParameterList; M=nn.Module; ML=nn.ModuleList; NI=nn.init; NG=th.no_grad; CLP=th.clamp; DG=th.diag; CMP=th.compile; SY=th.cuda.synchronize
 IA=dist.is_available; II=dist.is_initialized; BR=dist.barrier; GWS=dist.get_world_size; GRK=dist.get_rank; IGP=dist.init_process_group; DGP=dist.destroy_process_group; ARD=dist.all_reduce; ROP=dist.ReduceOp
 ZL=th.zeros_like; EL=th.empty_like; AR=th.arange; SG=th.sigmoid; CAT=th.cat; ON=th.ones; FUL=th.full; EYE=th.eye
+TF=lambda t:t.float(); RS=lambda t,*s:t.reshape(*s)
 N8=np.uint8; N6=np.int16; N1=np.int8; N4=np.uint32; NB=1
 U="utf-8"; FM="final_model.int6.ptz"; MS="model_state"; MB="momentum_buffer"; TD="TORCH_COMPILE_DISABLE"; PA="params"; BL="base_lr"; QS=".q"; SS=".scale"; WT=".weight"; F4="<I"; F3="<HB"; F5="<HBBB"; LT="little"
 try:
@@ -76,7 +77,7 @@ class MU(th.optim.Optimizer):
                     if nesterov: g = g.add(buf, alpha=momentum)
                     g = z5(g, steps=ns_steps)
                     g *= max(1, g.size(0) / g.size(1)) ** 0.5
-                    uf[curr : curr + p.numel()] = g.reshape(-1)
+                    uf[curr : curr + p.numel()] = RS(g, -1)
                 curr += p.numel()
             if dd: ARD(uf, op=ROP.SUM)
             wd = group.get("wd", 0.0); curr = 0
@@ -124,13 +125,13 @@ def evv(a, model, rk, ws, dv, gas,
         for bss in range(ss, se, lbs):
             bse = min(bss + lbs, se)
             lc = vt[bss*sl:(bse*sl)+1].to(device=dv, dtype=I64, non_blocking=NB)
-            x, y = lc[:-1].reshape(-1, sl), lc[1:].reshape(-1, sl)
+            x, y = RS(lc[:-1], -1, sl), RS(lc[1:], -1, sl)
             with AU():
                 bl = model(x, y).detach()
             vls += bl.to(F64) * float(y.numel())
             vtc += float(y.numel())
-            tb = bb[y.reshape(-1)].to(dtype=I16)
-            tb += (hs[y.reshape(-1)] & ~ib[x.reshape(-1)]).to(dtype=I16)
+            tb = bb[RS(y, -1)].to(dtype=I16)
+            tb += (hs[RS(y, -1)] & ~ib[RS(x, -1)]).to(dtype=I16)
             vbc += tb.to(F64).sum()
     if IA() and II():
         for t in [vls, vtc, vbc]: ARD(t, op=ROP.SUM)
@@ -243,11 +244,11 @@ def dtr(ni: int, suffix: int, names: list[str]) -> str:
     return bn
 
 def qi6g(weight, hessian=None, cr=31, block_size=128):
-    t32 = weight.float()
+    t32 = TF(weight)
     if t32.ndim != 2 or hessian is None:
         return qi6p(t32, cr)
     rows, cols = t32.shape
-    H = hessian.float().clone()
+    H = TF(hessian).clone()
     dead = DG(H) == 0
     H[dead, dead] = 1
     damp = 0.01 * th.mean(DG(H))
@@ -270,7 +271,7 @@ def qi6g(weight, hessian=None, cr=31, block_size=128):
         else:
             rc = t32.abs().amax(dim=1)
         s = (rc / cr).clamp_min(1.0 / cr).to(F16)
-        sf = s.float()
+        sf = TF(s)
         Q = ZL(W, dtype=I8)
         W_work = W.clone()
         for i1 in range(0, cols, block_size):
@@ -285,13 +286,13 @@ def qi6g(weight, hessian=None, cr=31, block_size=128):
                 d = Hinv1[i, i]
                 q = CLP(th.round(w / sf), -cr, cr).to(I8)
                 Q1[:, i] = q
-                err = (w - q.float() * sf) / d
+                err = (w - TF(q) * sf) / d
                 W1[:, i:] -= err.unsqueeze(1) * Hinv1[i, i:].unsqueeze(0)
                 Err1[:, i] = err
             Q[:, i1:i2] = Q1
             if i2 < cols:
                 W_work[:, i2:] -= Err1 @ Hinv[i1:i2, i2:]
-        recon = Q.float() * sf[:, None]
+        recon = TF(Q) * sf[:, None]
         mse = (W - recon).pow(2).mean().item()
         if mse < best_err:
             best_q, best_s, best_err = Q, s, mse
@@ -307,19 +308,19 @@ def qi6p(t32, cr=31):
             else:
                 rc = t32.abs().amax(dim=1)
             s = (rc / cr).clamp_min(1.0 / cr).to(F16)
-            q = CLP(th.round(t32 / s.float()[:, None]), -cr, cr).to(I8)
-            recon = q.float() * s.float()[:, None]
+            q = CLP(th.round(t32 / TF(s)[:, None]), -cr, cr).to(I8)
+            recon = TF(q) * TF(s)[:, None]
             err = (t32 - recon).pow(2).mean().item()
             if err < best_err:
                 best_q, best_s, best_err = q, s, err
         return best_q, best_s
     amax = t32.abs().max().item()
     scale = TT(amax / cr if amax > 0 else 1.0, dtype=F16)
-    q = CLP(th.round(t32 / scale.float()), -cr, cr).to(I8)
+    q = CLP(th.round(t32 / TF(scale)), -cr, cr).to(I8)
     return q, scale
 
 def qft(t):
-    t32 = t.float()
+    t32 = TF(t)
     if t32.ndim == 2:
         clip_q = 99.99984 / 100.0
         ca = QT(t32.abs(), clip_q, dim=1) if t32.numel() else EM((t32.shape[0],), dtype=F32)
@@ -343,7 +344,7 @@ def qsd(sd, hh=None):
             r[name] = t.to(F16) if t.is_floating_point() else t
             m[name] = MP; continue
         if any(p in name for p in CP):
-            r[name] = t.float(); m[name] = MC; continue
+            r[name] = TF(t); m[name] = MC; continue
         if cat in i6c and t.ndim >= 1:
             H = hh.get(name) if hh else None
             q, s = qi6g(t, hessian=H)
@@ -366,9 +367,9 @@ def dsd(result, meta, tsd):
             out[name] = t; continue
         q, s = result[name + QS], result[name + SS]
         if s.ndim > 0:
-            out[name] = (q.float() * s.float().view(q.shape[0], *([1]*(q.ndim-1)))).to(od)
+            out[name] = (TF(q) * RS(TF(s), q.shape[0], *([1]*(q.ndim-1)))).to(od)
         else:
-            out[name] = (q.float() * float(s.item())).to(od)
+            out[name] = (TF(q) * float(s.item())).to(od)
     return out
 
 def ze6(arr_i16: np.ndarray) -> np.ndarray:
@@ -388,7 +389,7 @@ def pi6l(t: Tensor) -> bytes:
     q = DX(t)
     if q.dtype != I8:
         raise TypeError(f"need int8, got {q.dtype}")
-    arr = AS(q.numpy().reshape(-1), N6)
+    arr = AS(RS(q.numpy(), -1), N6)
     if arr.size == 0:
         return b""
     if arr.min() < -31 or arr.max() > 31:
@@ -397,7 +398,7 @@ def pi6l(t: Tensor) -> bytes:
     pad = (-u.size) % 4
     if pad:
         u = np.pad(u, (0, pad), constant_values=0)
-    groups = AS(u.reshape(-1, 4), N4)
+    groups = AS(RS(u, -1, 4), N4)
     packed = (groups[:, 0]
               | (groups[:, 1] << 6)
               | (groups[:, 2] << 12)
@@ -416,7 +417,7 @@ def ui6l(raw: bytes | memoryview, shape: list[int]) -> Tensor:
     groups = (numel + 3) // 4
     if pu.size != groups * 3:
         raise ER(f"bad int6 sz {groups*3}!={pu.size}")
-    tr = AS(pu.reshape(-1, 3), N4)
+    tr = AS(RS(pu, -1, 3), N4)
     packed = tr[:, 0] | (tr[:, 1] << 8) | (tr[:, 2] << 16)
     u = NE(groups * 4, dtype=N8)
     u[0::4] = (packed & 0x3F).astype(N8)
@@ -424,13 +425,13 @@ def ui6l(raw: bytes | memoryview, shape: list[int]) -> Tensor:
     u[2::4] = ((packed >> 12) & 0x3F).astype(N8)
     u[3::4] = ((packed >> 18) & 0x3F).astype(N8)
     arr = AS(u[:numel], N6) - 31
-    return FN(AS(arr, N1).reshape(shape))
+    return FN(RS(AS(arr, N1), shape))
 
 def pi6(t: Tensor) -> bytes:
     q = DX(t)
     if q.dtype != I8:
         raise TypeError(f"need int8, got {q.dtype}")
-    arr = AS(q.numpy().reshape(-1), N6)
+    arr = AS(RS(q.numpy(), -1), N6)
     if arr.size == 0:
         return b""
     u = ze6(AS(arr, N6))
@@ -440,8 +441,8 @@ def pi6(t: Tensor) -> bytes:
         u = np.pad(u, (0, pad), constant_values=0)
     out = bytearray()
     for bit in range(6):
-        bits = AS((u >> bit) & 1, N8).reshape(-1, 8)
-        out.extend(np.packbits(bits, axis=1, bitorder=LT).reshape(-1).tobytes())
+        bits = RS(AS((u >> bit) & 1, N8), -1, 8)
+        out.extend(RS(np.packbits(bits, axis=1, bitorder=LT), -1).tobytes())
     return bytes(out)
 
 def ui6(raw: bytes | memoryview, shape: list[int]) -> Tensor:
@@ -462,7 +463,7 @@ def ui6(raw: bytes | memoryview, shape: list[int]) -> Tensor:
         bits = np.unpackbits(plane, bitorder=LT)
         u |= (AS(bits, N8) << bit)
     arr = zd6(u[:numel])
-    return FN(AS(arr, N1).reshape(shape))
+    return FN(RS(AS(arr, N1), shape))
 
 def mcn(cid: int) -> str:
     if cid == KZ:
@@ -536,7 +537,7 @@ class DTL:
         prs = gt // (self.ws * gas) + 1
         ck = self.s.tk(prs * self.ws)
         st = self.rk * prs; lc = ck[st:st+prs].to(dtype=I64)
-        x, y = lc[:-1].reshape(-1, sl), lc[1:].reshape(-1, sl)
+        x, y = RS(lc[:-1], -1, sl), RS(lc[1:], -1, sl)
         return x.to(self.dv, non_blocking=NB), y.to(self.dv, non_blocking=NB)
 
 class RN(M):
@@ -550,7 +551,7 @@ class CL(nn.Linear):
         w = self.weight.to(x.dtype)
         if CL._qat_enabled and self.training and w.ndim == 2:
             with NG():
-                w32 = self.weight.float()
+                w32 = TF(self.weight)
                 row_clip = QT(w32.abs(), CL._qat_clip_pct, dim=1)
                 scale = (row_clip / 31.0).clamp_min(1.0 / 31.0)
                 w_q = (CLP(th.round(w32 / scale[:, None]), -31, 31) * scale[:, None]).to(x.dtype)
@@ -561,7 +562,7 @@ def rf32(module):
     with NG():
         for name, param in module.named_parameters():
             if (param.ndim < 2 or any(p in name for p in CP)) and param.dtype != F32:
-                param.data = param.data.float()
+                param.data = TF(param.data)
 
 class RY(M):
     def __init__(self, dim, base=10000.0, tsl=1024, rd=0):
@@ -609,18 +610,18 @@ class CSA(M):
         self.ux = False
     def xe(self, y, v):
         B, T, H, D = y.shape; Hkv = v.size(-2); group = H // Hkv
-        y_g = y.reshape(B, T, Hkv, group, D)
+        y_g = RS(y, B, T, Hkv, group, D)
         vn = F.normalize(v, dim=-1).unsqueeze(-2)
         proj = (y_g * vn).sum(dim=-1, keepdim=True) * vn
-        return (y_g - proj).reshape(B, T, H, D)
+        return RS(y_g - proj, B, T, H, D)
     def forward(self, x, ve=None, vr=None):
         bsz, seqlen, dim = x.shape
-        q = self.c_q(x).reshape(bsz, seqlen, self.nh, self.hd)
-        k = self.c_k(x).reshape(bsz, seqlen, self.nkh, self.hd)
+        q = RS(self.c_q(x), bsz, seqlen, self.nh, self.hd)
+        k = RS(self.c_k(x), bsz, seqlen, self.nkh, self.hd)
         v = self.c_v(x)
         if ve is not None: v = v + ve
         if vr is not None: v = v + vr
-        v = v.reshape(bsz, seqlen, self.nkh, self.hd)
+        v = RS(v, bsz, seqlen, self.nkh, self.hd)
         q, k = RM(q, (q.size(-1),)), RM(k, (k.size(-1),))
         cos, sin = self.rotary(seqlen, x.device, q.dtype)
         q = are(q, cos, sin, self.rd)
@@ -634,7 +635,7 @@ class CSA(M):
             y = F.scaled_dot_product_attention(qt, kt, vt, attn_mask=None, is_causal=True,
                                                enable_gqa=(self.nkh != self.nh)).transpose(1, 2)
         if self.ux: y = self.xe(y, v)
-        return self.proj(y.reshape(bsz, seqlen, dim))
+        return self.proj(RS(y, bsz, seqlen, dim))
 
 class MLP(M):
     def __init__(self, dim, mm):
@@ -693,7 +694,7 @@ class BL(M):
         self.mlp = MLP(dim, mm)
         self.attn_scale = P(ON(dim, dtype=F32))
         self.mlp_scale = P(ON(dim, dtype=F32))
-        self.resid_mix = P(SK((ON(dim), Z(dim))).float())
+        self.resid_mix = P(TF(SK((ON(dim), Z(dim)))))
         self.lsf = 1.0 / math.sqrt(li + 1) if ln_scale else 1.0
     def forward(self, x, x0, ve=None, vr=None):
         mix = self.resid_mix.to(dtype=x.dtype)
@@ -815,10 +816,10 @@ class GPT(M):
         return x
     def forward(self, ids, tgt):
         x0 = self.eb(ids); x = self.rl(x0, x0, ids)
-        x_flat = self.final_norm(x).reshape(-1, x.size(-1)); targets = tgt.reshape(-1)
+        x_flat = RS(self.final_norm(x), -1, x.size(-1)); targets = RS(tgt, -1)
         logits_proj = LI(x_flat, self.tok_emb.weight) if self.t else self.lm_head(x_flat)
         logits = self.l * th.tanh(logits_proj / self.l)
-        return F.cross_entropy(logits.float(), targets, reduction="mean")
+        return F.cross_entropy(TF(logits), targets, reduction="mean")
     def fwl(self, ids):
         x0 = self.eb(ids); x = self.final_norm(self.rl(x0, x0, ids))
         logits = LI(x, self.tok_emb.weight.to(x.dtype)) if self.t else self.lm_head(x)
@@ -835,9 +836,9 @@ def ch(bm, tl, args, dv, gas, nbc=256):
             def mh(pn):
                 ct = [0]
                 def hf(_, inp, __):
-                    x = inp[0].detach().float()
+                    x = TF(inp[0].detach())
                     if x.ndim == 3:
-                        x = x.reshape(-1, x.shape[-1])
+                        x = RS(x, -1, x.shape[-1])
                     xtx = (x.T @ x).cpu()
                     hh[pn] += xtx
                     ct[0] += x.shape[0]
@@ -882,7 +883,7 @@ def evl(lfn, rk, ws, dv, vt,
             with AU(): logits = lfn(x)
             for b in range(bs):
                 s = bt[b][1]; sl, st = logits[b, s:], y[b, s:]
-                ls += F.cross_entropy(sl.float(), st, reduction="sum").to(F64)
+                ls += F.cross_entropy(TF(sl), st, reduction="sum").to(F64)
                 ns = st.numel(); tc += ns
                 prev, tgt = x[b, s:s+ns], st
                 tb = bb[tgt].to(I16)
@@ -931,7 +932,7 @@ def ree(a, bm, rk, ws, dv, dd, m0,
             if mk(info) == "6":
                 qname = name + ".q"
                 if qname in qr:
-                    a6.append(qr[qname].flatten().abs().float())
+                    a6.append(TF(qr[qname].flatten().abs()))
         if a6:
             av = CAT(a6)
             k = max(1, int(a.pp * av.numel()))
@@ -1034,7 +1035,7 @@ def ree(a, bm, rk, ws, dv, dd, m0,
             nbytes = numel * np.dtype(nd).itemsize
             arr = FB(rd, dtype=nd, count=numel, offset=o).copy()
             o += nbytes
-            t = FN(arr).reshape(shape)
+            t = RS(FN(arr), shape)
             if td == BF: t = t.view(BF)
         lr[tname] = t
     deq_state = dsd(lr, lm, sd_cpu)
@@ -1095,7 +1096,7 @@ def main():
         vee=a.vee, ved=a.ved, vel=a.vel,
     ).to(dv).bfloat16()
     for m in bm.modules():
-        if isinstance(m, CL): m.float()
+        if isinstance(m, CL): TF(m)
     rf32(bm)
     gs = bm.state_dict; ls = bm.load_state_dict
     cm = CMP(bm, dynamic=False, fullgraph=True) if not GB(TD) else bm
@@ -1169,7 +1170,7 @@ def main():
         zga()
         if dd: model.require_backward_grad_sync = True
         tl = DTL(a.tf, rk, ws, dv)
-    es = {name: t.detach().float().clone() for name, t in gs().items()}
+    es = {name: TF(t.detach()).clone() for name, t in gs().items()}
     tm, ss = 0.0, None
     sws, swc = None, 0
     SY(); t0 = PC(); step = 0
@@ -1207,7 +1208,7 @@ def main():
         zga()
         with NG():
             for name, t in gs().items():
-                es[name].mul_(a.ed).add_(t.detach().float(), alpha=1.0 - a.ed)
+                es[name].mul_(a.ed).add_(TF(t.detach()), alpha=1.0 - a.ed)
         step += 1
         cms = tm + 1000.0 * (PC() - t0)
         if a.swe and scale < 0.2 and step % a.swi == 0:
