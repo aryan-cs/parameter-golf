@@ -49,6 +49,7 @@ def main() -> int:
     wrappers = [
         ROOT / "runpod" / "local_recover_export_chain.sh",
         ROOT / "runpod" / "local_recover_export_chain_8gpu.sh",
+        ROOT / "runpod" / "local_recover_existing_export.sh",
     ]
     for wrapper in wrappers:
         refs = extract_configs_from_wrapper(wrapper)
