@@ -960,12 +960,10 @@ def mspc(path_spec: str, sd: dict[str, th.Tensor], log0):
     tmp_path = path.with_suffix(path.suffix + ".tmp")
     th.save(ckpt, tmp_path)
     os.replace(tmp_path, path)
-    log0(f"save_ckpt:{path}")
     return str(path)
 
 def ree(args, bm, rank, ws, device, dd, master,
                     code, vt, bb, hs, ib, log0):
-    log0(f"gptq:calib {args.gptq_calib_batches}")
     calib_loader = DTL(args.tf, rank, ws, device)
     hessians = chs(bm, calib_loader, args, device, 8 // ws,
                                 num_batches=args.gptq_calib_batches)
@@ -976,8 +974,6 @@ def ree(args, bm, rank, ws, device, dd, master,
             h_name = name + ".weight"
             if h_name in hessians:
                 hessian_map[sd_name] = hessians[h_name]
-    log0(f"gptq:hess {len(hessian_map)}")
-
     sd_cpu = {k: v.detach().cpu() for k, v in bm.state_dict().items()}
     code_bytes = len(code.encode("utf-8")); size_limit = 16_000_000
     qr, qm = qsd(sd_cpu, hessians=hessian_map)
@@ -1057,7 +1053,6 @@ def ree(args, bm, rank, ws, device, dd, master,
     if dd: dist.barrier()
     with open("final_model.int6.ptz", "rb") as f: model_blob_loaded = f.read()
     rd, loaded_codec_name = dmb(model_blob_loaded)
-    log0(f"codec_loaded:{loaded_codec_name}")
     offset = 0
     meta_len = struct.unpack_from("<I", rd, offset)[0]; offset += 4
     loaded_meta, meta_names, compact_tensor_refs = dqm(rd[offset:offset+meta_len]); offset += meta_len
@@ -1163,7 +1158,6 @@ def main():
         ckpt = th.load(eoc, map_location="cpu")
         model_state = ckpt["model_state"] if isinstance(ckpt, dict) and "model_state" in ckpt else ckpt
         bm.load_state_dict(model_state, strict=True)
-        log0(f"export_only:ckpt:{eoc}")
         ree(args, bm, rank, ws, device, dd, master,
                         code, vt, bb, hs, ib, log0)
         return
@@ -1223,7 +1217,6 @@ def main():
                 (wl * grad_scale).backward()
             for opt in opts: opt.step()
             zero_grad_all()
-            if args.warmup_steps <= 20 or (wi+1) % 10 == 0: log0(f"warm:{wi+1}/{args.warmup_steps}")
         bm.load_state_dict(initial_model_state, strict=True)
         for opt, state in zip(opts, initial_optimizer_states, strict=True): opt.load_state_dict(state)
         zero_grad_all()
@@ -1250,7 +1243,6 @@ def main():
         scale = lr_mul(step, elapsed_ms)
         if args.lqt > 0 and scale < args.lqt and not CL._qat_enabled:
             CL._qat_enabled = True
-            log0(f"lqat:on step:{step} scale:{scale:.4f}")
         zero_grad_all(); train_loss = Z((), device=device)
         for ms in range(gas):
             if dd: model.require_backward_grad_sync = ms == gas - 1
@@ -1274,7 +1266,7 @@ def main():
         if args.swa_enabled and scale < 0.2 and step % args.swa_interval == 0:
             if swa_state is None:
                 swa_state = {n: t.detach().cpu().clone() for n, t in bm.state_dict().items()}
-                swa_count = 1; log0(f"swa:{step}")
+                swa_count = 1
             else:
                 for n, t in bm.state_dict().items(): swa_state[n] += t.detach().cpu()
                 swa_count += 1
@@ -1284,9 +1276,6 @@ def main():
         if dd and max_wallclock_ms is not None:
             rct = TT(int(reached_cap), device=device); ARD(rct, op=ROP.MAX); reached_cap = bool(rct.item())
         if stop_after_step is None and reached_cap: stop_after_step = step
-    log0(f"mem:a{th.cuda.max_memory_allocated()//1024//1024} r{th.cuda.max_memory_reserved()//1024//1024}MiB")
-
-    log0("ema:on")
     current_state = bm.state_dict()
     avg_state = {name: t.to(dtype=current_state[name].dtype) for name, t in ema_state.items()}
     bm.load_state_dict(avg_state, strict=True)
