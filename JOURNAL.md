@@ -248,3 +248,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The long run is live at `runs/non_ttt_vrl_gptq/seed1337/20260324T033051Z`, and its startup log confirms `train_shards:80`.
 - Decision: Let this long VRL run continue; it is now the highest-signal experiment we can run on the current 1xH100 pod.
 - Next step: Monitor `runs/non_ttt_vrl_gptq/seed1337/20260324T033051Z/train.log` for the first milestone and compare its eventual quantized score against the earlier 10-shard VRL smoke run.
+
+- Timestamp: 2026-03-23 19:47 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL long-run
+- Objective: Check whether the fuller-data long proxy run is materially improving the training curve versus the earlier 10-shard smoke runs.
+- Command or config: Read `runs/non_ttt_vrl_gptq/seed1337/20260324T033051Z/train.log` after the run reached its first configured validation interval at `step:1000`.
+- Result: The 80-shard long run reached `step:1000/20000 val_loss:2.2137 val_bpb:1.3111 train_time:778512ms`, which is a substantial improvement over the earlier 10-shard VRL smoke pre-quant checkpoint (`1.4400` at the 600-second stop).
+- Decision: Keep this exact long-run VRL recipe running; it is the strongest evidence so far that the promoted lane is moving toward leaderboard-relevant quality when given a more realistic token budget.
+- Next step: Let the long run continue toward its 5400-second stop and inspect the final post-quant score once the GPTQ/export/eval phase completes.
