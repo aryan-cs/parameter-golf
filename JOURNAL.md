@@ -221,3 +221,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The pod is now downloading the full training shard set, and the repo has a long-run VRL config that should approximate the step count of a 600-second 8xH100 job using a single H100 over about 90 minutes.
 - Decision: Once the 80-shard download finishes, launch this long VRL run on the current pod instead of wasting more cycles on tiny-slice proxy runs.
 - Next step: Commit and push the long-run config, then queue the long VRL launch behind the active 80-shard download.
+
+- Timestamp: 2026-03-23 19:22 America/Chicago
+- Commit: uncommitted
+- Lane: non-ttt VRL long-run prep
+- Objective: Automate the handoff from dataset expansion to the longer single-H100 VRL proxy run.
+- Command or config: Synced commit `6f8ba66` to the pod and installed a detached watcher at `/tmp/non_ttt_vrl_gptq_1gpu_long_wait_and_run.sh` that polls the shard count every 30 seconds, waits for the `80`-shard download to finish, and then launches `bash runpod/pod_run.sh non_ttt_vrl_gptq 1337 configs/runpod/non_ttt_vrl_gptq_1gpu_long.env`.
+- Result: The queue watcher is live as PID `128951`, and its log `/workspace/golf/logs/non_ttt_vrl_gptq_1gpu_long_queue_20260324T032220Z.log` is already reporting `waiting shards=65 ...`.
+- Decision: Leave the watcher running so the pod automatically rolls into the long VRL run as soon as the dataset download completes.
+- Next step: Check back for `80` train shards and confirm that the queued long run has started.
