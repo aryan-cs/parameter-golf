@@ -15,6 +15,7 @@ AC=th.autocast; IM=th.inference_mode; Z=th.zeros; TT=th.tensor; QT=th.quantile; 
 P=nn.Parameter; PL=nn.ParameterList; M=nn.Module; ML=nn.ModuleList; NI=nn.init; NG=th.no_grad; CLP=th.clamp; DG=th.diag; CMP=th.compile; SY=th.cuda.synchronize
 IA=dist.is_available; II=dist.is_initialized; BR=dist.barrier; GWS=dist.get_world_size; GRK=dist.get_rank; IGP=dist.init_process_group; DGP=dist.destroy_process_group; ARD=dist.all_reduce; ROP=dist.ReduceOp
 ZL=th.zeros_like; EL=th.empty_like; AR=th.arange; SG=th.sigmoid; CAT=th.cat; ON=th.ones; FUL=th.full; EYE=th.eye
+N8=np.uint8; N6=np.int16; N1=np.int8
 try:
     from flash_attn_interface import flash_attn_func as _fa3_func
     HAS_FA3 = True
@@ -136,7 +137,7 @@ class MU(th.optim.Optimizer):
 
 def bsl(sp, vs, dv):
     sv = int(sp.vocab_size()); ts = max(sv, vs)
-    bbn = np.zeros((ts,), dtype=np.int16)
+    bbn = np.zeros((ts,), dtype=N6)
     hln = np.zeros((ts,), dtype=np.bool_)
     ibn = np.ones((ts,), dtype=np.bool_)
     for tid in range(sv):
@@ -420,28 +421,28 @@ def dsd(result, meta, template_sd):
     return out
 
 def _zigzag_encode_int6(arr_i16: np.ndarray) -> np.ndarray:
-    arr = arr_i16.astype(np.int16, copy=False)
+    arr = arr_i16.astype(N6, copy=False)
     if arr.size == 0:
-        return np.empty((0,), dtype=np.uint8)
+        return np.empty((0,), dtype=N8)
     if arr.min() < -31 or arr.max() > 31:
         raise ER("int6 range")
     out = np.where(arr >= 0, arr * 2, (-arr) * 2 - 1)
-    return out.astype(np.uint8, copy=False)
+    return out.astype(N8, copy=False)
 
 def _zigzag_decode_int6(u8: np.ndarray) -> np.ndarray:
-    u = u8.astype(np.int16, copy=False)
-    return np.where((u & 1) == 0, u // 2, -((u + 1) // 2)).astype(np.int16, copy=False)
+    u = u8.astype(N6, copy=False)
+    return np.where((u & 1) == 0, u // 2, -((u + 1) // 2)).astype(N6, copy=False)
 
 def pi6l(t: Tensor) -> bytes:
     q = DX(t)
     if q.dtype != I8:
         raise TypeError(f"need int8, got {q.dtype}")
-    arr = q.numpy().reshape(-1).astype(np.int16, copy=False)
+    arr = q.numpy().reshape(-1).astype(N6, copy=False)
     if arr.size == 0:
         return b""
     if arr.min() < -31 or arr.max() > 31:
         raise ER("int6 range")
-    u = (arr + 31).astype(np.uint8, copy=False)
+    u = (arr + 31).astype(N8, copy=False)
     pad = (-u.size) % 4
     if pad:
         u = np.pad(u, (0, pad), constant_values=0)
@@ -450,45 +451,45 @@ def pi6l(t: Tensor) -> bytes:
               | (groups[:, 1] << 6)
               | (groups[:, 2] << 12)
               | (groups[:, 3] << 18))
-    out = np.empty(packed.size * 3, dtype=np.uint8)
-    out[0::3] = (packed & 0xFF).astype(np.uint8)
-    out[1::3] = ((packed >> 8) & 0xFF).astype(np.uint8)
-    out[2::3] = ((packed >> 16) & 0xFF).astype(np.uint8)
+    out = np.empty(packed.size * 3, dtype=N8)
+    out[0::3] = (packed & 0xFF).astype(N8)
+    out[1::3] = ((packed >> 8) & 0xFF).astype(N8)
+    out[2::3] = ((packed >> 16) & 0xFF).astype(N8)
     return out.tobytes()
 
 def ui6l(raw: bytes | memoryview, shape: list[int]) -> Tensor:
     numel = int(np.prod(shape, dtype=np.int64))
     if numel == 0:
         return EM(shape, dtype=I8)
-    packed_u8 = np.frombuffer(raw, dtype=np.uint8)
+    packed_u8 = np.frombuffer(raw, dtype=N8)
     groups = (numel + 3) // 4
     if packed_u8.size != groups * 3:
         raise ER(f"bad int6 sz {groups*3}!={packed_u8.size}")
     triplets = packed_u8.reshape(-1, 3).astype(np.uint32, copy=False)
     packed = triplets[:, 0] | (triplets[:, 1] << 8) | (triplets[:, 2] << 16)
-    u = np.empty(groups * 4, dtype=np.uint8)
-    u[0::4] = (packed & 0x3F).astype(np.uint8)
-    u[1::4] = ((packed >> 6) & 0x3F).astype(np.uint8)
-    u[2::4] = ((packed >> 12) & 0x3F).astype(np.uint8)
-    u[3::4] = ((packed >> 18) & 0x3F).astype(np.uint8)
-    arr = u[:numel].astype(np.int16, copy=False) - 31
-    return FN(arr.astype(np.int8, copy=False).reshape(shape))
+    u = np.empty(groups * 4, dtype=N8)
+    u[0::4] = (packed & 0x3F).astype(N8)
+    u[1::4] = ((packed >> 6) & 0x3F).astype(N8)
+    u[2::4] = ((packed >> 12) & 0x3F).astype(N8)
+    u[3::4] = ((packed >> 18) & 0x3F).astype(N8)
+    arr = u[:numel].astype(N6, copy=False) - 31
+    return FN(arr.astype(N1, copy=False).reshape(shape))
 
 def pi6(t: Tensor) -> bytes:
     q = DX(t)
     if q.dtype != I8:
         raise TypeError(f"need int8, got {q.dtype}")
-    arr = q.numpy().reshape(-1).astype(np.int16, copy=False)
+    arr = q.numpy().reshape(-1).astype(N6, copy=False)
     if arr.size == 0:
         return b""
-    u = _zigzag_encode_int6(arr.astype(np.int16, copy=False))
+    u = _zigzag_encode_int6(arr.astype(N6, copy=False))
     numel = u.size
     pad = (-numel) % 8
     if pad:
         u = np.pad(u, (0, pad), constant_values=0)
     out = bytearray()
     for bit in range(6):
-        bits = ((u >> bit) & 1).astype(np.uint8, copy=False).reshape(-1, 8)
+        bits = ((u >> bit) & 1).astype(N8, copy=False).reshape(-1, 8)
         out.extend(np.packbits(bits, axis=1, bitorder="little").reshape(-1).tobytes())
     return bytes(out)
 
@@ -498,19 +499,19 @@ def ui6(raw: bytes | memoryview, shape: list[int]) -> Tensor:
         return EM(shape, dtype=I8)
     padded = ((numel + 7) // 8) * 8
     plane_bytes = padded // 8
-    packed_u8 = np.frombuffer(raw, dtype=np.uint8)
+    packed_u8 = np.frombuffer(raw, dtype=N8)
     expected = plane_bytes * 6
     if packed_u8.size != expected:
         raise ER(f"bad int6 sz {expected}!={packed_u8.size}")
-    u = np.zeros(padded, dtype=np.uint8)
+    u = np.zeros(padded, dtype=N8)
     o = 0
     for bit in range(6):
         plane = packed_u8[o:o + plane_bytes]
         o += plane_bytes
         bits = np.unpackbits(plane, bitorder="little")
-        u |= (bits.astype(np.uint8, copy=False) << bit)
+        u |= (bits.astype(N8, copy=False) << bit)
     arr = _zigzag_decode_int6(u[:numel])
-    return FN(arr.astype(np.int8, copy=False).reshape(shape))
+    return FN(arr.astype(N1, copy=False).reshape(shape))
 
 def mcn(cid: int) -> str:
     if cid == KZ:
