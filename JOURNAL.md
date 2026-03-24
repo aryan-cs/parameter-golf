@@ -1823,3 +1823,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The exact reproduction reached `step:3000/9000 val_loss:2.0805 val_bpb:1.2322 train_time:2228006ms step_avg:742.67ms`, improving cleanly over the earlier `step:2500` checkpoint (`1.2410`). GPU telemetry remained stable during the interval (`100%` utilization, about `24.2 GiB`, about `564 W`).
 - Decision: Keep the current exact run untouched. This is the best H200 intermediate score we have seen so far, and there is no sign of instability or plateau severe enough to justify interrupting the run before final evaluation.
 - Next step: Let this exact run finish and inspect the final int6/sliding/legal-TTT metrics and bytes; if the completed result still is not compelling enough, let the queued `VALUE_RESIDUAL=1` follow-up take over immediately.
+
+- Timestamp: 2026-03-24 18:45 UTC
+- Commit: `71ecf16`
+- Lane: H200 queued follow-ups
+- Objective: Keep the single H200 productive after the current exact-TTT run finishes by chaining the two most plausible low-risk follow-up hypotheses instead of deciding reactively after each run.
+- Command or config: Added `scripts/icrn_h200_ttt_bigram3072.sh`, which reruns the exact TTT stack with `BIGRAM_VOCAB_SIZE=3072`, and replaced the one-step watcher with `scripts/queue_h200_followups_after_current.sh`. The new watcher waits for the current exact run to exit, then launches `VALUE_RESIDUAL=1`, and after that run completes it launches `BIGRAM_VOCAB_SIZE=3072`, all against the same `80`-shard H200 setup.
+- Result: The follow-up queue is now: current exact TTT lane -> `VALUE_RESIDUAL=1` -> `BIGRAM_VOCAB_SIZE=3072`. This is a stronger use of the H200 because both queued knobs are already supported by the code, plausibly helpful, and cheap enough in complexity to interpret if they win or lose.
+- Decision: Keep the chained queue in place. It preserves momentum on the single GPU and narrows the search to two specific surviving hypotheses instead of broad random exploration.
+- Next step: Let the current exact run finish, then compare its completed metrics against the queued `VALUE_RESIDUAL=1` and `BIGRAM_VOCAB_SIZE=3072` follow-ups as they come in.
