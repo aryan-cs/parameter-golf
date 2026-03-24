@@ -103,7 +103,7 @@ def bsl(sp, vs, dv):
             TT(hln, dtype=BO, device=dv),
             TT(ibn, dtype=BO, device=dv))
 
-def lvt(pat, sl):
+def lv(pat, sl):
     fs = [PT(p) for p in sorted(GG(pat))]
     if not fs: raise FE(f"no:{pat}")
     ts = CG(CAT([lds(f) for f in fs]))
@@ -111,7 +111,7 @@ def lvt(pat, sl):
     if u <= 0: raise ER(f"val<{sl}")
     return ts[:u + 1]
 
-def evv(a, model, rk, ws, dv, gas,
+def vv(a, model, rk, ws, dv, gas,
              vt, bb, hs, ib, esl=0):
     sl = esl if esl > 0 else a.tsl
     lbs = a.vbs // (ws * gas) // sl
@@ -183,7 +183,7 @@ def mk(info):
         return "8"
     return None
 
-def eqm(meta: dict[str, object]) -> tuple[bytes, list[str]]:
+def eq(meta: dict[str, object]) -> tuple[bytes, list[str]]:
     names = sorted(meta)
     km = {
         MP: 0,
@@ -207,7 +207,7 @@ def eqm(meta: dict[str, object]) -> tuple[bytes, list[str]]:
         parts.append(xb)
     return b"".join(parts), names
 
-def dqm(blob: bytes) -> tuple[dict[str, object], list[str], bool]:
+def dq(blob: bytes) -> tuple[dict[str, object], list[str], bool]:
     if blob.startswith(QMB):
         o = len(QMB)
         ec = UF("<H", blob, o)[0]; o += 2
@@ -226,7 +226,7 @@ def dqm(blob: bytes) -> tuple[dict[str, object], list[str], bool]:
         return meta, names, True
     return json.loads(blob.decode(U)), [], False
 
-def etr(tname: str, nti: dict[str, int]) -> tuple[int, int]:
+def tr(tname: str, nti: dict[str, int]) -> tuple[int, int]:
     if tname in nti:
         return nti[tname], 0
     if tname.endswith(QS) and tname[:-2] in nti:
@@ -237,16 +237,16 @@ def etr(tname: str, nti: dict[str, int]) -> tuple[int, int]:
         bn, suffix = tname, 0
     return nti[bn], suffix
 
-def dtr(ni: int, suffix: int, names: list[str]) -> str:
+def rt(ni: int, suffix: int, names: list[str]) -> str:
     bn = names[ni]
     if suffix == 1: return bn + QS
     if suffix == 2: return bn + SS
     return bn
 
-def qi6g(weight, hessian=None, cr=31, block_size=128):
+def qg(weight, hessian=None, cr=31, block_size=128):
     t32 = TF(weight)
     if t32.ndim != 2 or hessian is None:
-        return qi6p(t32, cr)
+        return qp(t32, cr)
     rows, cols = t32.shape
     H = TF(hessian).clone()
     dead = DG(H) == 0
@@ -263,7 +263,7 @@ def qi6g(weight, hessian=None, cr=31, block_size=128):
         Hinv = th.cholesky_inverse(Hinv)
         Hinv = th.linalg.cholesky(Hinv, upper=True)
     except th.linalg.LinAlgError:
-        return qi6p(t32, cr)
+        return qp(t32, cr)
     best_q = None; best_s = None; best_err = float('inf')
     for pct in [0.9990, 0.9995, 0.9999, 0.99999, 1.0]:
         if pct < 1.0:
@@ -299,7 +299,7 @@ def qi6g(weight, hessian=None, cr=31, block_size=128):
     best_q = best_q[:, inv_perm]
     return best_q, best_s
 
-def qi6p(t32, cr=31):
+def qp(t32, cr=31):
     if t32.ndim == 2:
         best_q, best_s, best_err = None, None, float('inf')
         for pct in [0.9990, 0.9995, 0.9999, 0.99999, 1.0]:
@@ -319,7 +319,7 @@ def qi6p(t32, cr=31):
     q = CLP(th.round(t32 / TF(scale)), -cr, cr).to(I8)
     return q, scale
 
-def qft(t):
+def q8(t):
     t32 = TF(t)
     if t32.ndim == 2:
         clip_q = 99.99984 / 100.0
@@ -334,7 +334,7 @@ def qft(t):
     q = CG(CLP(th.round(CLP(t32, -ca, ca) / scale), -127, 127).to(I8))
     return q, scale
 
-def qsd(sd, hh=None):
+def qs(sd, hh=None):
     r, m = {}, {}
     i6c = "mabv"
     for name, tn in sd.items():
@@ -347,15 +347,15 @@ def qsd(sd, hh=None):
             r[name] = TF(t); m[name] = MC; continue
         if cat in i6c and t.ndim >= 1:
             H = hh.get(name) if hh else None
-            q, s = qi6g(t, hessian=H)
+            q, s = qg(t, hessian=H)
             r[name + QS] = q; r[name + SS] = s
             m[name] = M6; continue
-        q, s = qft(t)
+        q, s = q8(t)
         r[name + QS] = q; r[name + SS] = s
         m[name] = M8
     return r, m
 
-def dsd(result, meta, tsd):
+def ds(result, meta, tsd):
     out = {}
     for name, orig in tsd.items():
         info = meta.get(name)
@@ -385,7 +385,7 @@ def zd6(u8: np.ndarray) -> np.ndarray:
     u = AS(u8, N6)
     return AS(np.where((u & 1) == 0, u // 2, -((u + 1) // 2)), N6)
 
-def pi6l(t: Tensor) -> bytes:
+def p6l(t: Tensor) -> bytes:
     q = DX(t)
     if q.dtype != I8:
         raise TypeError(f"need int8, got {q.dtype}")
@@ -409,7 +409,7 @@ def pi6l(t: Tensor) -> bytes:
     out[2::3] = ((packed >> 16) & 0xFF).astype(N8)
     return out.tobytes()
 
-def ui6l(raw: bytes | memoryview, shape: list[int]) -> Tensor:
+def u6l(raw: bytes | memoryview, shape: list[int]) -> Tensor:
     numel = NM(shape)
     if numel == 0:
         return EM(shape, dtype=I8)
@@ -427,7 +427,7 @@ def ui6l(raw: bytes | memoryview, shape: list[int]) -> Tensor:
     arr = AS(u[:numel], N6) - 31
     return FN(RS(AS(arr, N1), shape))
 
-def pi6(t: Tensor) -> bytes:
+def p6(t: Tensor) -> bytes:
     q = DX(t)
     if q.dtype != I8:
         raise TypeError(f"need int8, got {q.dtype}")
@@ -445,7 +445,7 @@ def pi6(t: Tensor) -> bytes:
         out.extend(RS(np.packbits(bits, axis=1, bitorder=LT), -1).tobytes())
     return bytes(out)
 
-def ui6(raw: bytes | memoryview, shape: list[int]) -> Tensor:
+def u6(raw: bytes | memoryview, shape: list[int]) -> Tensor:
     numel = NM(shape)
     if numel == 0:
         return EM(shape, dtype=I8)
@@ -465,7 +465,7 @@ def ui6(raw: bytes | memoryview, shape: list[int]) -> Tensor:
     arr = zd6(u[:numel])
     return FN(RS(AS(arr, N1), shape))
 
-def mcn(cid: int) -> str:
+def cn(cid: int) -> str:
     if cid == KZ:
         return "s"
     if cid == KG:
@@ -474,7 +474,7 @@ def mcn(cid: int) -> str:
         return "l"
     return f"u{cid}"
 
-def cmb(raw: bytes) -> tuple[bytes, int]:
+def cm(raw: bytes) -> tuple[bytes, int]:
     candidates = [
         (KL, lzma.compress(raw, format=lzma.FORMAT_RAW, filters=LF)),
         (KG, zlib.compress(raw, level=9)),
@@ -484,19 +484,19 @@ def cmb(raw: bytes) -> tuple[bytes, int]:
     cid, payload = min(candidates, key=lambda item: len(item[1]))
     return QCB + bytes([cid]) + payload, cid
 
-def dmb(blob: bytes) -> tuple[bytes, str]:
+def db(blob: bytes) -> tuple[bytes, str]:
     if blob.startswith(QCB):
         cid = blob[len(QCB)]
         payload = blob[len(QCB) + 1:]
         if cid == KZ:
             if not HZ:
                 raise RE("zstd unavailable")
-            return zstd.ZstdDecompressor().decompress(payload), mcn(cid)
+            return zstd.ZstdDecompressor().decompress(payload), cn(cid)
         if cid == KG:
-            return zlib.decompress(payload), mcn(cid)
+            return zlib.decompress(payload), cn(cid)
         if cid == KL:
             try:
-                return lzma.decompress(payload, format=lzma.FORMAT_RAW, filters=LF), mcn(cid)
+                return lzma.decompress(payload, format=lzma.FORMAT_RAW, filters=LF), cn(cid)
             except lzma.LZMAError:
                 return lzma.decompress(payload), "x"
         raise ER(f"bad codec {cid}")
@@ -860,7 +860,7 @@ def ch(bm, tl, args, dv, gas, nbc=256):
     bm.train()
     return hh
 
-def evl(lfn, rk, ws, dv, vt,
+def vl(lfn, rk, ws, dv, vt,
                      bb, hs, ib,
                      ql, stride, ebs=256):
     tt = vt.numel() - 1; ww, p = [], 0
@@ -894,15 +894,15 @@ def evl(lfn, rk, ws, dv, vt,
     vl = IT(ls / tc)
     return vl, vl / math.log(2.0) * (IT(tc) / IT(bc))
 
-def rcp(sp: str) -> str:
+def rp(sp: str) -> str:
     if not sp:
         return ""
     if sp == "1":
         return str(PT(EG("OUT_DIR", ".")) / "pre_export_model.pt")
     return sp
 
-def mspc(ps: str, sd: dict[str, th.Tensor]):
-    cp = rcp(ps)
+def mp(ps: str, sd: dict[str, th.Tensor]):
+    cp = rp(ps)
     if not cp:
         return ""
     ckpt = {MS: {k: DC(v) for k, v in sd.items()}}
@@ -913,7 +913,7 @@ def mspc(ps: str, sd: dict[str, th.Tensor]):
     os.replace(tp, path)
     return str(path)
 
-def ree(a, bm, rk, ws, dv, dd, m0,
+def re(a, bm, rk, ws, dv, dd, m0,
                     code, vt, bb, hs, ib, log0):
     cl = DTL(a.tf, rk, ws, dv)
     hh = ch(bm, cl, a, dv, 8 // ws,
@@ -925,7 +925,7 @@ def ree(a, bm, rk, ws, dv, dd, m0,
             if k in hh: hm[k] = hh[k]
     sd_cpu = {k: DC(v) for k, v in bm.state_dict().items()}
     cb = len(code.encode(U)); sl = 16_000_000
-    qr, qm = qsd(sd_cpu, hh=hm)
+    qr, qm = qs(sd_cpu, hh=hm)
     if a.pp > 0:
         a6 = []
         for name, info in qm.items():
@@ -947,7 +947,7 @@ def ree(a, bm, rk, ws, dv, dd, m0,
                         qr[qname][mask] = 0
             ti6 = sum(qr[n + ".q"].numel() for n, i in qm.items() if mk(i) == "6" and n + ".q" in qr)
             log0(f"prune:{prc}/{ti6} ({100*prc/max(ti6,1):.1f}%) thr={thr:.0f}")
-    eb, en = eqm(qm)
+    eb, en = eq(qm)
     nti = {name: idx for idx, name in enumerate(en)}
     parts = [PK(F4, len(eb)), eb]
     mb0 = 4 + len(eb)
@@ -965,11 +965,11 @@ def ree(a, bm, rk, ws, dv, dd, m0,
         dm0 = {I8: 0, F16: 1, F32: 2, BF: 3}
         dt = 5 if pi else dm0.get(t.dtype, 2)
         if pi:
-            raw = pi6(t)
+            raw = p6(t)
         else:
             t_np = CG(t).numpy() if t.dtype != BF else CG(t).view(U16).numpy()
             raw = t_np.tobytes()
-        ni, suffix = etr(tname, nti)
+        ni, suffix = tr(tname, nti)
         parts.append(PK(F5, ni, suffix, dt, t.ndim))
         thb += 5 + 4 * t.ndim
         for d in t.shape: parts.append(PK(F4, d))
@@ -980,7 +980,7 @@ def ree(a, bm, rk, ws, dv, dd, m0,
         else:
             opb += len(raw)
     quant_raw = b"".join(parts)
-    model_blob, mc = cmb(quant_raw)
+    model_blob, mc = cm(quant_raw)
     mb = len(model_blob); ts = cb + mb
     log0(
         "ab:"
@@ -990,7 +990,7 @@ def ree(a, bm, rk, ws, dv, dd, m0,
         f" op={opb}"
         f" rt={len(quant_raw)}"
         f" cm={mb}"
-        f" cd={mcn(mc)}"
+        f" cd={cn(mc)}"
         f" t6={p6t}"
     )
     log0(f"sz:m={mb} c={cb} t={ts}({ts/1e6:.2f}M)")
@@ -1000,16 +1000,16 @@ def ree(a, bm, rk, ws, dv, dd, m0,
         with open(FM, "wb") as f: f.write(model_blob)
     if dd: BR()
     with open(FM, "rb") as f: md = f.read()
-    rd, _ = dmb(md)
+    rd, _ = db(md)
     o = 0
     ml = UF(F4, rd, o)[0]; o += 4
-    lm, en, ctr = dqm(rd[o:o+ml]); o += ml
+    lm, en, ctr = dq(rd[o:o+ml]); o += ml
     drm = {0: (I8, np.int8), 1: (F16, np.float16), 2: (F32, np.float32), 3: (BF, np.uint16)}
     lr = {}
     while o < len(rd):
         if ctr:
             ni, suffix, dt, ndim = UF(F5, rd, o); o += 5
-            tname = dtr(ni, suffix, en)
+            tname = rt(ni, suffix, en)
         else:
             nl = UF("<H", rd, o)[0]; o += 2
             tname = rd[o:o+nl].decode(U); o += nl
@@ -1022,13 +1022,13 @@ def ree(a, bm, rk, ws, dv, dd, m0,
             nbytes = ((numel + 3) // 4) * 3
             raw = memoryview(rd)[o:o+nbytes]
             o += nbytes
-            t = ui6l(raw, shape)
+            t = u6l(raw, shape)
         elif dt == 5:
             numel = NM(shape)
             nbytes = ((numel + 7) // 8) * 6
             raw = memoryview(rd)[o:o+nbytes]
             o += nbytes
-            t = ui6(raw, shape)
+            t = u6(raw, shape)
         else:
             td, nd = drm[dt]
             numel = NM(shape)
@@ -1038,16 +1038,16 @@ def ree(a, bm, rk, ws, dv, dd, m0,
             t = RS(FN(arr), shape)
             if td == BF: t = t.view(BF)
         lr[tname] = t
-    deq_state = dsd(lr, lm, sd_cpu)
+    deq_state = ds(lr, lm, sd_cpu)
     bm.load_state_dict(deq_state, 1)
     eval_sl = a.esl if a.esl > 0 else a.tsl
-    vte = lvt(a.val_files, eval_sl) if eval_sl != a.tsl else vt
+    vte = lv(a.val_files, eval_sl) if eval_sl != a.tsl else vt
     rlf = CMP(bm.fwl, dynamic=False) if not GB(TD) else bm.fwl
     wx = Z(a.ebs, eval_sl, dtype=I64, device=dv)
     bm.eval()
     with IM(), AU(): _ = rlf(wx)
     SY(); te = PC()
-    q_vl, q_vb = evl(rlf, rk, ws, dv,
+    q_vl, q_vb = vl(rlf, rk, ws, dv,
         vte, bb, hs, ib,
         eval_sl, a.evs, ebs=a.ebs)
     SY(); et = PC() - te
@@ -1081,7 +1081,7 @@ def main():
             with open(lf, "a", encoding=U) as f: print(msg, file=f)
     random.seed(a.sd); np.random.seed(a.sd); th.manual_seed(a.sd); th.cuda.manual_seed_all(a.sd)
     sp = spm.SentencePieceProcessor(model_file=a.tp)
-    vt = lvt(a.vf, a.tsl)
+    vt = lv(a.vf, a.tsl)
     bb, hs, ib = bsl(sp, a.vs, dv)
     CL._qat_enabled = False
     CL._qat_clip_pct = a.qcp
@@ -1101,12 +1101,12 @@ def main():
     gs = bm.state_dict; ls = bm.load_state_dict
     cm = CMP(bm, dynamic=False, fullgraph=True) if not GB(TD) else bm
     model = DDP(cm, device_ids=[lrk], broadcast_buffers=False) if dd else cm
-    eoc = rcp(a.eoc)
+    eoc = rp(a.eoc)
     if eoc:
         ckpt = th.load(eoc, map_location="cpu")
         ms = ckpt[MS] if isinstance(ckpt, dict) and MS in ckpt else ckpt
         ls(ms, 1)
-        ree(a, bm, rk, ws, dv, dd, m0,
+        re(a, bm, rk, ws, dv, dd, m0,
                         code, vt, bb, hs, ib, log0)
         return
     bnp = list(bm.blocks.named_parameters())
@@ -1179,7 +1179,7 @@ def main():
         sv = last_step or (a.vle > 0 and step % a.vle == 0)
         if sv:
             SY(); tm += 1000.0 * (PC() - t0)
-            vl, vb = evv(a, model, rk, ws, dv, gas,
+            vl, vb = vv(a, model, rk, ws, dv, gas,
                               vt, bb, hs, ib)
             log0(f"step:{step}/{a.it} val_loss:{vl:.4f} val_bpb:{vb:.4f} train_time:{tm:.0f}ms step_avg:{tm/max(step,1):.2f}ms")
             SY(); t0 = PC()
@@ -1227,8 +1227,8 @@ def main():
     cs = gs()
     avs = {name: TY(t, cs[name].dtype) for name, t in es.items()}
     ls(avs, 1)
-    mspc(a.spc, gs())
-    ree(a, bm, rk, ws, dv, dd, m0,
+    mp(a.spc, gs())
+    re(a, bm, rk, ws, dv, dd, m0,
                     code, vt, bb, hs, ib, log0)
 
 if __name__ == "__main__":
