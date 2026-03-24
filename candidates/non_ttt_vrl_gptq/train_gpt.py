@@ -16,7 +16,7 @@ P=nn.Parameter; PL=nn.ParameterList; M=nn.Module; ML=nn.ModuleList; NI=nn.init; 
 IA=dist.is_available; II=dist.is_initialized; BR=dist.barrier; GWS=dist.get_world_size; GRK=dist.get_rank; IGP=dist.init_process_group; DGP=dist.destroy_process_group; ARD=dist.all_reduce; ROP=dist.ReduceOp
 ZL=th.zeros_like; EL=th.empty_like; AR=th.arange; SG=th.sigmoid; CAT=th.cat; ON=th.ones; FUL=th.full; EYE=th.eye
 N8=np.uint8; N6=np.int16; N1=np.int8; N4=np.uint32; NB=1
-U="utf-8"; FM="final_model.int6.ptz"; MS="model_state"; MB="momentum_buffer"; TD="TORCH_COMPILE_DISABLE"
+U="utf-8"; FM="final_model.int6.ptz"; MS="model_state"; MB="momentum_buffer"; TD="TORCH_COMPILE_DISABLE"; PA="params"; BL="base_lr"
 try:
     from flash_attn_interface import flash_attn_func as _fa3_func
     HAS_FA3 = True
@@ -61,7 +61,7 @@ class MU(th.optim.Optimizer):
         ws = GWS() if dd else 1
         rk = GRK() if dd else 0
         for group in self.param_groups:
-            params = group["params"]
+            params = group[PA]
             if not params: continue
             lr, momentum, ns_steps = group["lr"], group["momentum"], group["ns_steps"]
             nesterov = group["nesterov"]
@@ -1126,21 +1126,21 @@ def main():
     if bm.vrl_enabled:
         for alpha in bm.vrl_alphas: spa.append(alpha)
     tlr = a.telr if a.te else a.elr
-    tpg = [{"params": [bm.tok_emb.weight], "lr": tlr, "base_lr": tlr}]
+    tpg = [{PA: [bm.tok_emb.weight], "lr": tlr, BL: tlr}]
     if bm.bigram is not None:
-        tpg.append({"params": [bm.bigram.embed.weight], "lr": tlr, "base_lr": tlr})
+        tpg.append({PA: [bm.bigram.embed.weight], "lr": tlr, BL: tlr})
         if bm.bigram.proj is not None: mpa.append(bm.bigram.proj.weight)
     if bm.ve_shared is not None:
-        tpg.append({"params": [bm.ve_shared.embed.weight], "lr": tlr, "base_lr": tlr})
+        tpg.append({PA: [bm.ve_shared.embed.weight], "lr": tlr, BL: tlr})
         if bm.ve_shared.proj is not None: mpa.append(bm.ve_shared.proj.weight)
     ot = th.optim.AdamW(tpg, betas=(a.beta1, a.beta2), eps=a.aep, weight_decay=a.awd, fused=True)
     om = MU(mpa, lr=a.mlr, momentum=a.mum, ns_steps=a.mns, wd=a.mwd)
-    for group in om.param_groups: group["base_lr"] = a.mlr
-    os = th.optim.AdamW([{"params": spa, "lr": a.slr, "base_lr": a.slr}],
+    for group in om.param_groups: group[BL] = a.mlr
+    os = th.optim.AdamW([{PA: spa, "lr": a.slr, BL: a.slr}],
                                           betas=(a.beta1, a.beta2), eps=a.aep, weight_decay=a.awd, fused=True)
     opts = [ot, om, os]
     if bm.lm_head is not None:
-        oh = th.optim.Adam([{"params": [bm.lm_head.weight], "lr": a.hlr, "base_lr": a.hlr}],
+        oh = th.optim.Adam([{PA: [bm.lm_head.weight], "lr": a.hlr, BL: a.hlr}],
                                            betas=(a.beta1, a.beta2), eps=a.aep, fused=True)
         opts.insert(1, oh)
     tl = DTL(a.tf, rank, ws, dv)
@@ -1206,7 +1206,7 @@ def main():
         for group in om.param_groups:
             group["momentum"] = (1-frac)*a.mmst + frac*a.mum
         for opt in opts:
-            for group in opt.param_groups: group["lr"] = group["base_lr"] * scale
+            for group in opt.param_groups: group["lr"] = group[BL] * scale
         if a.gcn > 0: th.nn.utils.clip_grad_norm_(bm.parameters(), a.gcn)
         for opt in opts: opt.step()
         zga()
