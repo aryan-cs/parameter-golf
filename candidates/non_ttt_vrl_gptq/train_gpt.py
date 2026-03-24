@@ -17,7 +17,7 @@ IA=dist.is_available; II=dist.is_initialized; BR=dist.barrier; GWS=dist.get_worl
 ZL=th.zeros_like; EL=th.empty_like; AR=th.arange; SG=th.sigmoid; CAT=th.cat; ON=th.ones; FUL=th.full; EYE=th.eye
 TF=lambda t:t.float(); RS=lambda t,*s:t.reshape(*s); TY=lambda t,d:t.to(dtype=d); IT=lambda t:t.item()
 N8=np.uint8; N6=np.int16; N1=np.int8; N4=np.uint32; NB=1
-U="utf-8"; FM="final_model.int6.ptz"; MS="model_state"; MB="momentum_buffer"; TD="TORCH_COMPILE_DISABLE"; PA="params"; BL="base_lr"; QS=".q"; SS=".scale"; WT=".weight"; F4="<I"; F3="<HB"; F5="<HBBB"; LT="little"
+U="utf-8"; FM="final_model.int6.ptz"; MS="model_state"; MB="momentum_buffer"; TD="TORCH_COMPILE_DISABLE"; PA="params"; BL="base_lr"; QS=".q"; SS=".scale"; WT=".z"; F4="<I"; F3="<HB"; F5="<HBBB"; LT="little"
 try:
     from flash_attn_interface import flash_attn_func as _fa3_func
     HAS_FA3 = True
@@ -754,6 +754,12 @@ class GPT(M):
         self.h = None if te else CL(dm, vs, bias=False)
         if self.h is not None: self.h._zero_init = True
         self.iw()
+    def state_dict(self,*a,**k):
+        d=super().state_dict(*a,**k)
+        return {n[:-7]+WT if n.endswith(".weight") else n:t for n,t in d.items()}
+    def load_state_dict(self,sd,*a,**k):
+        sd={n[:-2]+".weight" if n.endswith(WT) else n:t for n,t in sd.items()}
+        return super().load_state_dict(sd,*a,**k)
     def iw(self):
         if self.t:
             NI.normal_(self.x.weight, mean=0.0, std=self.ts)
