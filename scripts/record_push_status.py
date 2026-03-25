@@ -339,12 +339,20 @@ def parse_result(
             result["last_step"] = int(match.group("step"))
             result["last_train_time_ms"] = int(match.group("train_time_ms"))
 
-    if source == "ngram" and current_summary.get("submission_metric") != "final_ngram_eval_exact":
-        result["submission_metric"] = None
-        result["submission_val_bpb"] = None
-    elif source == "ttt_ngram" and current_summary.get("submission_metric") != "legal_ttt_ngram_exact":
-        result["submission_metric"] = None
-        result["submission_val_bpb"] = None
+    if source == "ngram":
+        if current_summary.get("submission_metric") == "final_ngram_eval_exact":
+            result["submission_metric"] = "final_ngram_eval_exact"
+            result["submission_val_bpb"] = current_summary.get("submission_val_bpb")
+        else:
+            result["submission_metric"] = None
+            result["submission_val_bpb"] = None
+    elif source == "ttt_ngram":
+        if current_summary.get("submission_metric") == "legal_ttt_ngram_exact":
+            result["submission_metric"] = "legal_ttt_ngram_exact"
+            result["submission_val_bpb"] = current_summary.get("submission_val_bpb")
+        else:
+            result["submission_metric"] = None
+            result["submission_val_bpb"] = None
 
     submission_metric = result.get("submission_metric")
     if isinstance(submission_metric, str):

@@ -33,6 +33,13 @@ run_candidate() {
     ngram659)
       exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_ngram659.sh"
       ;;
+    ngram674)
+      export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.20}"
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-1.0}"
+      export NGRAM_APPLY_MODE="${NGRAM_APPLY_MODE:-always}"
+      export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-2}"
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_ngram659.sh"
+      ;;
     ngram659_lamcool)
       export NGRAM_LAMBDA_SCHEDULE="${NGRAM_LAMBDA_SCHEDULE:-0.00:0.15,0.50:0.12,0.65:0.09,0.80:0.06}"
       exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_ngram659.sh"
@@ -108,6 +115,13 @@ run_candidate() {
     warmup0_ngram659)
       exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_ngram659.sh"
       ;;
+    warmup0_ngram674)
+      export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.20}"
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-1.0}"
+      export NGRAM_APPLY_MODE="${NGRAM_APPLY_MODE:-always}"
+      export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-2}"
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_ngram659.sh"
+      ;;
     warmup0_ngram659_lamcool)
       export NGRAM_LAMBDA_SCHEDULE="${NGRAM_LAMBDA_SCHEDULE:-0.00:0.15,0.50:0.12,0.65:0.09,0.80:0.06}"
       exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_ngram659.sh"
@@ -178,7 +192,21 @@ run_candidate() {
     vr1_bg3072_ngram659)
       exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_vr1_bg3072_ngram659.sh"
       ;;
+    vr1_bg3072_ngram674)
+      export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.20}"
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-1.0}"
+      export NGRAM_APPLY_MODE="${NGRAM_APPLY_MODE:-always}"
+      export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-2}"
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_vr1_bg3072_ngram659.sh"
+      ;;
     warmup0_vr1_bg3072_ngram659)
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_vr1_bg3072_ngram659.sh"
+      ;;
+    warmup0_vr1_bg3072_ngram674)
+      export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.20}"
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-1.0}"
+      export NGRAM_APPLY_MODE="${NGRAM_APPLY_MODE:-always}"
+      export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-2}"
       exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_vr1_bg3072_ngram659.sh"
       ;;
     ngram659_adapt)
@@ -314,6 +342,7 @@ Run one candidate on each 8xH100 node by setting CANDIDATE:
   CANDIDATE=warmup0 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0_vr1_bg3072_tttlr25 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=ngram659 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=ngram674 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=ngram659_lamcool bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=ngram659_conf07 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=ngram659_latecool_conf07 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
@@ -329,6 +358,7 @@ Run one candidate on each 8xH100 node by setting CANDIDATE:
   CANDIDATE=ngram659_conf07_lam20 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=ngram659_tgate40_min4 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0_ngram659 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=warmup0_ngram674 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0_ngram659_lamcool bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0_ngram659_conf07 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0_ngram659_latecool_conf07 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
@@ -343,7 +373,9 @@ Run one candidate on each 8xH100 node by setting CANDIDATE:
   CANDIDATE=warmup0_ngram659_conf07_lam20 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0_ngram659_tgate40_min4 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=vr1_bg3072_ngram659 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=vr1_bg3072_ngram674 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0_vr1_bg3072_ngram659 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=warmup0_vr1_bg3072_ngram674 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=ngram659_adapt bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=ngram659_adapt_last2 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=ngram659_adapt_last4 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
@@ -376,6 +408,7 @@ Candidate meanings:
   warmup0_vr1_bg3072_tttlr25
                        combo bet plus WARMUP_STEPS=0 for score and compliance
   ngram659             PR #659-style 5-gram eval cache with TTT disabled
+  ngram674             PR #674-style alpha=0.20, min_count=2, always-apply 5-gram mix
   ngram659_lamcool     PR #659 eval cache with lambda taper from 0.15 to 0.06 late
   ngram659_conf07      PR #659 eval cache with a stricter 0.7 confidence gate
   ngram659_latecool_conf07
@@ -399,6 +432,7 @@ Candidate meanings:
   ngram659_tgate40_min4
                        PR #659 eval cache with target-prob gate 0.4 and min_count=4
   warmup0_ngram659     ngram659 plus WARMUP_STEPS=0 for more timing headroom
+  warmup0_ngram674     ngram674 plus WARMUP_STEPS=0 for more timing headroom
   warmup0_ngram659_conf07
                        ngram659_conf07 plus WARMUP_STEPS=0 for more timing headroom
   warmup0_ngram659_latecool_conf07
@@ -416,8 +450,11 @@ Candidate meanings:
   warmup0_ngram659_tgate40_min4
                        ngram659_tgate40_min4 plus WARMUP_STEPS=0 for timing headroom
   vr1_bg3072_ngram659  stronger architecture knobs plus PR #659 eval cache
+  vr1_bg3072_ngram674  stronger architecture knobs plus PR #674 eval semantics
   warmup0_vr1_bg3072_ngram659
                        architecture knobs plus PR #659 eval cache plus WARMUP_STEPS=0
+  warmup0_vr1_bg3072_ngram674
+                       PR #674 eval semantics plus architecture knobs plus WARMUP_STEPS=0
   ngram659_adapt       PR #659 eval cache plus RMSprop ngram adaptation
   ngram659_adapt_last2 PR #659 eval cache plus RMSprop adaptation on the last 2 blocks
   ngram659_adapt_last4 PR #659 eval cache plus RMSprop adaptation on the last 4 blocks

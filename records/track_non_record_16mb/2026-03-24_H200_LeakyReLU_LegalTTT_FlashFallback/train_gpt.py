@@ -119,6 +119,7 @@ class Hyperparameters:
     ngram_max_n = int(os.environ.get("NGRAM_MAX_N", 5))
     ngram_confidence_threshold = float(os.environ.get("NGRAM_CONFIDENCE_THRESHOLD", 0.5))
     ngram_gate_mode = os.environ.get("NGRAM_GATE_MODE", "max")
+    ngram_apply_mode = os.environ.get("NGRAM_APPLY_MODE", "improve_only")
     ngram_min_count = int(os.environ.get("NGRAM_MIN_COUNT", 3))
     ngram_adapt_enabled = bool(int(os.environ.get("NGRAM_ADAPT_ENABLED", "0")))
     ngram_adapt_lr = float(os.environ.get("NGRAM_ADAPT_LR", 0.0003))
@@ -1592,6 +1593,7 @@ def eval_val_ngram(
     ngram_max_n: int = 5,
     confidence_threshold: float = 0.5,
     gate_mode: str = "max",
+    apply_mode: str = "improve_only",
     min_count: int = 3,
     ngram_adapt_enabled: bool = False,
     ngram_adapt_lr: float = 0.0003,
@@ -1603,6 +1605,8 @@ def eval_val_ngram(
     log0=print,
 ) -> tuple[float, float]:
     """Backward-looking n-gram cache with safety-gated log-prob mixing."""
+    if apply_mode not in {"improve_only", "always"}:
+        raise ValueError(f"apply_mode must be one of improve_only/always, got {apply_mode}")
     seq_len = eval_seq_len or args.train_seq_len
     total_tokens = val_tokens.numel() - 1
     window_starts = [ws for ws in range(0, total_tokens, stride) if min(ws + seq_len, total_tokens) - ws >= 1]
@@ -1646,6 +1650,7 @@ def eval_val_ngram(
             "ngram_eval:start "
             f"stride={stride} lambda={ngram_lambda} max_n={ngram_max_n} "
             f"confidence_threshold={confidence_threshold} gate_mode={gate_mode} min_count={min_count} "
+            f"apply_mode={apply_mode} "
             f"adapt={int(ngram_adapt_enabled)} packed={int(args.ngram_packed_cache)} "
             f"global_cache={int(use_global_cache)} "
             f"lambda_schedule={format_lambda_schedule(lambda_schedule)} "
@@ -1755,9 +1760,10 @@ def eval_val_ngram(
                                     mixed_lp = max(a, b) + math.log1p(math.exp(-abs(a - b)))
                                     model_nll = -model_lp
                                     mixed_nll = -mixed_lp
-                                    if mixed_nll < model_nll:
+                                    if apply_mode == "always" or mixed_nll < model_nll:
                                         loss_sum += mixed_nll
-                                        ngram_improvements += 1
+                                        if mixed_nll < model_nll:
+                                            ngram_improvements += 1
                                     else:
                                         loss_sum += model_nll
                                 else:
@@ -1903,9 +1909,10 @@ def eval_val_ngram(
                             mixed_lp = max(a, b) + math.log1p(math.exp(-abs(a - b)))
                             new_nll = -mixed_lp
                             old_nll = scored_nll[t_off].item()
-                            if new_nll < old_nll:
+                            if apply_mode == "always" or new_nll < old_nll:
                                 scored_nll[t_off] = new_nll
-                                ngram_improvements += 1
+                                if new_nll < old_nll:
+                                    ngram_improvements += 1
 
                 loss_sum += scored_nll.sum()
                 token_count += float(wlen - s)
@@ -2137,10 +2144,12 @@ def eval_val_sliding_ttt_ngram(
     has_leading_space_lut: Tensor, is_boundary_token_lut: Tensor,
     stride: int, batch_seqs: int = 32,
     ngram_lambda: float = 0.15, ngram_max_n: int = 5,
-    confidence_threshold: float = 0.5, min_count: int = 3,
+    confidence_threshold: float = 0.5, apply_mode: str = "improve_only", min_count: int = 3,
     lambda_schedule_spec: str = "", confidence_schedule_spec: str = "", order_lambdas_spec: str = "", log0=print,
 ) -> tuple[float, float]:
     """Legal score-first TTT with backward-looking n-gram cache during scoring."""
+    if apply_mode not in {"improve_only", "always"}:
+        raise ValueError(f"apply_mode must be one of improve_only/always, got {apply_mode}")
     seq_len = args.train_seq_len
     total_tokens = val_tokens.numel() - 1
     ttt_chunk = args.ttt_chunk_tokens
@@ -2169,7 +2178,7 @@ def eval_val_sliding_ttt_ngram(
         f"optimizer={args.ttt_optimizer} "
         f"schedule={args.ttt_schedule} grouping={args.ttt_lr_grouping} "
         f"ngram_lambda={ngram_lambda} ngram_max_n={ngram_max_n} "
-        f"confidence_threshold={confidence_threshold} packed={int(args.ngram_packed_cache)} "
+        f"confidence_threshold={confidence_threshold} apply_mode={apply_mode} packed={int(args.ngram_packed_cache)} "
         f"lambda_schedule={format_lambda_schedule(lambda_schedule)} "
         f"confidence_schedule={format_confidence_schedule(confidence_schedule)} "
         f"order_lambdas={format_order_lambdas(static_order_lambdas)}"
@@ -2283,9 +2292,10 @@ def eval_val_sliding_ttt_ngram(
                                 mixed_lp = max(a, b) + math.log1p(math.exp(-abs(a - b)))
                                 new_nll = -mixed_lp
                                 old_nll = scored_nll[t_off].item()
-                                if new_nll < old_nll:
+                                if apply_mode == "always" or new_nll < old_nll:
                                     scored_nll[t_off] = new_nll
-                                    ngram_improvements += 1
+                                    if new_nll < old_nll:
+                                        ngram_improvements += 1
 
                     loss_sum += scored_nll.sum()
                     token_count += float(wlen - s)
@@ -3029,6 +3039,7 @@ def main() -> None:
             ngram_max_n=args.ngram_max_n,
             confidence_threshold=args.ngram_confidence_threshold,
             gate_mode=args.ngram_gate_mode,
+            apply_mode=args.ngram_apply_mode,
             min_count=args.ngram_min_count,
             ngram_adapt_enabled=args.ngram_adapt_enabled,
             ngram_adapt_lr=args.ngram_adapt_lr,
@@ -3071,6 +3082,7 @@ def main() -> None:
             ngram_lambda=args.ngram_lambda,
             ngram_max_n=args.ngram_max_n,
             confidence_threshold=args.ngram_confidence_threshold,
+            apply_mode=args.ngram_apply_mode,
             min_count=args.ngram_min_count,
             lambda_schedule_spec=args.ngram_lambda_schedule,
             confidence_schedule_spec=args.ngram_confidence_schedule,
