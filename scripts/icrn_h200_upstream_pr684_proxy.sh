@@ -6,12 +6,25 @@ WORKTREE_DIR="${WORKTREE_DIR:-$ROOT_DIR/../parameter-golf-pr684-worktree}"
 PR684_RECORD_DIR="records/track_10min_16mb/2026-03-25_Sidecar48_Enhanced_Attention_Async_Data_Pipeline_AdamW_TTT"
 LOG_DIR="${LOG_DIR:-$ROOT_DIR/records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs}"
 SEED="${SEED:-1337}"
-RUN_ID="${RUN_ID:-h200_upstream_pr684_proxy6555_seed${SEED}}"
 DATA_PATH="${DATA_PATH:-$ROOT_DIR/data/datasets/fineweb10B_sp1024}"
 TOKENIZER_PATH="${TOKENIZER_PATH:-$ROOT_DIR/data/tokenizers/fineweb_1024_bpe.model}"
 ITERATIONS="${ITERATIONS:-6555}"
 VAL_LOSS_EVERY="${VAL_LOSS_EVERY:-500}"
 TRAIN_LOG_EVERY="${TRAIN_LOG_EVERY:-250}"
+TIMED_MODE="${TIMED_MODE:-0}"
+
+run_suffix=""
+if [[ "$TIMED_MODE" == "1" ]]; then
+  : "${WARMUP_STEPS:=0}"
+  : "${VAL_LOSS_EVERY:=0}"
+  : "${TRAIN_LOG_EVERY:=1000}"
+  run_suffix="_timed"
+fi
+if [[ "${USE_COMPILE:-1}" == "0" ]]; then
+  run_suffix="${run_suffix}_nocompile"
+fi
+
+RUN_ID="${RUN_ID:-h200_upstream_pr684_proxy6555${run_suffix}_seed${SEED}}"
 LOG_PATH="${LOG_PATH:-$LOG_DIR/${RUN_ID}.txt}"
 
 mkdir -p "$LOG_DIR"
@@ -42,8 +55,10 @@ run_with_timer env \
   TOKENIZER_PATH="$TOKENIZER_PATH" \
   SEED="$SEED" \
   RUN_ID="$RUN_ID" \
+  WARMUP_STEPS="${WARMUP_STEPS:-20}" \
   ITERATIONS="$ITERATIONS" \
   MAX_WALLCLOCK_SECONDS="${MAX_WALLCLOCK_SECONDS:-0}" \
   VAL_LOSS_EVERY="$VAL_LOSS_EVERY" \
   TRAIN_LOG_EVERY="$TRAIN_LOG_EVERY" \
+  USE_COMPILE="${USE_COMPILE:-1}" \
   torchrun --standalone --nproc_per_node=1 train_gpt.py | tee "$LOG_PATH"

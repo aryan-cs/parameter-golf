@@ -40,12 +40,18 @@ ARTIFACT_ORDER = [
 PROXY_ORDER = [
     "baseline",
     "upstream_pr674_exact",
+    "upstream_pr674_timed_exact",
+    "upstream_pr674_timed_nocompile_exact",
     "upstream_pr674_enhattn_exact",
+    "upstream_pr674_enhattn_timed_exact",
     "upstream_pr676_exact",
+    "upstream_pr676_timed_exact",
     "upstream_pr685_powmean4_exact",
     "upstream_pr685_meanprob_exact",
     "upstream_pr685_phase1_exact",
     "upstream_pr684_exact",
+    "upstream_pr684_timed_exact",
+    "upstream_pr684_timed_nocompile_exact",
     "podracing674",
     "podracing674_swiglu",
     "swiglu676",
@@ -279,10 +285,18 @@ def candidate_spec(source: str, candidate: str) -> dict[str, str]:
 def proxy_log_path(log_dir: Path, arch_candidate: str, ttt_candidate: str, seed: int) -> Path:
     if arch_candidate == "upstream_pr674_exact":
         return log_dir / f"h200_upstream_pr674_proxy7185_seed{seed}.txt"
+    if arch_candidate == "upstream_pr674_timed_exact":
+        return log_dir / f"h200_upstream_pr674_proxy7185_timed_seed{seed}.txt"
+    if arch_candidate == "upstream_pr674_timed_nocompile_exact":
+        return log_dir / f"h200_upstream_pr674_proxy7185_timed_nocompile_seed{seed}.txt"
     if arch_candidate == "upstream_pr674_enhattn_exact":
         return log_dir / f"h200_upstream_pr674_enhattn_proxy7185_seed{seed}.txt"
+    if arch_candidate == "upstream_pr674_enhattn_timed_exact":
+        return log_dir / f"h200_upstream_pr674_enhattn_proxy7185_timed_seed{seed}.txt"
     if arch_candidate == "upstream_pr676_exact":
         return log_dir / f"h200_upstream_pr676_proxy7185_seed{seed}.txt"
+    if arch_candidate == "upstream_pr676_timed_exact":
+        return log_dir / f"h200_upstream_pr676_proxy7185_timed_seed{seed}.txt"
     if arch_candidate == "upstream_pr685_powmean4_exact":
         return log_dir / f"h200_upstream_pr685_powmean4_proxy7185_seed{seed}.txt"
     if arch_candidate == "upstream_pr685_meanprob_exact":
@@ -291,6 +305,10 @@ def proxy_log_path(log_dir: Path, arch_candidate: str, ttt_candidate: str, seed:
         return log_dir / f"h200_upstream_pr685_phase1_proxy7185_seed{seed}.txt"
     if arch_candidate == "upstream_pr684_exact":
         return log_dir / f"h200_upstream_pr684_proxy6555_seed{seed}.txt"
+    if arch_candidate == "upstream_pr684_timed_exact":
+        return log_dir / f"h200_upstream_pr684_proxy6555_timed_seed{seed}.txt"
+    if arch_candidate == "upstream_pr684_timed_nocompile_exact":
+        return log_dir / f"h200_upstream_pr684_proxy6555_timed_nocompile_seed{seed}.txt"
     slug = compose_slug(arch_candidate, ttt_candidate)
     if slug == "baseline":
         return log_dir / f"h200_ttt_h100proxy7185_seed{seed}.txt"
@@ -460,10 +478,18 @@ def choose_best_nonbaseline(results: list[dict[str, object]], rank_key, source: 
 def h100_command(root_dir: Path, arch_candidate: str, ttt_candidate: str, seed: int = 1337) -> str:
     if arch_candidate == "upstream_pr674_exact":
         return f"SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr674_exact.sh'}"
+    if arch_candidate == "upstream_pr674_timed_exact":
+        return f"TIMED_MODE=1 SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr674_exact.sh'}"
+    if arch_candidate == "upstream_pr674_timed_nocompile_exact":
+        return f"TIMED_MODE=1 COMPILE_ENABLED=0 SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr674_exact.sh'}"
     if arch_candidate == "upstream_pr674_enhattn_exact":
         return f"SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr674_enhattn_exact.sh'}"
+    if arch_candidate == "upstream_pr674_enhattn_timed_exact":
+        return f"TIMED_MODE=1 SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr674_enhattn_exact.sh'}"
     if arch_candidate == "upstream_pr676_exact":
         return f"SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr676_exact.sh'}"
+    if arch_candidate == "upstream_pr676_timed_exact":
+        return f"TIMED_MODE=1 SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr676_exact.sh'}"
     if arch_candidate == "upstream_pr685_powmean4_exact":
         return f"SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr685_powmean4_exact.sh'}"
     if arch_candidate == "upstream_pr685_meanprob_exact":
@@ -472,6 +498,10 @@ def h100_command(root_dir: Path, arch_candidate: str, ttt_candidate: str, seed: 
         return f"SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr685_phase1_exact.sh'}"
     if arch_candidate == "upstream_pr684_exact":
         return f"SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr684_exact.sh'}"
+    if arch_candidate == "upstream_pr684_timed_exact":
+        return f"TIMED_MODE=1 SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr684_exact.sh'}"
+    if arch_candidate == "upstream_pr684_timed_nocompile_exact":
+        return f"TIMED_MODE=1 USE_COMPILE=0 SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr684_exact.sh'}"
     return (
         f"ARCH_CANDIDATE={arch_candidate} "
         f"TTT_CANDIDATE={ttt_candidate} "
@@ -483,10 +513,18 @@ def h100_command(root_dir: Path, arch_candidate: str, ttt_candidate: str, seed: 
 def h100_three_seed_command(root_dir: Path, arch_candidate: str, ttt_candidate: str) -> str:
     if arch_candidate == "upstream_pr674_exact":
         return f"bash {root_dir / 'scripts/h100_upstream_pr674_exact_3seed.sh'}"
+    if arch_candidate == "upstream_pr674_timed_exact":
+        return f"TIMED_MODE=1 bash {root_dir / 'scripts/h100_upstream_pr674_exact_3seed.sh'}"
+    if arch_candidate == "upstream_pr674_timed_nocompile_exact":
+        return f"TIMED_MODE=1 COMPILE_ENABLED=0 bash {root_dir / 'scripts/h100_upstream_pr674_exact_3seed.sh'}"
     if arch_candidate == "upstream_pr674_enhattn_exact":
         return f"bash {root_dir / 'scripts/h100_upstream_pr674_enhattn_exact_3seed.sh'}"
+    if arch_candidate == "upstream_pr674_enhattn_timed_exact":
+        return f"TIMED_MODE=1 bash {root_dir / 'scripts/h100_upstream_pr674_enhattn_exact_3seed.sh'}"
     if arch_candidate == "upstream_pr676_exact":
         return f"bash {root_dir / 'scripts/h100_upstream_pr676_exact_3seed.sh'}"
+    if arch_candidate == "upstream_pr676_timed_exact":
+        return f"TIMED_MODE=1 bash {root_dir / 'scripts/h100_upstream_pr676_exact_3seed.sh'}"
     if arch_candidate == "upstream_pr685_powmean4_exact":
         return f"bash {root_dir / 'scripts/h100_upstream_pr685_powmean4_exact_3seed.sh'}"
     if arch_candidate == "upstream_pr685_meanprob_exact":
@@ -495,6 +533,10 @@ def h100_three_seed_command(root_dir: Path, arch_candidate: str, ttt_candidate: 
         return f"bash {root_dir / 'scripts/h100_upstream_pr685_phase1_exact_3seed.sh'}"
     if arch_candidate == "upstream_pr684_exact":
         return f"bash {root_dir / 'scripts/h100_upstream_pr684_exact_3seed.sh'}"
+    if arch_candidate == "upstream_pr684_timed_exact":
+        return f"TIMED_MODE=1 bash {root_dir / 'scripts/h100_upstream_pr684_exact_3seed.sh'}"
+    if arch_candidate == "upstream_pr684_timed_nocompile_exact":
+        return f"TIMED_MODE=1 USE_COMPILE=0 bash {root_dir / 'scripts/h100_upstream_pr684_exact_3seed.sh'}"
     return (
         f"ARCH_CANDIDATE={arch_candidate} "
         f"TTT_CANDIDATE={ttt_candidate} "

@@ -12,11 +12,23 @@ run_candidate() {
     upstream_pr674_exact)
       exec bash "$ROOT_DIR/scripts/h100_upstream_pr674_exact.sh"
       ;;
+    upstream_pr674_timed_exact)
+      exec env TIMED_MODE=1 bash "$ROOT_DIR/scripts/h100_upstream_pr674_exact.sh"
+      ;;
+    upstream_pr674_timed_nocompile_exact)
+      exec env TIMED_MODE=1 COMPILE_ENABLED=0 bash "$ROOT_DIR/scripts/h100_upstream_pr674_exact.sh"
+      ;;
     upstream_pr674_enhattn_exact)
       exec bash "$ROOT_DIR/scripts/h100_upstream_pr674_enhattn_exact.sh"
       ;;
+    upstream_pr674_enhattn_timed_exact)
+      exec env TIMED_MODE=1 bash "$ROOT_DIR/scripts/h100_upstream_pr674_enhattn_exact.sh"
+      ;;
     upstream_pr676_exact)
       exec bash "$ROOT_DIR/scripts/h100_upstream_pr676_exact.sh"
+      ;;
+    upstream_pr676_timed_exact)
+      exec env TIMED_MODE=1 bash "$ROOT_DIR/scripts/h100_upstream_pr676_exact.sh"
       ;;
     upstream_pr685_powmean4_exact)
       exec bash "$ROOT_DIR/scripts/h100_upstream_pr685_powmean4_exact.sh"
@@ -29,6 +41,12 @@ run_candidate() {
       ;;
     upstream_pr684_exact)
       exec bash "$ROOT_DIR/scripts/h100_upstream_pr684_exact.sh"
+      ;;
+    upstream_pr684_timed_exact)
+      exec env TIMED_MODE=1 bash "$ROOT_DIR/scripts/h100_upstream_pr684_exact.sh"
+      ;;
+    upstream_pr684_timed_nocompile_exact)
+      exec env TIMED_MODE=1 USE_COMPILE=0 bash "$ROOT_DIR/scripts/h100_upstream_pr684_exact.sh"
       ;;
     vr1)
       exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_vr1.sh"
@@ -404,11 +422,17 @@ Run one candidate on each 8xH100 node by setting CANDIDATE:
 
   CANDIDATE=baseline bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr674_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=upstream_pr674_timed_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=upstream_pr674_timed_nocompile_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr674_enhattn_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=upstream_pr674_enhattn_timed_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr676_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=upstream_pr676_timed_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr685_powmean4_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr685_meanprob_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr685_phase1_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=upstream_pr684_timed_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=upstream_pr684_timed_nocompile_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=vr1 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=bg3072 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=vr1_bg3072 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
@@ -493,15 +517,27 @@ Run one candidate on each 8xH100 node by setting CANDIDATE:
 Candidate meanings:
   baseline             recovered winning stack
   upstream_pr674_exact exact upstream PR #674 root-trainer frontier run via worktree
+  upstream_pr674_timed_exact
+                       PR #674 with warmup and periodic validation disabled for timing pressure
+  upstream_pr674_timed_nocompile_exact
+                       same timed PR #674 lane, but force COMPILE_ENABLED=0 as a systems hedge
   upstream_pr674_enhattn_exact
                        exact upstream PR #674 plus PR #684-style k/v shift mixing, per-KV k_gain, and local value residual
+  upstream_pr674_enhattn_timed_exact
+                       timed PR #674 enhattn lane with warmup and periodic validation removed
   upstream_pr676_exact exact upstream PR #676 record-folder SwiGLU run via worktree
+  upstream_pr676_timed_exact
+                       timed PR #676 lane with warmup and periodic validation removed
   upstream_pr685_powmean4_exact
                        exact upstream PR #685 record-folder code with legal 4-power probability aggregation across passes
   upstream_pr685_meanprob_exact
                        exact upstream PR #685 record-folder code with legal multi-pass mean-prob aggregation
   upstream_pr685_phase1_exact
                        exact upstream PR #685 record-folder code with TTT_PASSES=1 for a legal cosine-recovery hedge
+  upstream_pr684_timed_exact
+                       timed PR #684 lane with warmup removed and lean logging
+  upstream_pr684_timed_nocompile_exact
+                       timed PR #684 lane with USE_COMPILE=0 as a systems hedge
   vr1                  baseline + VALUE_RESIDUAL=1
   bg3072               baseline + BIGRAM_VOCAB_SIZE=3072
   vr1_bg3072           baseline + VALUE_RESIDUAL=1 + BIGRAM_VOCAB_SIZE=3072

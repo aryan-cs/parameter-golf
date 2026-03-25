@@ -5,10 +5,21 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKTREE_DIR="${WORKTREE_DIR:-$ROOT_DIR/../parameter-golf-pr676-worktree}"
 PR676_RECORD_DIR="records/track_10min_16mb/2026-03-25_SwiGLU_LeakyReLU2_LegalTTT_ParallelMuon"
 SEED="${SEED:-1337}"
-RUN_ID="${RUN_ID:-h100_upstream_pr676_seed${SEED}}"
 DATA_PATH="${DATA_PATH:-$ROOT_DIR/data/datasets/fineweb10B_sp1024}"
 TOKENIZER_PATH="${TOKENIZER_PATH:-$ROOT_DIR/data/tokenizers/fineweb_1024_bpe.model}"
 LOG_DIR="${LOG_DIR:-$ROOT_DIR/records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs}"
+TIMED_MODE="${TIMED_MODE:-0}"
+
+run_suffix=""
+if [[ "$TIMED_MODE" == "1" ]]; then
+  : "${WARMUP_STEPS:=0}"
+  : "${VAL_LOSS_EVERY:=0}"
+  : "${TRAIN_LOG_EVERY:=1000}"
+  : "${MAX_WALLCLOCK_SECONDS:=596}"
+  run_suffix="_timed"
+fi
+
+RUN_ID="${RUN_ID:-h100_upstream_pr676${run_suffix}_seed${SEED}}"
 LOG_PATH="${LOG_PATH:-$LOG_DIR/${RUN_ID}.txt}"
 
 mkdir -p "$LOG_DIR"
@@ -39,6 +50,9 @@ run_with_timer env \
   TOKENIZER_PATH="$TOKENIZER_PATH" \
   SEED="$SEED" \
   RUN_ID="$RUN_ID" \
+  WARMUP_STEPS="${WARMUP_STEPS:-20}" \
+  VAL_LOSS_EVERY="${VAL_LOSS_EVERY:-4000}" \
+  TRAIN_LOG_EVERY="${TRAIN_LOG_EVERY:-500}" \
   NUM_LAYERS="${NUM_LAYERS:-11}" \
   BIGRAM_VOCAB_SIZE="${BIGRAM_VOCAB_SIZE:-1536}" \
   XSA_LAST_N="${XSA_LAST_N:-4}" \

@@ -3647,3 +3647,44 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Decision:
   - Prioritize `pr674_enhattn` ahead of the PR `#685` legal hedges because it is the cleanest low-byte architecture improvement on the current main line.
   - Keep Sidecar48 itself out of the immediate queue until the tiny enhanced-attention hybrid is tested first.
+
+- Timestamp: 2026-03-25 07:1x UTC
+- Commit: uncommitted
+- Lane: Constraint optimization / exact-upstream timed variants
+- Objective: Make the strongest exact-upstream candidates explicitly budget-aware for the next `8xH100` window instead of paying default warmup and periodic-validation overhead.
+- Command or config:
+  - Added `TIMED_MODE=1` support to the exact-upstream launchers:
+    - [h100_upstream_pr674_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr674_exact.sh)
+    - [h100_upstream_pr674_enhattn_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr674_enhattn_exact.sh)
+    - [h100_upstream_pr676_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr676_exact.sh)
+    - [h100_upstream_pr684_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr684_exact.sh)
+    - plus the matching H200 proxy launchers
+  - `TIMED_MODE=1` now defaults the strongest exact families to:
+    - `WARMUP_STEPS=0`
+    - `VAL_LOSS_EVERY=0`
+    - `TRAIN_LOG_EVERY=1000`
+    - `MAX_WALLCLOCK_SECONDS=596` on the H100 launchers
+    - `NGRAM_EVAL_MAX_SECONDS=596` on PR `#674`-style hashed-eval launchers
+  - Added explicit timed candidate names to:
+    - [h100_parallel_candidate_portfolio.sh](/home/aryang9/parameter-golf/scripts/h100_parallel_candidate_portfolio.sh)
+    - [record_push_status.py](/home/aryang9/parameter-golf/scripts/record_push_status.py)
+  - New first-class timed candidates:
+    - `upstream_pr674_timed_exact`
+    - `upstream_pr674_timed_nocompile_exact`
+    - `upstream_pr674_enhattn_timed_exact`
+    - `upstream_pr676_timed_exact`
+    - `upstream_pr684_timed_exact`
+    - `upstream_pr684_timed_nocompile_exact`
+  - Verified:
+    - all edited shell scripts pass `bash -n`
+    - [record_push_status.py](/home/aryang9/parameter-golf/scripts/record_push_status.py) passes `python -m py_compile`
+    - command/log-path mapping for the new timed candidates resolves correctly
+- Result:
+  - The next H100 wave can launch exact-upstream frontier runs with explicit low-overhead timing settings instead of ad hoc env overrides.
+  - The main systems hedge is now explicit too:
+    - PR `#674` timed with compile on
+    - PR `#674` timed with compile off
+  - Live exact-upstream PR `#674` proxy is still healthy and has reached `step:1500/7185 val_bpb:1.2843`, then `step:1750 train_loss:2.1239`.
+- Decision:
+  - Keep the live watcher chain unchanged for now; I did **not** auto-queue timed variants behind it because the current watcher helper does not yet carry target-specific timing env safely.
+  - Use the new timed exact candidates as the front of the next manual H200/H100 slate when we want direct budget-shape measurements.
