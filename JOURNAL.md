@@ -2034,6 +2034,15 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Decision: Promote `tttlr25` to the current exact `8xH100` seed-1337 winner while the full n-gram run is still pending, but treat the running full `record659` pass as the highest-upside active experiment. Do not conclude anything from the smoke BPBs alone; the only meaningful n-gram decision point is the full-sequence H200 result.
 - Next step: Let the full `record659` run finish, inspect whether the H200 artifact reproduces the expected large full-sequence gain, and then either (1) promote the n-gram lane into the exact `8xH100` handoff path or (2) keep grinding the cheaper artifact-TTT variants if the n-gram effect fails to transfer.
 
+- Timestamp: 2026-03-25 02:17 UTC
+- Commit: `working tree`
+- Lane: Exact-run n-gram candidate plumbing
+- Objective: Make sure the generic exact `8xH100` handoff path can promote the eval-side winners we are now actually seeing, especially the pure `5`-gram lane and the hybrid `TTT + 5`-gram lane.
+- Command or config: Re-read the uncommitted record-lane `train_gpt.py` and `scripts/h100_repro_leaky_ttt_parallel_muon_*ngram*.sh` helpers. Confirmed that this checkout already contains `NGRAM_TTT_ENABLED` and corresponding exact-run wrapper scripts. Updated `scripts/record_push_candidate_lib.sh` and `scripts/record_push_status.py` so the generic runner/status layer maps public-style eval candidates onto the existing exact-run env conventions: `ngram659`, `lowrisk_ngram`, `lam10_conf05_ngram`, `ngram659_tttlr25`, and `lowrisk_ngram_tttlr25`.
+- Result: The generic `record_push_status.py`/`h100_record_push_candidate.sh` path no longer assumes every promoted winner is a plain TTT knob. If the running full `record659` H200 eval wins, the status report can now hand off an exact `8xH100` command through the same generic interface instead of forcing a manual translation from the one-off `h100_repro_*ngram*.sh` scripts. This closes the main tooling gap between the live H200 frontier search and the eventual exact-run submission path.
+- Decision: Keep the dedicated one-off `h100_repro_*ngram*.sh` scripts as references, but treat the generic record-push handoff as the canonical control surface going forward.
+- Next step: Once the full `record659` run completes, verify that the status report promotes it correctly if its final BPB beats the current `tttlr25` winner.
+
 - Timestamp: 2026-03-25 02:08 UTC
 - Commit: `working tree`
 - Lane: Strict-FA3 + eval-side search for the next record push

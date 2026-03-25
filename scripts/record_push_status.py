@@ -325,7 +325,7 @@ def build_status(root_dir: Path, seed: int) -> dict[str, object]:
             ttt_candidate=(
                 "ngram659_tttlr25"
                 if candidate in {"record659_tttlr25", "record659_tttlr25_smoke", "vr1_record659_tttlr25"}
-                else "tttlr25"
+                else "lowrisk_ngram_tttlr25"
             ),
         )
         if result.get("bytes_total") is None and recovered_bytes_total is not None:
@@ -363,7 +363,7 @@ def build_status(root_dir: Path, seed: int) -> dict[str, object]:
 
     promotion_pool = [
         candidate
-        for candidate in (artifact_best, ngram_best, proxy_best, combined_result)
+        for candidate in (artifact_best, ngram_best, ttt_ngram_best, proxy_best, combined_result)
         if candidate is not None and candidate.get("completed")
     ]
     ranked_promotion_pool = sorted(promotion_pool, key=promotion_rank_key)

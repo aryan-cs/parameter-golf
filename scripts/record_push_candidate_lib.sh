@@ -103,6 +103,19 @@ record_push_apply_ttt_candidate() {
       export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.5}"
       export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-3}"
       ;;
+    lowrisk_ngram_tttlr25)
+      export TTT_ENABLED="${TTT_ENABLED:-0}"
+      export NGRAM_EVAL_ENABLED="${NGRAM_EVAL_ENABLED:-0}"
+      export NGRAM_TTT_ENABLED="${NGRAM_TTT_ENABLED:-1}"
+      export TTT_LR="${TTT_LR:-0.0025}"
+      export NGRAM_TTT_STRIDE="${NGRAM_TTT_STRIDE:-64}"
+      export NGRAM_STRIDE="${NGRAM_STRIDE:-128}"
+      export NGRAM_BATCH_SEQS="${NGRAM_BATCH_SEQS:-32}"
+      export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.05}"
+      export NGRAM_MAX_N="${NGRAM_MAX_N:-5}"
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.7}"
+      export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-3}"
+      ;;
     *)
       echo "unknown TTT candidate: $candidate" >&2
       return 1
@@ -178,6 +191,9 @@ record_push_artifact_log_path() {
       ;;
     ngram659_tttlr25)
       printf '%s\n' "$log_dir/h200_artifact_ttt_ngram_record659_tttlr25.txt"
+      ;;
+    lowrisk_ngram_tttlr25)
+      printf '%s\n' "$log_dir/h200_artifact_ttt_ngram_lowrisk_tttlr25.txt"
       ;;
     *)
       echo "unknown artifact TTT candidate: $candidate" >&2
