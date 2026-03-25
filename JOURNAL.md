@@ -24,6 +24,15 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Decision: Treat corrected `podracing674` and `podracing674_swiglu` as the first serious post-baseline challengers; keep `xsa11` only as a later hedge.
 - Next step: Validate the patched scripts, relaunch the watcher chain, and let the active baseline proxy continue uninterrupted.
 
+- Timestamp: 2026-03-25 05:02 UTC
+- Commit: uncommitted
+- Lane: H200 proxy / PR674 recipe completion
+- Objective: Remove the remaining config drift between our `podracing674` candidate and PR `#674`'s actual reproduce line.
+- Command or config: Compared `scripts/h100_repro_leaky_ttt_parallel_muon.sh` and `scripts/icrn_h200_ttt_recordstack.sh` against PR `#674`'s root `train_gpt.py`; patched `record_push_candidate_lib.sh` so `podracing674`, `podracing674_swiglu`, and `podracing674_xsa11` now explicitly export `MLP_ACT=leaky_relu_sq`, `MLP_LEAKY_SLOPE=0.5`, `XSA_LAST_N=4` for the base PR-`#674` variants, plus `BIGRAM_VOCAB_SIZE=1536`, `ROPE_DIMS=24`, and `LATE_QAT_THRESHOLD=0.5`.
+- Result: Future queued proxy/H100 runs no longer depend on older launcher defaults like `ROPE_DIMS=16` or implicit `relu_sq` behavior.
+- Decision: Keep treating `podracing674` as the main exact-surrogate candidate and `podracing674_swiglu` as the highest-upside immediate hedge.
+- Next step: Validate the patch, commit it, and let the already-armed watcher chain consume the corrected candidate definitions at launch time.
+
 - Timestamp: 2026-03-23 15:55 America/Chicago
 - Commit: `7c60955`
 - Lane: repo
