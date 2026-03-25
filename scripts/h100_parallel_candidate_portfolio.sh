@@ -37,13 +37,40 @@ run_candidate() {
       export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.7}"
       exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_ngram659.sh"
       ;;
+    ngram659_cool_conf07)
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.7}"
+      export NGRAM_CONFIDENCE_SCHEDULE="${NGRAM_CONFIDENCE_SCHEDULE:-0.00:0.70,0.50:0.65,0.65:0.60,0.80:0.55}"
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_ngram659.sh"
+      ;;
+    ngram659_cool_conf07_min4)
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.7}"
+      export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-4}"
+      export NGRAM_CONFIDENCE_SCHEDULE="${NGRAM_CONFIDENCE_SCHEDULE:-0.00:0.70,0.50:0.65,0.65:0.60,0.80:0.55}"
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_ngram659.sh"
+      ;;
     ngram659_conf08)
       export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.8}"
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_ngram659.sh"
+      ;;
+    ngram659_conf07_min4)
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.7}"
+      export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-4}"
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_ngram659.sh"
+      ;;
+    ngram659_conf07_min5)
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.7}"
+      export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-5}"
       exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_ngram659.sh"
       ;;
     ngram659_conf07_lam20)
       export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.7}"
       export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.20}"
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_ngram659.sh"
+      ;;
+    ngram659_tgate40_min4)
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.4}"
+      export NGRAM_GATE_MODE="${NGRAM_GATE_MODE:-target}"
+      export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-4}"
       exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_ngram659.sh"
       ;;
     warmup0_ngram659)
@@ -53,13 +80,35 @@ run_candidate() {
       export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.7}"
       exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_ngram659.sh"
       ;;
+    warmup0_ngram659_cool_conf07)
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.7}"
+      export NGRAM_CONFIDENCE_SCHEDULE="${NGRAM_CONFIDENCE_SCHEDULE:-0.00:0.70,0.50:0.65,0.65:0.60,0.80:0.55}"
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_ngram659.sh"
+      ;;
+    warmup0_ngram659_cool_conf07_min4)
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.7}"
+      export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-4}"
+      export NGRAM_CONFIDENCE_SCHEDULE="${NGRAM_CONFIDENCE_SCHEDULE:-0.00:0.70,0.50:0.65,0.65:0.60,0.80:0.55}"
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_ngram659.sh"
+      ;;
     warmup0_ngram659_conf08)
       export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.8}"
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_ngram659.sh"
+      ;;
+    warmup0_ngram659_conf07_min4)
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.7}"
+      export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-4}"
       exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_ngram659.sh"
       ;;
     warmup0_ngram659_conf07_lam20)
       export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.7}"
       export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.20}"
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_ngram659.sh"
+      ;;
+    warmup0_ngram659_tgate40_min4)
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.4}"
+      export NGRAM_GATE_MODE="${NGRAM_GATE_MODE:-target}"
+      export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-4}"
       exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_ngram659.sh"
       ;;
     vr1_bg3072_ngram659)
@@ -182,12 +231,21 @@ Run one candidate on each 8xH100 node by setting CANDIDATE:
   CANDIDATE=warmup0_vr1_bg3072_tttlr25 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=ngram659 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=ngram659_conf07 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=ngram659_cool_conf07 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=ngram659_cool_conf07_min4 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=ngram659_conf08 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=ngram659_conf07_min4 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=ngram659_conf07_min5 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=ngram659_conf07_lam20 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=ngram659_tgate40_min4 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0_ngram659 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0_ngram659_conf07 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=warmup0_ngram659_cool_conf07 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=warmup0_ngram659_cool_conf07_min4 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0_ngram659_conf08 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=warmup0_ngram659_conf07_min4 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0_ngram659_conf07_lam20 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=warmup0_ngram659_tgate40_min4 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=vr1_bg3072_ngram659 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0_vr1_bg3072_ngram659 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=ngram659_adapt bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
@@ -221,16 +279,27 @@ Candidate meanings:
                        combo bet plus WARMUP_STEPS=0 for score and compliance
   ngram659             PR #659-style 5-gram eval cache with TTT disabled
   ngram659_conf07      PR #659 eval cache with a stricter 0.7 confidence gate
+  ngram659_cool_conf07 PR #659 eval cache with conf=0.7 early, then cooling to 0.55 late
+  ngram659_cool_conf07_min4
+                      cool-down confidence schedule plus min_count=4
   ngram659_conf08      PR #659 eval cache with an even stricter 0.8 confidence gate
+  ngram659_conf07_min4 PR #659 eval cache with conf=0.7 and min_count=4
+  ngram659_conf07_min5 PR #659 eval cache with conf=0.7 and min_count=5
   ngram659_conf07_lam20
                        PR #659 eval cache with conf=0.7 and a stronger 0.20 n-gram mix
+  ngram659_tgate40_min4
+                       PR #659 eval cache with target-prob gate 0.4 and min_count=4
   warmup0_ngram659     ngram659 plus WARMUP_STEPS=0 for more timing headroom
   warmup0_ngram659_conf07
                        ngram659_conf07 plus WARMUP_STEPS=0 for more timing headroom
   warmup0_ngram659_conf08
                        ngram659_conf08 plus WARMUP_STEPS=0 for more timing headroom
+  warmup0_ngram659_conf07_min4
+                       ngram659_conf07_min4 plus WARMUP_STEPS=0 for timing headroom
   warmup0_ngram659_conf07_lam20
                        ngram659_conf07_lam20 plus WARMUP_STEPS=0 for more timing headroom
+  warmup0_ngram659_tgate40_min4
+                       ngram659_tgate40_min4 plus WARMUP_STEPS=0 for timing headroom
   vr1_bg3072_ngram659  stronger architecture knobs plus PR #659 eval cache
   warmup0_vr1_bg3072_ngram659
                        architecture knobs plus PR #659 eval cache plus WARMUP_STEPS=0

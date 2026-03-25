@@ -96,6 +96,32 @@ record_push_apply_ttt_candidate() {
       export NGRAM_PACKED_CACHE="${NGRAM_PACKED_CACHE:-1}"
       export NGRAM_GLOBAL_CACHE="${NGRAM_GLOBAL_CACHE:-1}"
       ;;
+    ngram659_cool_conf07)
+      export TTT_ENABLED="${TTT_ENABLED:-0}"
+      export NGRAM_EVAL_ENABLED="${NGRAM_EVAL_ENABLED:-1}"
+      export NGRAM_STRIDE="${NGRAM_STRIDE:-128}"
+      export NGRAM_BATCH_SEQS="${NGRAM_BATCH_SEQS:-32}"
+      export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.15}"
+      export NGRAM_MAX_N="${NGRAM_MAX_N:-5}"
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.7}"
+      export NGRAM_CONFIDENCE_SCHEDULE="${NGRAM_CONFIDENCE_SCHEDULE:-0.00:0.70,0.50:0.65,0.65:0.60,0.80:0.55}"
+      export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-3}"
+      export NGRAM_PACKED_CACHE="${NGRAM_PACKED_CACHE:-1}"
+      export NGRAM_GLOBAL_CACHE="${NGRAM_GLOBAL_CACHE:-1}"
+      ;;
+    ngram659_cool_conf07_min4)
+      export TTT_ENABLED="${TTT_ENABLED:-0}"
+      export NGRAM_EVAL_ENABLED="${NGRAM_EVAL_ENABLED:-1}"
+      export NGRAM_STRIDE="${NGRAM_STRIDE:-128}"
+      export NGRAM_BATCH_SEQS="${NGRAM_BATCH_SEQS:-32}"
+      export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.15}"
+      export NGRAM_MAX_N="${NGRAM_MAX_N:-5}"
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.7}"
+      export NGRAM_CONFIDENCE_SCHEDULE="${NGRAM_CONFIDENCE_SCHEDULE:-0.00:0.70,0.50:0.65,0.65:0.60,0.80:0.55}"
+      export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-4}"
+      export NGRAM_PACKED_CACHE="${NGRAM_PACKED_CACHE:-1}"
+      export NGRAM_GLOBAL_CACHE="${NGRAM_GLOBAL_CACHE:-1}"
+      ;;
     ngram659_conf08)
       export TTT_ENABLED="${TTT_ENABLED:-0}"
       export NGRAM_EVAL_ENABLED="${NGRAM_EVAL_ENABLED:-1}"
@@ -108,6 +134,30 @@ record_push_apply_ttt_candidate() {
       export NGRAM_PACKED_CACHE="${NGRAM_PACKED_CACHE:-1}"
       export NGRAM_GLOBAL_CACHE="${NGRAM_GLOBAL_CACHE:-1}"
       ;;
+    ngram659_conf07_min4)
+      export TTT_ENABLED="${TTT_ENABLED:-0}"
+      export NGRAM_EVAL_ENABLED="${NGRAM_EVAL_ENABLED:-1}"
+      export NGRAM_STRIDE="${NGRAM_STRIDE:-128}"
+      export NGRAM_BATCH_SEQS="${NGRAM_BATCH_SEQS:-32}"
+      export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.15}"
+      export NGRAM_MAX_N="${NGRAM_MAX_N:-5}"
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.7}"
+      export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-4}"
+      export NGRAM_PACKED_CACHE="${NGRAM_PACKED_CACHE:-1}"
+      export NGRAM_GLOBAL_CACHE="${NGRAM_GLOBAL_CACHE:-1}"
+      ;;
+    ngram659_conf07_min5)
+      export TTT_ENABLED="${TTT_ENABLED:-0}"
+      export NGRAM_EVAL_ENABLED="${NGRAM_EVAL_ENABLED:-1}"
+      export NGRAM_STRIDE="${NGRAM_STRIDE:-128}"
+      export NGRAM_BATCH_SEQS="${NGRAM_BATCH_SEQS:-32}"
+      export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.15}"
+      export NGRAM_MAX_N="${NGRAM_MAX_N:-5}"
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.7}"
+      export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-5}"
+      export NGRAM_PACKED_CACHE="${NGRAM_PACKED_CACHE:-1}"
+      export NGRAM_GLOBAL_CACHE="${NGRAM_GLOBAL_CACHE:-1}"
+      ;;
     ngram659_conf07_lam20)
       export TTT_ENABLED="${TTT_ENABLED:-0}"
       export NGRAM_EVAL_ENABLED="${NGRAM_EVAL_ENABLED:-1}"
@@ -117,6 +167,19 @@ record_push_apply_ttt_candidate() {
       export NGRAM_MAX_N="${NGRAM_MAX_N:-5}"
       export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.7}"
       export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-3}"
+      export NGRAM_PACKED_CACHE="${NGRAM_PACKED_CACHE:-1}"
+      export NGRAM_GLOBAL_CACHE="${NGRAM_GLOBAL_CACHE:-1}"
+      ;;
+    ngram659_tgate40_min4)
+      export TTT_ENABLED="${TTT_ENABLED:-0}"
+      export NGRAM_EVAL_ENABLED="${NGRAM_EVAL_ENABLED:-1}"
+      export NGRAM_STRIDE="${NGRAM_STRIDE:-128}"
+      export NGRAM_BATCH_SEQS="${NGRAM_BATCH_SEQS:-32}"
+      export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.15}"
+      export NGRAM_MAX_N="${NGRAM_MAX_N:-5}"
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.4}"
+      export NGRAM_GATE_MODE="${NGRAM_GATE_MODE:-target}"
+      export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-4}"
       export NGRAM_PACKED_CACHE="${NGRAM_PACKED_CACHE:-1}"
       export NGRAM_GLOBAL_CACHE="${NGRAM_GLOBAL_CACHE:-1}"
       ;;

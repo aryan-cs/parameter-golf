@@ -2570,3 +2570,47 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Next step:
   - Keep the live eval queue running.
   - Use the new `record_push_status.py` output as the default check before promoting any candidate toward `8xH100`.
+
+- Timestamp: 2026-03-25 03:51 UTC
+- Commit: `working tree`
+- Lane: pure n-gram frontier
+- Objective: React to the live `record659_conf07` curve drifting upward after its early low point instead of blindly queueing more static threshold variants.
+- Research / observation:
+  - The newest upstream open record claim is still PR `#672` at `1.0781`, so the practical claim gate is about `1.0751`.
+  - Our live full `record659_conf07` run remains better than finished pure `record659`, but it no longer looks like a clean path under that stricter gate.
+  - Latest measured state from the live log:
+    - best observed point so far: `47.9% -> 1.079317`
+    - latest observed point: `59.8% -> 1.082229`
+    - matched-progress pure `record659` baseline remains worse at the same depths, so the idea is still alive; it just appears too aggressive late.
+- Code / ops:
+  - Added new pure-cache cooldown candidates in `scripts/icrn_h200_artifact_ngram_candidate.sh`:
+    - `record659_cool_conf07`
+    - `record659_cool_conf07_smoke`
+    - `record659_cool_conf07_min4`
+    - `record659_cool_conf07_min4_smoke`
+  - These use the schedule:
+    - `0.00:0.70,0.50:0.65,0.65:0.60,0.80:0.55`
+    - motivation: preserve `conf=0.7`'s early gain, then back off after the point where the H200 curve starts leaking upward.
+  - Promoted those candidates through the rest of the tooling:
+    - `scripts/icrn_h200_artifact_ngram_portfolio.sh`
+    - `scripts/queue_h200_credit_prep.sh`
+    - `scripts/h100_parallel_candidate_portfolio.sh`
+    - `scripts/record_push_candidate_lib.sh`
+    - `scripts/record_push_status.py`
+  - Reordered the queued H200 search so cooldown variants run immediately after the current full `conf07` candidate and before weaker pure tails.
+  - Validation:
+    - `bash -n scripts/icrn_h200_artifact_ngram_candidate.sh scripts/icrn_h200_artifact_ngram_portfolio.sh scripts/queue_h200_credit_prep.sh scripts/h100_parallel_candidate_portfolio.sh scripts/record_push_candidate_lib.sh`
+    - `python -m py_compile scripts/record_push_status.py`
+    - `python scripts/record_push_status.py`
+- Decision:
+  - Keep the current full `conf07` run alive to completion; it is still materially better than finished `record659`.
+  - Shift the next strongest pure bet from more static thresholds toward staged late backoff.
+  - Keep the PR-`#672` cosine-TTT hedge in the queue, but only after the stronger pure-cache cooldown probes.
+- Next step:
+  - Let `record659_conf07` finish.
+  - Immediately run:
+    - `record659_cool_conf07_smoke`
+    - `record659_cool_conf07`
+    - `record659_cool_conf07_min4_smoke`
+    - `record659_cool_conf07_min4`
+  - If cooldown beats the current pure winner, promote the matching `warmup0` H100 candidate to the front of the eventual `8xH100` slate.

@@ -54,6 +54,30 @@ case "$CANDIDATE" in
     MAX_WINDOWS="128"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_conf07_smoke.txt}"
     ;;
+  record659_cool_conf07)
+    CONFIDENCE_THRESHOLD="0.7"
+    CONFIDENCE_SCHEDULE="0.00:0.70,0.50:0.65,0.65:0.60,0.80:0.55"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_cool_conf07.txt}"
+    ;;
+  record659_cool_conf07_smoke)
+    CONFIDENCE_THRESHOLD="0.7"
+    CONFIDENCE_SCHEDULE="0.00:0.70,0.50:0.65,0.65:0.60,0.80:0.55"
+    MAX_WINDOWS="128"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_cool_conf07_smoke.txt}"
+    ;;
+  record659_cool_conf07_min4)
+    CONFIDENCE_THRESHOLD="0.7"
+    MIN_COUNT="4"
+    CONFIDENCE_SCHEDULE="0.00:0.70,0.50:0.65,0.65:0.60,0.80:0.55"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_cool_conf07_min4.txt}"
+    ;;
+  record659_cool_conf07_min4_smoke)
+    CONFIDENCE_THRESHOLD="0.7"
+    MIN_COUNT="4"
+    CONFIDENCE_SCHEDULE="0.00:0.70,0.50:0.65,0.65:0.60,0.80:0.55"
+    MAX_WINDOWS="128"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_cool_conf07_min4_smoke.txt}"
+    ;;
   record659_conf08)
     CONFIDENCE_THRESHOLD="0.8"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_conf08.txt}"
@@ -69,11 +93,21 @@ case "$CANDIDATE" in
     MAX_WINDOWS="128"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_conf07_min4_smoke.txt}"
     ;;
+  record659_conf07_min4)
+    CONFIDENCE_THRESHOLD="0.7"
+    MIN_COUNT="4"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_conf07_min4.txt}"
+    ;;
   record659_conf07_min5_smoke)
     CONFIDENCE_THRESHOLD="0.7"
     MIN_COUNT="5"
     MAX_WINDOWS="128"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_conf07_min5_smoke.txt}"
+    ;;
+  record659_conf07_min5)
+    CONFIDENCE_THRESHOLD="0.7"
+    MIN_COUNT="5"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_conf07_min5.txt}"
     ;;
   record659_tgate30_smoke)
     GATE_MODE="target"
@@ -94,17 +128,33 @@ case "$CANDIDATE" in
     MAX_WINDOWS="128"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_tgate40_min4_smoke.txt}"
     ;;
+  record659_tgate40_min4)
+    GATE_MODE="target"
+    CONFIDENCE_THRESHOLD="0.4"
+    MIN_COUNT="4"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_tgate40_min4.txt}"
+    ;;
   record659_lam20_conf07_smoke)
     NGRAM_LAMBDA="0.20"
     CONFIDENCE_THRESHOLD="0.7"
     MAX_WINDOWS="128"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_lam20_conf07_smoke.txt}"
     ;;
+  record659_lam20_conf07)
+    NGRAM_LAMBDA="0.20"
+    CONFIDENCE_THRESHOLD="0.7"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_lam20_conf07.txt}"
+    ;;
   record659_lam20_conf08_smoke)
     NGRAM_LAMBDA="0.20"
     CONFIDENCE_THRESHOLD="0.8"
     MAX_WINDOWS="128"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_lam20_conf08_smoke.txt}"
+    ;;
+  record659_lam20_conf08)
+    NGRAM_LAMBDA="0.20"
+    CONFIDENCE_THRESHOLD="0.8"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_lam20_conf08.txt}"
     ;;
   record659_warm_conf07)
     CONFIDENCE_SCHEDULE="0.00:0.50,0.20:0.60,0.40:0.70"
