@@ -51,6 +51,15 @@ run_candidate() {
     upstream_pr688_timed_nocompile_exact)
       exec env TIMED_MODE=1 COMPILE_ENABLED=0 bash "$ROOT_DIR/scripts/h100_upstream_pr688_exact.sh"
       ;;
+    upstream_pr753_exact)
+      exec bash "$ROOT_DIR/scripts/h100_upstream_pr753_exact.sh"
+      ;;
+    upstream_pr753_timed_exact)
+      exec env TIMED_MODE=1 bash "$ROOT_DIR/scripts/h100_upstream_pr753_exact.sh"
+      ;;
+    upstream_pr753_timed_nocompile_exact)
+      exec env TIMED_MODE=1 COMPILE_ENABLED=0 bash "$ROOT_DIR/scripts/h100_upstream_pr753_exact.sh"
+      ;;
     upstream_pr700_exact)
       exec bash "$ROOT_DIR/scripts/h100_upstream_pr700_exact.sh"
       ;;

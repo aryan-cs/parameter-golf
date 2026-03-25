@@ -4756,3 +4756,45 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
   - Treat PR700 as the main legal frontier to reproduce locally.
   - Use the exact timed H200 smoke first as a fast correctness / timing / size readout, then escalate to the new PR700 budget-proxy wrapper if the smoke looks healthy.
   - Keep PR688 as the immediate fallback lane if PR700 underperforms or breaks locally.
+
+## 2026-03-25 18:58 UTC - PR753 research pivot: local backoff port + upstream launchers
+
+- Objective:
+  - Move from the older PR700 / PR688 frontier to the freshest open public claim and make sure we can test both the exact upstream branch and the eval-side idea independently.
+- Findings:
+  - Public PR scan as of March 25, 2026 found a newer open record claim:
+    - [PR #753](https://github.com/openai/parameter-golf/pull/753): `0.9625` mean BPB, `15.59 MB`, 7-gram backoff + entropy-adaptive alpha
+    - [PR #727](https://github.com/openai/parameter-golf/pull/727): related precursor at `0.9674`, with a useful ablation:
+      - fixed alpha `0.40`, no backoff: `1.0336`
+      - backoff only: `0.9825`
+      - backoff + adaptive alpha: `0.9674`
+  - So the strongest current open idea is no longer just “5-gram cache better than TTT.” It is “multi-order backoff plus entropy-adaptive trust in the cache.”
+  - The live PR700 timed smoke stayed healthy, but its local step time is much slower than our older banked stack, roughly `~2.03s/step` on 1xH200, so it is best treated as an exact-branch sanity smoke rather than our only path forward.
+- Code / ops:
+  - Ported PR753-style eval semantics into [scripts/eval_ngram_cache_artifact.py](/home/aryang9/parameter-golf/scripts/eval_ngram_cache_artifact.py):
+    - new `hashed_backoff` cache kind
+    - multi-order hashed backoff (`min_order..max_order`)
+    - entropy-adaptive alpha using only model entropy
+    - CLI knobs for `alpha_min/max`, entropy center/scale, and partial cutoffs
+  - Added `record753` artifact candidates to [scripts/icrn_h200_artifact_ngram_candidate.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_artifact_ngram_candidate.sh) and to [scripts/record_push_status.py](/home/aryang9/parameter-golf/scripts/record_push_status.py).
+  - Promoted PR753 to the public-frontier status readout in [scripts/record_push_status.py](/home/aryang9/parameter-golf/scripts/record_push_status.py):
+    - best open claim: `0.9625` from `PR #753`
+    - secondary open claim: `1.0541` from `PR #700`
+    - closed illegal frontier still tracked separately: `1.0366` from `PR #685`
+  - Added exact-upstream PR753 launchers:
+    - [scripts/icrn_h200_upstream_pr753_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr753_proxy.sh)
+    - [scripts/icrn_h200_upstream_pr753_proxybudget.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr753_proxybudget.sh)
+    - [scripts/h100_upstream_pr753_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr753_exact.sh)
+    - [scripts/h100_upstream_pr753_exact_3seed.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr753_exact_3seed.sh)
+  - Wired PR753 into [scripts/h100_parallel_candidate_portfolio.sh](/home/aryang9/parameter-golf/scripts/h100_parallel_candidate_portfolio.sh) and the status handoff machinery.
+  - Replaced the stale post-PR700 queue:
+    - killed the old “launch PR700 budget proxy next” waiter
+    - armed a new queue that waits for the current PR700 smoke to finish, then:
+      1. runs `record753_smoke` on the matched saved proxy artifact
+      2. launches the exact upstream `PR753` timed `nocompile` smoke
+- Decision:
+  - Keep the current PR700 smoke alive only long enough to get the exact-branch sanity result.
+  - After that, prioritize PR753 in both forms:
+    - transfer test on our existing matched proxy artifact
+    - exact upstream timed smoke
+  - Use the PR727 ablation as guidance for the next nearby smoke variants if the default PR753 transfer lands in the right ballpark.

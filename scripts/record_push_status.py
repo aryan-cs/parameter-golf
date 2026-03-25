@@ -11,14 +11,17 @@ from prepare_submission_metadata import merge_summaries, parse_log
 
 # Public frontier snapshot as of 2026-03-25:
 # - PR #685 claimed 1.0366 but was closed as illegal (multi-pass min-NLL selection).
-# - PR #700 is the strongest open legal-looking claim at 1.0541.
+# - PR #753 is the newest best open claim at 0.9625 via legal-looking eval-side changes.
+# - PR #700 remains the strongest earlier open claim we have already integrated locally.
 CURRENT_PUBLIC_ILLEGAL_FRONTIER_BPB = 1.0366
 CURRENT_PUBLIC_ILLEGAL_FRONTIER_LABEL = "PR #685 (closed illegal)"
-CURRENT_PUBLIC_LEGAL_CLAIM_BPB = 1.0541
-CURRENT_PUBLIC_LEGAL_CLAIM_LABEL = "PR #700 (open legal-looking claim)"
+CURRENT_PUBLIC_BEST_OPEN_CLAIM_BPB = 0.9625
+CURRENT_PUBLIC_BEST_OPEN_CLAIM_LABEL = "PR #753 (open, unreviewed 7-gram backoff claim)"
+CURRENT_PUBLIC_SECONDARY_OPEN_CLAIM_BPB = 1.0541
+CURRENT_PUBLIC_SECONDARY_OPEN_CLAIM_LABEL = "PR #700 (open legal-looking hedge mixer claim)"
 RECORD_DELTA_NAT = 0.005
 APPROX_BPB_PER_NAT = 0.5923
-PRACTICAL_WIN_GATE_BPB = CURRENT_PUBLIC_LEGAL_CLAIM_BPB - RECORD_DELTA_NAT * APPROX_BPB_PER_NAT
+PRACTICAL_WIN_GATE_BPB = CURRENT_PUBLIC_BEST_OPEN_CLAIM_BPB - RECORD_DELTA_NAT * APPROX_BPB_PER_NAT
 COMPETITION_ARTIFACT_LIMIT_BYTES = 16_000_000
 COMPETITION_TRAIN_LIMIT_SECONDS = 600
 COMPETITION_EVAL_LIMIT_SECONDS = 600
@@ -47,6 +50,9 @@ PROXY_ORDER = [
     "upstream_pr674_exact",
     "upstream_pr674_timed_exact",
     "upstream_pr674_timed_nocompile_exact",
+    "upstream_pr753_exact",
+    "upstream_pr753_timed_exact",
+    "upstream_pr753_timed_nocompile_exact",
     "upstream_pr700_exact",
     "upstream_pr700_timed_exact",
     "upstream_pr700_timed_nocompile_exact",
@@ -162,6 +168,9 @@ NGRAM_ORDER = [
     "record674_hedge",
     "record674_proxy7185",
     "record674_hedge_proxy7185",
+    "record753_smoke",
+    "record753",
+    "record753_proxy7185",
     "record688_mixer5_smoke",
     "record688_mixer5_eta05_smoke",
     "record688_mixer5_eta20_smoke",
@@ -269,6 +278,9 @@ NGRAM_LOG_NAMES = {
     "record674_hedge": "h200_artifact_ngram_record674_hedge.txt",
     "record674_proxy7185": "h200_artifact_ngram_record674_h100proxy7185_seed1337.txt",
     "record674_hedge_proxy7185": "h200_artifact_ngram_record674_hedge_h100proxy7185_seed1337.txt",
+    "record753_smoke": "h200_artifact_ngram_record753_smoke.txt",
+    "record753": "h200_artifact_ngram_record753.txt",
+    "record753_proxy7185": "h200_artifact_ngram_record753_h100proxy7185_seed1337.txt",
     "record688_mixer5_smoke": "h200_artifact_ngram_record688_mixer5_smoke.txt",
     "record688_mixer5_eta05_smoke": "h200_artifact_ngram_record688_mixer5_eta05_smoke.txt",
     "record688_mixer5_eta20_smoke": "h200_artifact_ngram_record688_mixer5_eta20_smoke.txt",
@@ -386,6 +398,12 @@ def proxy_log_path(log_dir: Path, arch_candidate: str, ttt_candidate: str, seed:
         return log_dir / f"h200_upstream_pr688_proxy600_timed_seed{seed}.txt"
     if arch_candidate == "upstream_pr688_timed_nocompile_exact":
         return log_dir / f"h200_upstream_pr688_proxy600_timed_nocompile_seed{seed}.txt"
+    if arch_candidate == "upstream_pr753_exact":
+        return log_dir / f"h200_upstream_pr753_proxy600_seed{seed}.txt"
+    if arch_candidate == "upstream_pr753_timed_exact":
+        return log_dir / f"h200_upstream_pr753_proxy600_timed_seed{seed}.txt"
+    if arch_candidate == "upstream_pr753_timed_nocompile_exact":
+        return log_dir / f"h200_upstream_pr753_proxy600_timed_nocompile_seed{seed}.txt"
     if arch_candidate == "upstream_pr700_exact":
         return log_dir / f"h200_upstream_pr700_proxy600_seed{seed}.txt"
     if arch_candidate == "upstream_pr700_timed_exact":
@@ -653,6 +671,12 @@ def h100_command(root_dir: Path, arch_candidate: str, ttt_candidate: str, seed: 
         return f"TIMED_MODE=1 SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr688_exact.sh'}"
     if arch_candidate == "upstream_pr688_timed_nocompile_exact":
         return f"TIMED_MODE=1 COMPILE_ENABLED=0 SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr688_exact.sh'}"
+    if arch_candidate == "upstream_pr753_exact":
+        return f"SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr753_exact.sh'}"
+    if arch_candidate == "upstream_pr753_timed_exact":
+        return f"TIMED_MODE=1 SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr753_exact.sh'}"
+    if arch_candidate == "upstream_pr753_timed_nocompile_exact":
+        return f"TIMED_MODE=1 COMPILE_ENABLED=0 SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr753_exact.sh'}"
     if arch_candidate == "upstream_pr700_exact":
         return f"SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr700_exact.sh'}"
     if arch_candidate == "upstream_pr700_timed_exact":
@@ -820,6 +844,12 @@ def h100_three_seed_command(root_dir: Path, arch_candidate: str, ttt_candidate: 
         return f"TIMED_MODE=1 bash {root_dir / 'scripts/h100_upstream_pr688_exact_3seed.sh'}"
     if arch_candidate == "upstream_pr688_timed_nocompile_exact":
         return f"TIMED_MODE=1 COMPILE_ENABLED=0 bash {root_dir / 'scripts/h100_upstream_pr688_exact_3seed.sh'}"
+    if arch_candidate == "upstream_pr753_exact":
+        return f"bash {root_dir / 'scripts/h100_upstream_pr753_exact_3seed.sh'}"
+    if arch_candidate == "upstream_pr753_timed_exact":
+        return f"TIMED_MODE=1 bash {root_dir / 'scripts/h100_upstream_pr753_exact_3seed.sh'}"
+    if arch_candidate == "upstream_pr753_timed_nocompile_exact":
+        return f"TIMED_MODE=1 COMPILE_ENABLED=0 bash {root_dir / 'scripts/h100_upstream_pr753_exact_3seed.sh'}"
     if arch_candidate == "upstream_pr700_exact":
         return f"bash {root_dir / 'scripts/h100_upstream_pr700_exact_3seed.sh'}"
     if arch_candidate == "upstream_pr700_timed_exact":
@@ -1021,7 +1051,7 @@ def build_status(root_dir: Path, seed: int) -> dict[str, object]:
     for candidate in NGRAM_ORDER:
         extra_log_paths = (
             (proxy_log_path(log_dir, "baseline", "baseline", seed),)
-            if candidate in {"record659_conf07_proxy7185", "record674_proxy7185"}
+            if candidate in {"record659_conf07_proxy7185", "record674_proxy7185", "record753_proxy7185"}
             else (recovered_train_log,)
         )
         result = parse_result(
@@ -1063,6 +1093,8 @@ def build_status(root_dir: Path, seed: int) -> dict[str, object]:
                 if candidate in {"record659_conf07", "record659_conf07_smoke", "record659_conf07_proxy7185"}
                 else "ngram674"
                 if candidate in {"record674", "record674_smoke", "record674_proxy7185"}
+                else "ngram753"
+                if candidate in {"record753", "record753_smoke", "record753_proxy7185"}
                 else
                 "ngram659"
                 if candidate in {"record659", "record659_smoke", "vr1_record659"}
@@ -1168,7 +1200,8 @@ def build_status(root_dir: Path, seed: int) -> dict[str, object]:
     handoff = None
     if promoted is not None:
         handoff = {
-            "current_public_legal_claim_bpb": CURRENT_PUBLIC_LEGAL_CLAIM_BPB,
+            "current_public_best_open_claim_bpb": CURRENT_PUBLIC_BEST_OPEN_CLAIM_BPB,
+            "current_public_secondary_open_claim_bpb": CURRENT_PUBLIC_SECONDARY_OPEN_CLAIM_BPB,
             "current_public_illegal_frontier_bpb": CURRENT_PUBLIC_ILLEGAL_FRONTIER_BPB,
             "practical_win_gate_bpb": PRACTICAL_WIN_GATE_BPB,
             "winner": promoted,
@@ -1306,14 +1339,18 @@ def main() -> None:
         )
     print()
     print(
-        "Current public legal frontier (2026-03-25): "
-        f"{CURRENT_PUBLIC_LEGAL_CLAIM_BPB:.4f} from {CURRENT_PUBLIC_LEGAL_CLAIM_LABEL}"
+        "Current public best open claim (2026-03-25): "
+        f"{CURRENT_PUBLIC_BEST_OPEN_CLAIM_BPB:.4f} from {CURRENT_PUBLIC_BEST_OPEN_CLAIM_LABEL}"
+    )
+    print(
+        "Current secondary open claim: "
+        f"{CURRENT_PUBLIC_SECONDARY_OPEN_CLAIM_BPB:.4f} from {CURRENT_PUBLIC_SECONDARY_OPEN_CLAIM_LABEL}"
     )
     print(
         "Closed illegal frontier (do not target): "
         f"{CURRENT_PUBLIC_ILLEGAL_FRONTIER_BPB:.4f} from {CURRENT_PUBLIC_ILLEGAL_FRONTIER_LABEL}"
     )
-    print(f"Approx legal record-claim gate (0.005 nat better): <= {PRACTICAL_WIN_GATE_BPB:.4f}")
+    print(f"Approx open-claim gate (0.005 nat better): <= {PRACTICAL_WIN_GATE_BPB:.4f}")
     print(f"Record folder: {status['record_dir']}")
     print("Constraint guardrails")
     print(f"  competition_artifact_cap_bytes={COMPETITION_ARTIFACT_LIMIT_BYTES}")

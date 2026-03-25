@@ -871,6 +871,201 @@ def eval_val_hashed_ngram(
     return val_loss, bits_per_token * tokens_per_byte
 
 
+def eval_val_hashed_backoff_ngram(
+    mod,
+    args,
+    base_model: torch.nn.Module,
+    device: torch.device,
+    val_tokens: torch.Tensor,
+    base_bytes_lut: torch.Tensor,
+    has_leading_space_lut: torch.Tensor,
+    is_boundary_token_lut: torch.Tensor,
+    *,
+    stride: int,
+    batch_seqs: int = 32,
+    eval_seq_len: int | None = None,
+    ngram_lambda: float = 0.30,
+    ngram_max_n: int = 7,
+    ngram_min_order: int = 2,
+    ngram_adaptive_alpha: bool = True,
+    ngram_alpha_min: float = 0.05,
+    ngram_alpha_max: float = 0.60,
+    ngram_entropy_center: float = 4.0,
+    ngram_entropy_scale: float = 2.0,
+    min_count: int = 2,
+    hashed_buckets: int = 4_194_304,
+    max_windows: int = 0,
+    max_seconds: float = 0.0,
+    log=print,
+) -> tuple[float, float]:
+    if ngram_max_n < 2:
+        raise ValueError(f"hashed backoff ngram requires max_n >= 2, got {ngram_max_n}")
+    if hashed_buckets < 1024 or (hashed_buckets & (hashed_buckets - 1)) != 0:
+        raise ValueError(f"hashed_buckets must be a power of two >=1024, got {hashed_buckets}")
+
+    min_order = max(ngram_min_order, 2)
+    max_order = max(ngram_max_n, min_order)
+    seq_len = eval_seq_len or args.train_seq_len
+    total_tokens = val_tokens.numel() - 1
+    window_starts = [ws for ws in range(0, total_tokens, stride) if min(ws + seq_len, total_tokens) - ws >= 1]
+    if max_windows > 0:
+        window_starts = window_starts[:max_windows]
+
+    val_np = val_tokens.cpu().numpy()
+    ctx_tables = {n: np.zeros((hashed_buckets,), dtype=np.uint32) for n in range(min_order, max_order + 1)}
+    full_tables = {n: np.zeros((hashed_buckets,), dtype=np.uint32) for n in range(min_order, max_order + 1)}
+    mask = np.uint64(hashed_buckets - 1)
+    primes = np.array(
+        [
+            np.uint64(36313),
+            np.uint64(27191),
+            np.uint64(51647),
+            np.uint64(81929),
+            np.uint64(131071),
+            np.uint64(174763),
+            np.uint64(233017),
+        ],
+        dtype=np.uint64,
+    )
+
+    loss_sum = torch.zeros((), device=device, dtype=torch.float64)
+    token_count = torch.zeros((), device=device, dtype=torch.float64)
+    byte_count = torch.zeros((), device=device, dtype=torch.float64)
+
+    base_model.eval()
+    compiled_logits = torch.compile(base_model.forward_logits, dynamic=False, fullgraph=True)
+    log(
+        "hashed_backoff_ngram_eval:start "
+        f"stride={stride} alpha={ngram_lambda:.3f} min_order={min_order} max_order={max_order} "
+        f"adaptive={int(ngram_adaptive_alpha)} alpha_min={ngram_alpha_min:.3f} alpha_max={ngram_alpha_max:.3f} "
+        f"ent_center={ngram_entropy_center:.3f} ent_scale={ngram_entropy_scale:.3f} "
+        f"min_count={min_count} buckets={hashed_buckets}"
+    )
+    t0 = time.perf_counter()
+    deadline = (t0 + max_seconds) if max_seconds > 0.0 else None
+    cutoff_hit = False
+
+    for bi in range(0, len(window_starts), batch_seqs):
+        if deadline is not None and time.perf_counter() >= deadline:
+            cutoff_hit = True
+            break
+        batch_ws = window_starts[bi : bi + batch_seqs]
+        bsz = len(batch_ws)
+        x_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
+        y_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
+        wlens: list[int] = []
+        for i, ws in enumerate(batch_ws):
+            end = min(ws + seq_len, total_tokens)
+            wlen = end - ws
+            wlens.append(wlen)
+            chunk = val_tokens[ws : end + 1].to(dtype=torch.int64, device=device)
+            x_batch[i, :wlen] = chunk[:-1]
+            y_batch[i, :wlen] = chunk[1:]
+
+        with torch.no_grad():
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                logits = compiled_logits(x_batch)
+        logits_f = logits.float()
+        nll = F.cross_entropy(
+            logits_f.reshape(-1, logits_f.size(-1)),
+            y_batch.reshape(-1),
+            reduction="none",
+        ).reshape(bsz, seq_len)
+
+        for i, ws in enumerate(batch_ws):
+            wlen = wlens[i]
+            s = 0 if ws == 0 else max(wlen - stride, 0)
+            seg_len = wlen - s
+            if seg_len <= 0:
+                continue
+
+            seg_nll = nll[i, s:wlen].to(torch.float64).cpu().numpy()
+            seg_model_p = np.exp(-seg_nll)
+
+            if ngram_adaptive_alpha:
+                log_probs = F.log_softmax(logits_f[i, s:wlen], dim=-1)
+                probs = log_probs.exp()
+                entropy = -(probs * log_probs).sum(dim=-1).cpu().numpy()
+                sig = 1.0 / (1.0 + np.exp(-ngram_entropy_scale * (entropy - ngram_entropy_center)))
+                per_token_alpha = ngram_alpha_min + (ngram_alpha_max - ngram_alpha_min) * sig
+            else:
+                per_token_alpha = np.full(seg_len, ngram_lambda, dtype=np.float64)
+
+            global_j = np.arange(ws + s + 1, ws + wlen + 1, dtype=np.int64)
+            tgt_np = val_np[global_j].astype(np.uint64)
+            p_ng = np.zeros(seg_len, dtype=np.float64)
+            ng_matched = np.zeros(seg_len, dtype=np.bool_)
+
+            for n in range(max_order, min_order - 1, -1):
+                ctx_width = n - 1
+                valid = (global_j >= ctx_width) & (~ng_matched)
+                if not valid.any():
+                    continue
+                v_idx = np.nonzero(valid)[0]
+                jv = global_j[v_idx]
+                ctx_hash = np.zeros(len(jv), dtype=np.uint64)
+                for k in range(ctx_width):
+                    tok = val_np[jv - (ctx_width - k)].astype(np.uint64)
+                    ctx_hash ^= tok * primes[k % len(primes)]
+                ctx_key = (ctx_hash & mask).astype(np.int64)
+                full_key = ((ctx_hash ^ (tgt_np[v_idx] * primes[ctx_width % len(primes)])) & mask).astype(np.int64)
+                ctx_counts = ctx_tables[n][ctx_key].astype(np.float64)
+                full_counts = full_tables[n][full_key].astype(np.float64)
+                has_data = ctx_counts >= float(min_count)
+                if has_data.any():
+                    p = np.minimum(full_counts, ctx_counts) / np.maximum(ctx_counts, 1.0)
+                    p = np.clip(p, 0.0, 1.0)
+                    hit_idx = v_idx[has_data]
+                    p_ng[hit_idx] = p[has_data]
+                    ng_matched[hit_idx] = True
+
+            if ng_matched.any():
+                mix_idx = np.nonzero(ng_matched)[0]
+                alpha_vec = per_token_alpha[mix_idx]
+                seg_model_p[mix_idx] = (1.0 - alpha_vec) * seg_model_p[mix_idx] + alpha_vec * p_ng[mix_idx]
+
+            seg_nll = -np.log(np.clip(seg_model_p, 1e-12, 1.0))
+
+            for n in range(min_order, max_order + 1):
+                ctx_width = n - 1
+                valid = global_j >= ctx_width
+                if not valid.any():
+                    continue
+                v_idx = np.nonzero(valid)[0]
+                jv = global_j[v_idx]
+                ctx_hash = np.zeros(len(jv), dtype=np.uint64)
+                for k in range(ctx_width):
+                    tok = val_np[jv - (ctx_width - k)].astype(np.uint64)
+                    ctx_hash ^= tok * primes[k % len(primes)]
+                ctx_key = (ctx_hash & mask).astype(np.int64)
+                full_key = ((ctx_hash ^ (tgt_np[v_idx] * primes[ctx_width % len(primes)])) & mask).astype(np.int64)
+                np.add.at(ctx_tables[n], ctx_key, 1)
+                np.add.at(full_tables[n], full_key, 1)
+
+            scored_nll = torch.from_numpy(seg_nll).to(device=device, dtype=torch.float64)
+            loss_sum += scored_nll.sum()
+            token_count += float(seg_len)
+            tgt = y_batch[i, s:wlen]
+            prev = x_batch[i, s:wlen]
+            tb = base_bytes_lut[tgt].to(torch.float64)
+            tb += (has_leading_space_lut[tgt] & ~is_boundary_token_lut[prev]).to(torch.float64)
+            byte_count += tb.sum()
+
+        if bi % (batch_seqs * 200) == 0 and bi > 0 and token_count.item() > 0:
+            rl = loss_sum.item() / token_count.item()
+            rb = (rl / math.log(2.0)) * (token_count.item() / max(byte_count.item(), 1))
+            pct = 100.0 * (bi + bsz) / max(len(window_starts), 1)
+            log(f"  hashed_backoff [{pct:5.1f}%] bpb={rb:.6f} order={max_order} min_order={min_order}")
+
+    val_loss = (loss_sum / token_count).item()
+    bits_per_token = val_loss / math.log(2.0)
+    tokens_per_byte = token_count.item() / byte_count.item()
+    if cutoff_hit:
+        elapsed = time.perf_counter() - t0
+        log(f"hashed_backoff_ngram_eval:cutoff max_seconds={max_seconds:.1f} elapsed={elapsed:.1f}s")
+    return val_loss, bits_per_token * tokens_per_byte
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Evaluate a saved artifact with backward-looking n-gram cache mixing.")
     parser.add_argument("--run-dir", type=Path, required=True)
@@ -896,8 +1091,15 @@ def main() -> None:
     parser.add_argument("--ngram-adapt-decay", type=float, default=0.001)
     parser.add_argument("--ngram-adapt-last-n-blocks", type=int, default=3)
     parser.add_argument("--packed-cache", action="store_true")
-    parser.add_argument("--cache-kind", choices=["exact", "hashed", "mixer5"], default="exact")
+    parser.add_argument("--cache-kind", choices=["exact", "hashed", "hashed_backoff", "mixer5"], default="exact")
     parser.add_argument("--hashed-buckets", type=int, default=4_194_304)
+    parser.add_argument("--ngram-min-order", type=int, default=2)
+    parser.add_argument("--ngram-adaptive-alpha", action="store_true")
+    parser.add_argument("--ngram-alpha-min", type=float, default=0.05)
+    parser.add_argument("--ngram-alpha-max", type=float, default=0.60)
+    parser.add_argument("--ngram-entropy-center", type=float, default=4.0)
+    parser.add_argument("--ngram-entropy-scale", type=float, default=2.0)
+    parser.add_argument("--ngram-max-seconds", type=float, default=0.0)
     parser.add_argument("--hedge-enabled", action="store_true")
     parser.add_argument("--hedge-eta", type=float, default=0.10)
     parser.add_argument("--hedge-neural-bias", type=float, default=2.0)
@@ -969,6 +1171,13 @@ def main() -> None:
                 "packed_cache": int(args_ns.packed_cache),
                 "cache_kind": args_ns.cache_kind,
                 "hashed_buckets": args_ns.hashed_buckets,
+                "ngram_min_order": args_ns.ngram_min_order,
+                "ngram_adaptive_alpha": int(args_ns.ngram_adaptive_alpha),
+                "ngram_alpha_min": args_ns.ngram_alpha_min,
+                "ngram_alpha_max": args_ns.ngram_alpha_max,
+                "ngram_entropy_center": args_ns.ngram_entropy_center,
+                "ngram_entropy_scale": args_ns.ngram_entropy_scale,
+                "ngram_max_seconds": args_ns.ngram_max_seconds,
                 "hedge_enabled": int(args_ns.hedge_enabled),
                 "hedge_eta": args_ns.hedge_eta,
                 "hedge_neural_bias": args_ns.hedge_neural_bias,
@@ -1023,6 +1232,33 @@ def main() -> None:
             hedge_enabled=args_ns.hedge_enabled,
             hedge_eta=args_ns.hedge_eta,
             hedge_neural_bias=args_ns.hedge_neural_bias,
+            log=log,
+        )
+    elif args_ns.cache_kind == "hashed_backoff":
+        val_loss, val_bpb = eval_val_hashed_backoff_ngram(
+            mod,
+            args,
+            eval_model,
+            device,
+            val_tokens,
+            base_bytes_lut,
+            has_leading_space_lut,
+            is_boundary_token_lut,
+            stride=args_ns.stride,
+            batch_seqs=args_ns.batch_seqs,
+            eval_seq_len=effective_eval_seq_len,
+            ngram_lambda=args_ns.ngram_lambda,
+            ngram_max_n=args_ns.ngram_max_n,
+            ngram_min_order=args_ns.ngram_min_order,
+            ngram_adaptive_alpha=args_ns.ngram_adaptive_alpha,
+            ngram_alpha_min=args_ns.ngram_alpha_min,
+            ngram_alpha_max=args_ns.ngram_alpha_max,
+            ngram_entropy_center=args_ns.ngram_entropy_center,
+            ngram_entropy_scale=args_ns.ngram_entropy_scale,
+            min_count=args_ns.min_count,
+            hashed_buckets=args_ns.hashed_buckets,
+            max_windows=args_ns.max_windows,
+            max_seconds=args_ns.ngram_max_seconds,
             log=log,
         )
     elif args_ns.cache_kind == "mixer5":
@@ -1081,7 +1317,7 @@ def main() -> None:
     elapsed_ms = 1000.0 * (time.perf_counter() - t0)
     log(f"final_ngram_eval val_loss:{val_loss:.4f} val_bpb:{val_bpb:.4f} stride:{args_ns.stride} eval_time:{elapsed_ms:.0f}ms")
     log(f"final_ngram_eval_exact val_loss:{val_loss:.8f} val_bpb:{val_bpb:.8f}")
-    if args_ns.cache_kind == "hashed":
+    if args_ns.cache_kind in {"hashed", "hashed_backoff"}:
         log(
             f"final_int6_sliding_window_ngram{args_ns.ngram_max_n} val_loss:{val_loss:.4f} "
             f"val_bpb:{val_bpb:.4f} eval_time:{elapsed_ms:.0f}ms"

@@ -34,6 +34,13 @@ TEMPLATE_PATH="${TEMPLATE_PATH:-}"
 TRAIN_GPT_PATH="${TRAIN_GPT_PATH:-}"
 CACHE_KIND="${CACHE_KIND:-exact}"
 HASHED_BUCKETS="${HASHED_BUCKETS:-4194304}"
+NGRAM_MIN_ORDER="${NGRAM_MIN_ORDER:-2}"
+NGRAM_ADAPTIVE_ALPHA="${NGRAM_ADAPTIVE_ALPHA:-0}"
+NGRAM_ALPHA_MIN="${NGRAM_ALPHA_MIN:-0.05}"
+NGRAM_ALPHA_MAX="${NGRAM_ALPHA_MAX:-0.60}"
+NGRAM_ENTROPY_CENTER="${NGRAM_ENTROPY_CENTER:-4.0}"
+NGRAM_ENTROPY_SCALE="${NGRAM_ENTROPY_SCALE:-2.0}"
+NGRAM_MAX_SECONDS="${NGRAM_MAX_SECONDS:-0.0}"
 HEDGE_ENABLED="${HEDGE_ENABLED:-0}"
 HEDGE_ETA="${HEDGE_ETA:-0.10}"
 HEDGE_NEURAL_BIAS="${HEDGE_NEURAL_BIAS:-2.0}"
@@ -354,6 +361,49 @@ case "$CANDIDATE" in
     HEDGE_ENABLED="1"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record674_hedge_h100proxy7185_seed1337.txt}"
     ;;
+  record753_smoke)
+    STRIDE="64"
+    NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.30}"
+    NGRAM_MAX_N="${NGRAM_MAX_N:-7}"
+    NGRAM_MIN_ORDER="${NGRAM_MIN_ORDER:-2}"
+    MIN_COUNT="${MIN_COUNT:-2}"
+    CACHE_KIND="hashed_backoff"
+    NGRAM_ADAPTIVE_ALPHA="1"
+    NGRAM_ALPHA_MIN="${NGRAM_ALPHA_MIN:-0.05}"
+    NGRAM_ALPHA_MAX="${NGRAM_ALPHA_MAX:-0.60}"
+    NGRAM_ENTROPY_CENTER="${NGRAM_ENTROPY_CENTER:-4.0}"
+    NGRAM_ENTROPY_SCALE="${NGRAM_ENTROPY_SCALE:-2.0}"
+    MAX_WINDOWS="128"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record753_smoke.txt}"
+    ;;
+  record753)
+    STRIDE="64"
+    NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.30}"
+    NGRAM_MAX_N="${NGRAM_MAX_N:-7}"
+    NGRAM_MIN_ORDER="${NGRAM_MIN_ORDER:-2}"
+    MIN_COUNT="${MIN_COUNT:-2}"
+    CACHE_KIND="hashed_backoff"
+    NGRAM_ADAPTIVE_ALPHA="1"
+    NGRAM_ALPHA_MIN="${NGRAM_ALPHA_MIN:-0.05}"
+    NGRAM_ALPHA_MAX="${NGRAM_ALPHA_MAX:-0.60}"
+    NGRAM_ENTROPY_CENTER="${NGRAM_ENTROPY_CENTER:-4.0}"
+    NGRAM_ENTROPY_SCALE="${NGRAM_ENTROPY_SCALE:-2.0}"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record753.txt}"
+    ;;
+  record753_proxy7185)
+    STRIDE="64"
+    NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.30}"
+    NGRAM_MAX_N="${NGRAM_MAX_N:-7}"
+    NGRAM_MIN_ORDER="${NGRAM_MIN_ORDER:-2}"
+    MIN_COUNT="${MIN_COUNT:-2}"
+    CACHE_KIND="hashed_backoff"
+    NGRAM_ADAPTIVE_ALPHA="1"
+    NGRAM_ALPHA_MIN="${NGRAM_ALPHA_MIN:-0.05}"
+    NGRAM_ALPHA_MAX="${NGRAM_ALPHA_MAX:-0.60}"
+    NGRAM_ENTROPY_CENTER="${NGRAM_ENTROPY_CENTER:-4.0}"
+    NGRAM_ENTROPY_SCALE="${NGRAM_ENTROPY_SCALE:-2.0}"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record753_h100proxy7185_seed1337.txt}"
+    ;;
   record688_mixer5_smoke)
     STRIDE="32"
     CACHE_KIND="mixer5"
@@ -508,6 +558,12 @@ args=(
   --apply-mode "$APPLY_MODE"
   --cache-kind "$CACHE_KIND"
   --hashed-buckets "$HASHED_BUCKETS"
+  --ngram-min-order "$NGRAM_MIN_ORDER"
+  --ngram-alpha-min "$NGRAM_ALPHA_MIN"
+  --ngram-alpha-max "$NGRAM_ALPHA_MAX"
+  --ngram-entropy-center "$NGRAM_ENTROPY_CENTER"
+  --ngram-entropy-scale "$NGRAM_ENTROPY_SCALE"
+  --ngram-max-seconds "$NGRAM_MAX_SECONDS"
   --hedge-eta "$HEDGE_ETA"
   --hedge-neural-bias "$HEDGE_NEURAL_BIAS"
   --mixer-eta "$MIXER_ETA"
@@ -531,6 +587,9 @@ if [[ "$HEDGE_ENABLED" == "1" ]]; then
 fi
 if [[ "$PACKED_CACHE" == "1" ]]; then
   args+=(--packed-cache)
+fi
+if [[ "$NGRAM_ADAPTIVE_ALPHA" == "1" ]]; then
+  args+=(--ngram-adaptive-alpha)
 fi
 if [[ -n "$ARTIFACT_PATH" ]]; then
   args+=(--artifact-path "$ARTIFACT_PATH")
