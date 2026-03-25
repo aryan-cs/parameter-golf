@@ -84,15 +84,6 @@ TARGET_RUN_ID="h200_upstream_pr674_enhattn_crownq_mixer5_proxy7185_timed_nocompi
 TARGET_SEED="$SEED" \
 TARGET_ENV_ASSIGNMENTS="TIMED_MODE=1 COMPILE_ENABLED=0" \
 TARGET_SKIP_IF_LOG_EXISTS="1" \
-NEXT_WAIT_LOG="$UPSTREAM_PR674_ENHATTN_CROWNQ_MIXER5_TIMED_NOCOMPILE_LOG" \
-NEXT_WAIT_PATTERN="$UPSTREAM_WAIT_PATTERN" \
-NEXT_TARGET_LABEL="upstream_pr674_crownq_timed_nocompile_exact" \
-NEXT_TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr674_crownq_proxy.sh" \
-NEXT_LOG_PATH="$UPSTREAM_PR674_CROWNQ_TIMED_NOCOMPILE_LOG" \
-NEXT_TARGET_RUN_ID="h200_upstream_pr674_crownq_proxy7185_timed_nocompile_seed${SEED}" \
-NEXT_TARGET_SEED="$SEED" \
-NEXT_TARGET_ENV_ASSIGNMENTS="TIMED_MODE=1 COMPILE_ENABLED=0" \
-NEXT_TARGET_SKIP_IF_LOG_EXISTS="1" \
 setsid bash "$ROOT_DIR/scripts/after_log_launch_script.sh" >/tmp/h200_after_upstream_pr674_enhattn_mixer5_launch_upstream_pr674_enhattn_crownq_mixer5_timed_nocompile.log 2>&1 < /dev/null &
 
 WAIT_LOG="$UPSTREAM_PR674_ENHATTN_CROWNQ_MIXER5_TIMED_NOCOMPILE_LOG" \

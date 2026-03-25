@@ -4057,3 +4057,21 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Decision:
   - Keep the live exact-upstream PR-`#674` timed `nocompile` lane untouched.
   - Treat `pr674_enhattn_crownq_mixer5` as the strongest all-in clean exact-upstream budget hedge we currently have staged behind it.
+
+- Timestamp: 2026-03-25 08:42 UTC
+- Commit: uncommitted
+- Lane: exact-upstream queue hygiene
+- Objective: Remove a duplicated downstream branch in the timed `nocompile` watcher tail so the new all-in exact-upstream hedge does not race with the older crownq/hedgemix tail and waste H200 time.
+- Command or config:
+  - Updated [rearm_after_current_timed_nocompile_with_hedge.sh](/home/aryang9/parameter-golf/scripts/rearm_after_current_timed_nocompile_with_hedge.sh)
+  - The effective downstream order is now strictly linear:
+    - `... -> pr674_mixer5 -> pr674_enhattn_mixer5 -> pr674_enhattn_crownq_mixer5 -> pr674_hedgemix -> pr674_crownq -> pr674_crownq_mixer5`
+  - Verified with:
+    - `bash -n scripts/rearm_after_current_timed_nocompile_with_hedge.sh`
+    - rearming the watcher chain
+- Result:
+  - New watcher PIDs were spawned cleanly after rearm.
+  - The queue helper now matches the intended order documented above instead of trying to schedule `pr674_crownq` from two different parents.
+- Decision:
+  - Keep the current live head lane untouched.
+  - Preserve the linear queue order so the next free H200 slots are spent on the strongest compounds first instead of duplicated tails.
