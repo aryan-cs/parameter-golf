@@ -13,6 +13,14 @@ CURRENT_PUBLIC_SOTA_BPB = 1.0781
 RECORD_DELTA_NAT = 0.005
 APPROX_BPB_PER_NAT = 0.5923
 PRACTICAL_WIN_GATE_BPB = CURRENT_PUBLIC_SOTA_BPB - RECORD_DELTA_NAT * APPROX_BPB_PER_NAT
+COMPETITION_ARTIFACT_LIMIT_BYTES = 16_000_000
+COMPETITION_TRAIN_LIMIT_SECONDS = 600
+COMPETITION_EVAL_LIMIT_SECONDS = 600
+H100_PROXY_REFERENCE_STEPS = 7185
+H100_PROXY_REFERENCE_STEP_AVG_MS = 83.4
+H200_PROXY_STEP_AVG_MS = 765.97
+H200_PROXY_TRAIN_LIMIT_MS = 5_503_469
+H200_PROXY_TRAIN_LIMIT_SECONDS = H200_PROXY_TRAIN_LIMIT_MS / 1000.0
 RECORD_DIR_REL = Path("records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback")
 
 ARTIFACT_ORDER = [
@@ -42,15 +50,24 @@ NGRAM_ORDER = [
     "record659_conf06",
     "record659_conf07_smoke",
     "record659_conf07",
+    "record659_cool_conf07_smoke",
+    "record659_cool_conf07",
+    "record659_cool_conf07_min4_smoke",
+    "record659_cool_conf07_min4",
     "record659_conf08_smoke",
     "record659_conf08",
     "record659_conf07_min4_smoke",
+    "record659_conf07_min4",
     "record659_conf07_min5_smoke",
+    "record659_conf07_min5",
     "record659_tgate30_smoke",
     "record659_tgate40_smoke",
     "record659_tgate40_min4_smoke",
+    "record659_tgate40_min4",
     "record659_lam20_conf07_smoke",
+    "record659_lam20_conf07",
     "record659_lam20_conf08_smoke",
+    "record659_lam20_conf08",
     "record659_warm_conf07_smoke",
     "record659_warm_conf07",
     "record659_orderlam_smoke",
@@ -109,15 +126,24 @@ NGRAM_LOG_NAMES = {
     "record659_conf06_smoke": "h200_artifact_ngram_record659_conf06_smoke.txt",
     "record659_conf07": "h200_artifact_ngram_record659_conf07.txt",
     "record659_conf07_smoke": "h200_artifact_ngram_record659_conf07_smoke.txt",
+    "record659_cool_conf07": "h200_artifact_ngram_record659_cool_conf07.txt",
+    "record659_cool_conf07_smoke": "h200_artifact_ngram_record659_cool_conf07_smoke.txt",
+    "record659_cool_conf07_min4": "h200_artifact_ngram_record659_cool_conf07_min4.txt",
+    "record659_cool_conf07_min4_smoke": "h200_artifact_ngram_record659_cool_conf07_min4_smoke.txt",
     "record659_conf08": "h200_artifact_ngram_record659_conf08.txt",
     "record659_conf08_smoke": "h200_artifact_ngram_record659_conf08_smoke.txt",
     "record659_conf07_min4_smoke": "h200_artifact_ngram_record659_conf07_min4_smoke.txt",
+    "record659_conf07_min4": "h200_artifact_ngram_record659_conf07_min4.txt",
     "record659_conf07_min5_smoke": "h200_artifact_ngram_record659_conf07_min5_smoke.txt",
+    "record659_conf07_min5": "h200_artifact_ngram_record659_conf07_min5.txt",
     "record659_tgate30_smoke": "h200_artifact_ngram_record659_tgate30_smoke.txt",
     "record659_tgate40_smoke": "h200_artifact_ngram_record659_tgate40_smoke.txt",
     "record659_tgate40_min4_smoke": "h200_artifact_ngram_record659_tgate40_min4_smoke.txt",
+    "record659_tgate40_min4": "h200_artifact_ngram_record659_tgate40_min4.txt",
     "record659_lam20_conf07_smoke": "h200_artifact_ngram_record659_lam20_conf07_smoke.txt",
+    "record659_lam20_conf07": "h200_artifact_ngram_record659_lam20_conf07.txt",
     "record659_lam20_conf08_smoke": "h200_artifact_ngram_record659_lam20_conf08_smoke.txt",
+    "record659_lam20_conf08": "h200_artifact_ngram_record659_lam20_conf08.txt",
     "record659_warm_conf07": "h200_artifact_ngram_record659_warm_conf07.txt",
     "record659_warm_conf07_smoke": "h200_artifact_ngram_record659_warm_conf07_smoke.txt",
     "record659_orderlam": "h200_artifact_ngram_record659_orderlam.txt",
@@ -228,6 +254,8 @@ def parse_result(
         "last_step": None,
         "last_train_time_ms": None,
         "last_step_avg_ms": None,
+        "artifact_cap_pass": None,
+        "h200_dev_train_cap_pass": None,
     }
     existing_log_paths = [path for path in (log_path, *extra_log_paths) if path.exists()]
     if not existing_log_paths:
@@ -272,6 +300,15 @@ def parse_result(
     submission_metric = result.get("submission_metric")
     if isinstance(submission_metric, str):
         result["submission_eval_time_ms"] = metric_eval_times.get(submission_metric)
+    bytes_total = result.get("bytes_total")
+    if isinstance(bytes_total, int):
+        result["artifact_cap_pass"] = bytes_total <= COMPETITION_ARTIFACT_LIMIT_BYTES
+    train_time_ms = result.get("last_train_time_ms")
+    last_step = result.get("last_step")
+    if isinstance(train_time_ms, int) and isinstance(last_step, int):
+        result["h200_dev_train_cap_pass"] = (
+            train_time_ms <= H200_PROXY_TRAIN_LIMIT_MS and last_step <= H100_PROXY_REFERENCE_STEPS
+        )
     result["completed"] = result["submission_val_bpb"] is not None
     return result
 
@@ -536,11 +573,26 @@ def print_ranked(title: str, results: list[dict[str, object]], *, secondary_key:
         return
     for result in results:
         metric_name = result.get("submission_metric")
+        extras: list[str] = []
+        if result.get("last_train_time_ms") is not None:
+            extras.append(f"train_ms={result.get('last_train_time_ms')}")
+        if result.get("h200_dev_train_cap_pass") is not None:
+            extras.append(
+                "h200_dev_train_cap="
+                + ("ok" if bool(result.get("h200_dev_train_cap_pass")) else "fail")
+            )
+        if result.get("artifact_cap_pass") is not None:
+            extras.append(
+                "artifact_cap="
+                + ("ok" if bool(result.get("artifact_cap_pass")) else "fail")
+            )
+        extras_text = (" ".join(extras) + " ") if extras else ""
         print(
             "  "
             f"{result['label']}: {metric_name}={result.get('submission_val_bpb')} "
             f"{secondary_key}={result.get(secondary_key)} "
             f"bytes={result.get('bytes_total')} "
+            f"{extras_text}"
             f"log={result.get('log_path')}"
         )
 
@@ -603,6 +655,16 @@ def main() -> None:
     print(f"Current public SOTA (2026-03-25): {CURRENT_PUBLIC_SOTA_BPB:.4f}")
     print(f"Approx record-claim gate (0.005 nat better): <= {PRACTICAL_WIN_GATE_BPB:.4f}")
     print(f"Record folder: {status['record_dir']}")
+    print("Constraint guardrails")
+    print(f"  competition_artifact_cap_bytes={COMPETITION_ARTIFACT_LIMIT_BYTES}")
+    print(f"  competition_train_cap_seconds={COMPETITION_TRAIN_LIMIT_SECONDS}")
+    print(f"  competition_eval_cap_seconds={COMPETITION_EVAL_LIMIT_SECONDS}")
+    print(
+        "  "
+        f"h200_dev_train_proxy_cap={H200_PROXY_TRAIN_LIMIT_MS}ms "
+        f"(~{H200_PROXY_TRAIN_LIMIT_SECONDS / 60.0:.1f} min) "
+        f"at <= {H100_PROXY_REFERENCE_STEPS} steps"
+    )
     print()
     handoff = status.get("handoff")
     if handoff is None:

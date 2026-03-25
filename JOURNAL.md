@@ -2539,3 +2539,34 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
     - then `record659_adamw30ep_cosine_lr3e4_smoke`
     - then `record659_adamw12ep_cosine_smoke`
   - If one of those smokes wins clearly, promote the matching full candidate ahead of the older late-2 hybrid lane.
+
+- Timestamp: 2026-03-25 04:25 UTC
+- Commit: `working tree`
+- Lane: H200 dev-budget guardrails
+- Objective: Turn the empirical `1xH200` vs `8xH100` training conversion into an explicit repo-wide testing limit so future H200 training runs stay inside challenge-shaped constraints by default.
+- Math / calibration:
+  - Public `8xH100` lane anchor: about `7,185` steps in `600s` at `~83.4ms/step`.
+  - Local `1xH200` proxy anchor: the matching `7,185`-step proxy took `5,503,469ms` at `~765.97ms/step`.
+  - Working dev-side proxy for the challenge train cap:
+    - `<= 7,185` steps
+    - `<= 5,503,469ms` on `1xH200` (`~91.7 min`)
+- Code / ops:
+  - Added shared guardrail constants and helpers in `scripts/h200_proxy_budget.sh`.
+  - Updated `scripts/icrn_h200_ttt_recordstack.sh` to:
+    - default to the H200 proxy wallclock cap
+    - refuse out-of-budget train launches unless `ALLOW_OUT_OF_BUDGET_DEV_RUN=1`
+    - print the active H200 proxy budget at launch
+  - Updated `scripts/icrn_h200_ttt_h100_proxy.sh` to use the same shared proxy cap.
+  - Updated `scripts/record_push_status.py` to print:
+    - competition byte/train/eval caps
+    - the converted H200 dev-side train cap
+    - per-result pass/fail flags for artifact bytes and the H200 dev-side train budget
+  - Documented the guardrail in:
+    - top-level `README.md`
+    - `records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/README.md`
+- Decision:
+  - H200 training tests should now be considered invalid for promotion if they exceed the proxy train cap unless they are explicitly marked as intentional unconstrained runs.
+  - We still use actual challenge caps for bytes and final `8xH100` acceptance, but we stop pretending long unconstrained H200 training runs are on the main path.
+- Next step:
+  - Keep the live eval queue running.
+  - Use the new `record_push_status.py` output as the default check before promoting any candidate toward `8xH100`.

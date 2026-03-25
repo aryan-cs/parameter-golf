@@ -14,9 +14,12 @@ It is not a mirror of the public challenge repository. The goal here is to keep 
   - `final_int6_sliding_window_exact = 1.11623907`
   - `legal_ttt_exact = 1.11382777`
   - `bytes = 15,860,692`
+- Dev-side train proxy limit on `1xH200 NVL` for the `8xH100` 10-minute cap:
+  - target `<= 7,185` steps
+  - target `<= 5,503,469 ms` (`~91.7 min`)
 - Practical acceptance gate against the current public leader:
   - exact `8xH100` seed-1337 run must clear bytes and time caps
-  - `legal_ttt_exact <= 1.1144`
+  - `legal_ttt_exact <= 1.0751`
   - then the same recipe needs `3` seeds with `p < 0.01`
 
 ## Recommended Workflow
@@ -32,6 +35,8 @@ bash scripts/icrn_h200_record_push.sh report
 ```
 
 When `8xH100` access is available, use the exact command printed by `record_push_status.py`. That is the promoted winner from the H200 search state, plus one fallback if needed.
+
+For H200 training experiments, treat the proxy budget as a hard dev-side guardrail. The launchers now default to that proxy cap and refuse longer unconstrained train runs unless you explicitly set `ALLOW_OUT_OF_BUDGET_DEV_RUN=1`.
 
 ## Repo Map
 
@@ -88,6 +93,12 @@ Run only the H100-step proxy sweep:
 bash scripts/icrn_h200_record_push.sh proxy
 ```
 
+Run a single constraint-fitting H200 training proxy:
+
+```bash
+bash scripts/icrn_h200_ttt_h100_proxy.sh
+```
+
 Launch the promoted exact `8xH100` seed-1337 candidate:
 
 ```bash
@@ -107,6 +118,7 @@ python scripts/prepare_submission_metadata.py LOG_A LOG_B
 - Treat `JOURNAL.md` as the experiment ledger.
 - Prefer adding submission-shaped outputs under `records/` rather than scattering results.
 - Use `scripts/record_push_status.py` as the source of truth for promotion decisions.
+- Keep H200 training tests inside the proxy budget unless an unconstrained run is explicitly intentional.
 - Avoid reopening parked lanes unless the active lane fails on bytes, eval legality, or exact `8xH100` reproduction.
 
 ## Related Docs

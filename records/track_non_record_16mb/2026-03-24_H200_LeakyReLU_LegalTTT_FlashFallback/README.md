@@ -13,6 +13,13 @@ This folder is our ICRN H200 reproduction and submission-prep copy of the public
 
 The `1.11382777` result is leaderboard-worthy numerically against the public `1.1194` score, but it is **not yet an officially valid record** under challenge rules because we still need the required `8xH100` reproduction and significance evidence.
 
+For current H200 development, we now treat the empirical proxy for the `8xH100` 600-second train cap as a hard dev-side guardrail:
+
+- `<= 7,185` steps
+- `<= 5,503,469 ms` on `1xH200 NVL` (`~91.7 min`)
+
+The H200 launchers in `scripts/` default to this proxy budget unless `ALLOW_OUT_OF_BUDGET_DEV_RUN=1` is set intentionally.
+
 ## Results (8×H100 80GB SXM, PyTorch 2.9.1+cu128)
 
 | Seed | step_avg | steps | Pre-TTT bpb | **Post-TTT bpb** | TTT gain | TTT time | Artifact |
