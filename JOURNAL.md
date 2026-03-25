@@ -2795,6 +2795,46 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
   - Compare it against proxy `record659_conf07`.
   - If hashed score-first wins, make that the default first-place candidate family for the eventual `8xH100` handoff.
 
+- Timestamp: 2026-03-25 04:33 UTC
+- Commit: `working tree`
+- Lane: proxy hashed frontier, public refresh
+- Objective: Keep the current proxy run on the highest-upside eval family while also staging a tiny local sweep around the public PR-`#674` settings.
+- Research / observation:
+  - The proxy retrain is still healthy and on-heuristic:
+    - latest observed progress: `step 500/7185`
+    - `train_time = 336,521ms`
+    - `step_avg = 673.04ms`
+    - that remains comfortably inside the `~91.7 min` H200 proxy budget if the average holds
+  - Latest public open-PR refresh still says the eval frontier is PR `#674`:
+    - `1.0461` mean BPB
+    - updated `2026-03-25T03:50:12Z`
+    - recipe: hashed 5-gram score-first interpolation, `alpha=0.20`, `min_count=2`, `buckets=4,194,304`
+  - The freshest architecture-side hedge is PR `#676`:
+    - parameter-neutral SwiGLU swap over LeakyReLU² on the PR-`#549` stack
+    - no final results posted yet, so it is interesting but not yet enough to outrank the current hashed-eval push
+  - PR `#623` remains far weaker (`1.1507`) and `#639` is likewise not competitive against the new public frontier.
+- Code / ops:
+  - Made `record674*` tunable in `scripts/icrn_h200_artifact_ngram_candidate.sh` so the hashed lane can reuse the same candidate while overriding:
+    - `NGRAM_LAMBDA`
+    - `MIN_COUNT`
+    - related log paths
+  - Expanded `scripts/after_proxy_train_run_record674_then_conf07.sh` so the proxy queue is now:
+    - full `record674_proxy7185`
+    - smoke `alpha=0.18`
+    - smoke `alpha=0.22`
+    - smoke `min_count=3`
+    - full proxy `record659_conf07`
+  - Restarted the watcher so the active proxy run picks up that queue.
+- Decision:
+  - Stay on the PR-`#674` family for the current proxy artifact.
+  - Use nearby smokes to test whether our artifact prefers a slightly different alpha/min-count than the public default.
+  - Keep PR `#676` as the next architecture hedge only if the hashed-eval wins still are not enough.
+- Next step:
+  - Let the proxy retrain reach artifact export.
+  - Finish the queued hashed eval sweep on the saved proxy artifact.
+  - If one of the nearby smokes clearly dominates, promote that exact variant to the next full proxy/default handoff.
+  - If the whole hashed family underperforms on the proxy artifact, move immediately to the SwiGLU architecture hedge from PR `#676`.
+
 - Timestamp: 2026-03-25 04:19 UTC
 - Commit: `working tree`
 - Lane: pure n-gram frontier, late-only cooling follow-up
@@ -2845,3 +2885,60 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
     - `record659_latecool_conf07_min4`
     - `record659_adamw30ep_cosine_latecool_smoke`
     - `record659_adamw30ep_cosine_latecool`
+
+- Timestamp: 2026-03-25 04:26 UTC
+- Commit: `working tree`
+- Lane: proxy handoff hardening, PR-`#674` promotion path
+- Objective: Make the newest public frontier semantics first-class in the counted trainer and H100 handoff scripts while the single H200 stays busy on the in-budget proxy retrain.
+- Research / observation:
+  - The proxy retrain is still the only active GPU job, and the latest logged checkpoint is now:
+    - `step:500/7185`
+    - `train_time:336573ms`
+    - `step_avg:673.15ms`
+    - `val_bpb:1.3915`
+  - The export-triggered hashed `record674_proxy7185` watcher is staged correctly behind it; its log has already been initialized with:
+    - `cache_kind=hashed`
+    - `ngram_lambda=0.20`
+    - `min_count=2`
+    - `apply_mode=always`
+  - The status tool still had one nasty bookkeeping bug:
+    - smoke n-gram logs were being merged with the base recovered train log
+    - that let `final_int6_sliding_window_exact` override a real `final_ngram_eval_exact`
+    - so the dashboard was understating what the smoke runs actually did
+- Code / ops:
+  - Added `NGRAM_APPLY_MODE` to the counted trainer path in `records/.../train_gpt.py`, and threaded it through both:
+    - `eval_val_ngram(...)`
+    - `eval_val_sliding_ttt_ngram(...)`
+  - Added PR-`#674` H100 portfolio candidates in `scripts/h100_parallel_candidate_portfolio.sh`:
+    - `ngram674`
+    - `warmup0_ngram674`
+    - `vr1_bg3072_ngram674`
+    - `warmup0_vr1_bg3072_ngram674`
+  - Updated `scripts/h100_repro_leaky_ttt_parallel_muon_ngram659.sh` so the shared launcher exports `NGRAM_APPLY_MODE`.
+  - Added `ngram674` to `scripts/record_push_candidate_lib.sh` so the generic H100 / proxy handoff commands can actually launch the new frontier semantics instead of only naming them.
+  - Added `scripts/after_proxy_train_run_record674_then_conf07.sh` to the repo so the proxy-export watcher mentioned above is now committed, not just running from an untracked file.
+  - Expanded that proxy watcher so after the first full `record674_proxy7185` pass it also runs three tiny hashed smokes on the same saved proxy artifact before `conf07`:
+    - `lambda=0.18`
+    - `lambda=0.22`
+    - `min_count=3`
+  - Fixed `scripts/record_push_status.py` so source-specific sweeps now keep their own metric:
+    - n-gram rows keep `final_ngram_eval_exact`
+    - TTT+ngram rows keep `legal_ttt_ngram_exact`
+    - they no longer inherit the lower base sliding-window score from the recovered train log
+- Validation:
+  - `python -m py_compile records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/train_gpt.py scripts/record_push_status.py`
+  - `bash -n scripts/h100_parallel_candidate_portfolio.sh scripts/h100_repro_leaky_ttt_parallel_muon_ngram659.sh scripts/after_proxy_train_run_record674_then_conf07.sh`
+  - `python scripts/record_push_status.py --seed 1337`
+- Current ranking snapshot:
+  - best completed pure n-gram: `record659_conf07 = 1.08035892`
+  - best completed pure baseline n-gram: `record659 = 1.08590477`
+  - best completed hybrid smoke: `record659_late2_tttlr25_smoke = 1.08872199`
+  - current public frontier tracked locally: `1.0461` from PR `#674`
+- Decision:
+  - Treat PR-`#674` semantics as a first-class handoff lane, not just an H200 side experiment.
+  - Keep the active H200 budget on the proxy retrain until export.
+  - Use the cleaned status tool to compare proxy `record674` vs proxy `conf07` on equal footing as soon as the artifact is written.
+- Next step:
+  - Let the proxy retrain keep running.
+  - Auto-run `record674_proxy7185`, then the tiny `record674` smoke neighbors, then proxy `record659_conf07`.
+  - If hashed `record674` wins on the proxy artifact, move that family to the front of the eventual `8xH100` slate.

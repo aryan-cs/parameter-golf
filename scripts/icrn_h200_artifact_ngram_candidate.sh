@@ -234,28 +234,28 @@ case "$CANDIDATE" in
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_lam20_conf08.txt}"
     ;;
   record674_smoke)
-    NGRAM_LAMBDA="0.20"
-    CONFIDENCE_THRESHOLD="1.0"
-    MIN_COUNT="2"
-    APPLY_MODE="always"
-    CACHE_KIND="hashed"
+    NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.20}"
+    CONFIDENCE_THRESHOLD="${CONFIDENCE_THRESHOLD:-1.0}"
+    MIN_COUNT="${MIN_COUNT:-2}"
+    APPLY_MODE="${APPLY_MODE:-always}"
+    CACHE_KIND="${CACHE_KIND:-hashed}"
     MAX_WINDOWS="128"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record674_smoke.txt}"
     ;;
   record674)
-    NGRAM_LAMBDA="0.20"
-    CONFIDENCE_THRESHOLD="1.0"
-    MIN_COUNT="2"
-    APPLY_MODE="always"
-    CACHE_KIND="hashed"
+    NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.20}"
+    CONFIDENCE_THRESHOLD="${CONFIDENCE_THRESHOLD:-1.0}"
+    MIN_COUNT="${MIN_COUNT:-2}"
+    APPLY_MODE="${APPLY_MODE:-always}"
+    CACHE_KIND="${CACHE_KIND:-hashed}"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record674.txt}"
     ;;
   record674_proxy7185)
-    NGRAM_LAMBDA="0.20"
-    CONFIDENCE_THRESHOLD="1.0"
-    MIN_COUNT="2"
-    APPLY_MODE="always"
-    CACHE_KIND="hashed"
+    NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.20}"
+    CONFIDENCE_THRESHOLD="${CONFIDENCE_THRESHOLD:-1.0}"
+    MIN_COUNT="${MIN_COUNT:-2}"
+    APPLY_MODE="${APPLY_MODE:-always}"
+    CACHE_KIND="${CACHE_KIND:-hashed}"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record674_h100proxy7185_seed1337.txt}"
     ;;
   record659_warm_conf07)
