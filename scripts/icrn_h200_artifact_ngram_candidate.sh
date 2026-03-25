@@ -13,6 +13,7 @@ STRIDE="${STRIDE:-128}"
 NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.15}"
 NGRAM_MAX_N="${NGRAM_MAX_N:-5}"
 CONFIDENCE_THRESHOLD="${CONFIDENCE_THRESHOLD:-0.5}"
+GATE_MODE="${GATE_MODE:-max}"
 MIN_COUNT="${MIN_COUNT:-3}"
 NGRAM_ADAPT_ENABLED="${NGRAM_ADAPT_ENABLED:-0}"
 NGRAM_ADAPT_LR="${NGRAM_ADAPT_LR:-0.0003}"
@@ -61,6 +62,37 @@ case "$CANDIDATE" in
     CONFIDENCE_THRESHOLD="0.8"
     MAX_WINDOWS="128"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_conf08_smoke.txt}"
+    ;;
+  record659_conf07_min4_smoke)
+    CONFIDENCE_THRESHOLD="0.7"
+    MIN_COUNT="4"
+    MAX_WINDOWS="128"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_conf07_min4_smoke.txt}"
+    ;;
+  record659_conf07_min5_smoke)
+    CONFIDENCE_THRESHOLD="0.7"
+    MIN_COUNT="5"
+    MAX_WINDOWS="128"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_conf07_min5_smoke.txt}"
+    ;;
+  record659_tgate30_smoke)
+    GATE_MODE="target"
+    CONFIDENCE_THRESHOLD="0.3"
+    MAX_WINDOWS="128"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_tgate30_smoke.txt}"
+    ;;
+  record659_tgate40_smoke)
+    GATE_MODE="target"
+    CONFIDENCE_THRESHOLD="0.4"
+    MAX_WINDOWS="128"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_tgate40_smoke.txt}"
+    ;;
+  record659_tgate40_min4_smoke)
+    GATE_MODE="target"
+    CONFIDENCE_THRESHOLD="0.4"
+    MIN_COUNT="4"
+    MAX_WINDOWS="128"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_tgate40_min4_smoke.txt}"
     ;;
   record659_lam20_conf07_smoke)
     NGRAM_LAMBDA="0.20"
@@ -183,6 +215,7 @@ exec python scripts/eval_ngram_cache_artifact.py \
   --ngram-lambda "$NGRAM_LAMBDA" \
   --ngram-max-n "$NGRAM_MAX_N" \
   --confidence-threshold "$CONFIDENCE_THRESHOLD" \
+  --gate-mode "$GATE_MODE" \
   --min-count "$MIN_COUNT" \
   --confidence-schedule "$CONFIDENCE_SCHEDULE" \
   --order-lambdas "$ORDER_LAMBDAS" \

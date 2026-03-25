@@ -18,6 +18,13 @@ Run one candidate at a time on the saved winning artifact by setting CANDIDATE:
   CANDIDATE=record659_conf06_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_conf07 bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_conf07_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
+  CANDIDATE=record659_conf08 bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
+  CANDIDATE=record659_conf08_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
+  CANDIDATE=record659_conf07_min4_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
+  CANDIDATE=record659_conf07_min5_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
+  CANDIDATE=record659_tgate30_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
+  CANDIDATE=record659_tgate40_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
+  CANDIDATE=record659_tgate40_min4_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_warm_conf07 bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_warm_conf07_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_orderlam bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
@@ -44,6 +51,13 @@ Candidate meanings:
   record659_conf06_smoke conf=0.6 on first 128 windows only
   record659_conf07 PR #659 lambda with confidence threshold raised to 0.7
   record659_conf07_smoke conf=0.7 on first 128 windows only
+  record659_conf08 PR #659 lambda with confidence threshold raised to 0.8
+  record659_conf08_smoke conf=0.8 on first 128 windows only
+  record659_conf07_min4_smoke conf=0.7 with min_count=4 on first 128 windows only
+  record659_conf07_min5_smoke conf=0.7 with min_count=5 on first 128 windows only
+  record659_tgate30_smoke target-prob gate at 0.3 on first 128 windows only
+  record659_tgate40_smoke target-prob gate at 0.4 on first 128 windows only
+  record659_tgate40_min4_smoke target-prob gate at 0.4 with min_count=4 on first 128 windows only
   record659_warm_conf07 staged confidence: 0.50 -> 0.60 -> 0.70 as cache warms up
   record659_warm_conf07_smoke staged-confidence variant on first 128 windows only
   record659_orderlam order-aware lambda ramp: 2:0.08, 3:0.12, 4:0.17, 5:0.22

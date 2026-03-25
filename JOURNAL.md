@@ -2378,3 +2378,49 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
     - `record659_lam20_conf07_smoke`
     - `record659_lam20_conf08_smoke`
   - Only after that does the queue fall back to the adapt and hybrid branches.
+
+- Timestamp: 2026-03-25 03:29 UTC
+- Commit: `working tree`
+- Lane: `conf07` runtime triage + smarter pure-cache gates
+- Objective: Avoid overfitting to raw BPB alone. Use the H200 to search for pure n-gram variants that preserve or improve the `conf07` quality trend while keeping the eventual `8xH100` eval path realistic.
+- Live result:
+  - Full packed-cache `record659_conf07` is still running.
+  - At `23.8%` progress it was at `1.086747` after `15m24s` wallclock on the single H200 process.
+  - That curve is still materially ahead of the completed `conf05` run at matched checkpoints (roughly `-0.0053 BPB` around the `7-8%` region), so it remains our best live challenger.
+- Finding:
+  - The `conf07` score trend is strong, but the runtime slope is now the real concern. If that slope stays roughly linear, the single-H200 proxy time implies a final exact `8xH100` eval may still be tight or over budget.
+  - That makes a full late-2 hybrid run a poor immediate follow-up, because the smoke data already suggests hybrid eval is slower than pure n-gram while not clearly beating the pure full run on score.
+- Code / ops:
+  - Added a new pure-cache gating lever to both the standalone artifact evaluator and the exact `train_gpt.py` path:
+    - `NGRAM_GATE_MODE=max|target`
+    - `target` mode gates on the model's probability assigned to the true target token instead of the model's top-1 confidence
+  - Added new pure H200 candidates in `scripts/icrn_h200_artifact_ngram_candidate.sh`:
+    - `record659_conf07_min4_smoke`
+    - `record659_conf07_min5_smoke`
+    - `record659_tgate30_smoke`
+    - `record659_tgate40_smoke`
+    - `record659_tgate40_min4_smoke`
+  - Updated `scripts/icrn_h200_artifact_ngram_portfolio.sh` and `scripts/record_push_status.py` to expose and track those challengers.
+  - Revalidated after the edits:
+    - `python -m py_compile scripts/eval_ngram_cache_artifact.py scripts/record_push_status.py records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/train_gpt.py`
+    - `bash -n scripts/icrn_h200_artifact_ngram_candidate.sh scripts/icrn_h200_artifact_ngram_portfolio.sh`
+    - `git diff --check`
+  - Replaced the post-`conf07` automation: instead of running full `record659_late2_tttlr25`, the queue now runs a pure-smoke block first:
+    - `record659_conf08_smoke`
+    - `record659_conf07_min4_smoke`
+    - `record659_conf07_min5_smoke`
+    - `record659_tgate30_smoke`
+    - `record659_tgate40_smoke`
+    - `record659_tgate40_min4_smoke`
+    - `record659_lam20_conf07_smoke`
+    - `record659_lam20_conf08_smoke`
+- Decision:
+  - Keep full `conf07` alive.
+  - Prioritize pure-cache score/time frontier work over full hybrid follow-ups until a pure challenger clearly fails.
+  - The next meaningful question is no longer "can we get lower BPB at any cost?" but "can we beat `record659` while staying plausibly under the exact eval cap?"
+- Next step:
+  - Let live `conf07` continue.
+  - Use the queued pure smokes to test three concrete hypotheses:
+    - `conf08`: more aggressive pure cache may keep improving if packed cache bought enough speed.
+    - `min_count` up: similar quality with fewer low-support lookups may recover budget.
+    - `target` gating: score the tokens where the model is actually wrong, not just uncertain, which may buy better BPB at similar or lower lookup volume.

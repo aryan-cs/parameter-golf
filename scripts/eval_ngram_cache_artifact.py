@@ -212,6 +212,10 @@ def format_order_lambdas(order_lambdas: dict[int, float]) -> str:
     return ",".join(f"{order}:{order_lambdas[order]:.3f}" for order in sorted(order_lambdas))
 
 
+def gate_value_to_log_threshold(gate_threshold: float) -> float:
+    return confidence_to_log_threshold(gate_threshold)
+
+
 def eval_val_ngram(
     mod,
     args,
@@ -228,6 +232,7 @@ def eval_val_ngram(
     ngram_lambda: float = 0.15,
     ngram_max_n: int = 5,
     confidence_threshold: float = 0.5,
+    gate_mode: str = "max",
     min_count: int = 3,
     ngram_adapt_enabled: bool = False,
     ngram_adapt_lr: float = 0.0003,
@@ -277,7 +282,7 @@ def eval_val_ngram(
     log(
         "ngram_eval:start "
         f"stride={stride} lambda={ngram_lambda} max_n={ngram_max_n} "
-        f"confidence_threshold={confidence_threshold} min_count={min_count} "
+        f"confidence_threshold={confidence_threshold} gate_mode={gate_mode} min_count={min_count} "
         f"adapt={int(ngram_adapt_enabled)} packed={int(packed_cache)} "
         f"confidence_schedule={format_confidence_schedule(confidence_schedule)} "
         f"order_lambdas={format_order_lambdas(order_lambdas)}"
@@ -287,7 +292,7 @@ def eval_val_ngram(
         bsz = len(batch_ws)
         batch_progress = bi / max(len(window_starts), 1)
         batch_confidence_threshold = confidence_for_progress(confidence_schedule, batch_progress)
-        log_conf_thresh = confidence_to_log_threshold(batch_confidence_threshold)
+        log_conf_thresh = gate_value_to_log_threshold(batch_confidence_threshold)
         x_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
         y_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
         wlens: list[int] = []
@@ -321,29 +326,31 @@ def eval_val_ngram(
                 uncertain_indices: list[int] = []
                 prev_contexts: list[list[int]] = []
                 targets: list[int] = []
+                target_logps: list[float] = []
                 n_scored = wlen - s
                 for t_off in range(n_scored):
-                    if max_logp_cpu[t_off] > log_conf_thresh:
+                    t_idx = s + t_off
+                    tgt_tok = y_cpu[t_off]
+                    target_lp = float(log_sm[t_off, tgt_tok].item())
+                    gate_lp = max_logp_cpu[t_off] if gate_mode == "max" else target_lp
+                    if gate_lp > log_conf_thresh:
                         ngram_skipped += 1
                         continue
-                    t_idx = s + t_off
                     uncertain_indices.append(t_off)
                     ctx_start = max(0, t_idx - ngram_max_n + 1)
                     prev_contexts.append(x_cpu[ctx_start : t_idx + 1])
-                    targets.append(y_cpu[t_off])
+                    targets.append(tgt_tok)
+                    target_logps.append(target_lp)
 
                 if uncertain_indices:
                     ng_lookups = [ngram.lookup_target(ctx, tgt, min_count=min_count) for ctx, tgt in zip(prev_contexts, targets)]
-                    unc_idx_t = torch.tensor(uncertain_indices, dtype=torch.long, device=log_sm.device)
-                    tgt_t = torch.tensor(targets, dtype=torch.long, device=log_sm.device)
-                    model_logps = log_sm[unc_idx_t, tgt_t].cpu().tolist()
                     for j, t_off in enumerate(uncertain_indices):
                         ng_lookup = ng_lookups[j]
                         if ng_lookup is None:
                             continue
                         ng_lp, ng_order, _ = ng_lookup
                         ngram_attempts += 1
-                        model_lp = model_logps[j]
+                        model_lp = target_logps[j]
                         log_1_minus_lam, log_lam = order_log_lambdas[ng_order]
                         a = log_1_minus_lam + model_lp
                         b = log_lam + ng_lp
@@ -423,6 +430,7 @@ def main() -> None:
     parser.add_argument("--ngram-lambda", type=float, default=0.15)
     parser.add_argument("--ngram-max-n", type=int, default=5)
     parser.add_argument("--confidence-threshold", type=float, default=0.5)
+    parser.add_argument("--gate-mode", choices=["max", "target"], default="max")
     parser.add_argument("--min-count", type=int, default=3)
     parser.add_argument("--ngram-adapt-enabled", action="store_true")
     parser.add_argument("--ngram-adapt-lr", type=float, default=0.0003)
@@ -482,6 +490,7 @@ def main() -> None:
                 "ngram_lambda": args_ns.ngram_lambda,
                 "ngram_max_n": args_ns.ngram_max_n,
                 "confidence_threshold": args_ns.confidence_threshold,
+                "gate_mode": args_ns.gate_mode,
                 "min_count": args_ns.min_count,
                 "ngram_adapt_enabled": int(args_ns.ngram_adapt_enabled),
                 "ngram_adapt_lr": args_ns.ngram_adapt_lr,
@@ -530,6 +539,7 @@ def main() -> None:
         ngram_lambda=args_ns.ngram_lambda,
         ngram_max_n=args_ns.ngram_max_n,
         confidence_threshold=args_ns.confidence_threshold,
+        gate_mode=args_ns.gate_mode,
         min_count=args_ns.min_count,
         ngram_adapt_enabled=args_ns.ngram_adapt_enabled,
         ngram_adapt_lr=args_ns.ngram_adapt_lr,
