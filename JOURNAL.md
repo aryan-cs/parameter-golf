@@ -15,6 +15,15 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 
 ## Entries
 
+- Timestamp: 2026-03-25 19:25 UTC
+- Commit: uncommitted
+- Lane: exact-upstream PR688 / budget fit
+- Objective: Add one true maximum-budget-cut PR688 lane before falling through to the PR674 overlay family.
+- Command or config: Re-checked the latest open PR list directly from the GitHub API (`#696`, `#695`, `#694`, `#693`, `#691`, `#688`) and confirmed nothing newer displaced PR `#688` as the best clean budget-first family. Verified from the actual PR688 trainer that `SKIP_SLIDING=1` only removes the pre-TTT sliding-window pass while leaving final TTT scoring on `final_int6_ttt_exact`. Added `upstream_pr688_timed_nocompile_qttt_light_chunk256_stride64_skipsliding_exact` with `QTTT=1`, `TTT_FREEZE_BLOCKS=3`, `USE_POLYAK=0`, `ADAPTIVE_LR=0`, `TTT_CHUNK_TOKENS=262144`, `EVAL_STRIDE=64`, and `SKIP_SLIDING=1`, plus H200/H100 launchers, status mappings, and queue wiring.
+- Result: The PR688 budget ladder now has a final all-in exact-upstream cut that composes every clean timing lever we currently trust before we spend H200 slots on PR674 overlay compounds.
+- Decision: Keep PR688 as the first exact-upstream family to pressure-test for constraint fit, and use the new `chunk256 + stride64 + skipsliding` lane as the harshest legal budget probe.
+- Next step: Validate the new wrappers and queue, rearm the watcher chain, then let the live PR674 head run continue untouched while the PR688 ladder waits behind it.
+
 - Timestamp: 2026-03-25 06:56 UTC
 - Commit: uncommitted
 - Lane: H200 exact-upstream / constraint fit
@@ -4412,3 +4421,35 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
     - directly before the PR674 timed `nocompile` overlay family
 - Decision:
   - Use the combined `chunk256+stride64` lane as the final exact-PR688 budget extreme before paying the complexity cost of PR674 overlays.
+
+## 2026-03-25 20:52 UTC — Promote SKIP_SLIDING exact PR688 budget cuts
+
+- Commit: uncommitted
+- Lane: exact-upstream PR `#688` timed eval variants
+- Objective: promote the cleanest exact-upstream time cut by removing the pre-TTT sliding window pass entirely.
+- Source:
+  - PR688 trainer code:
+    - `if args.eval_stride > 0 and args.eval_stride < sw_seq_len and not os.environ.get("SKIP_SLIDING")`
+  - Final TTT metric is still logged separately as:
+    - `final_int6_ttt_exact`
+- Finding:
+  - `SKIP_SLIDING=1` avoids the pre-TTT sliding eval without changing the final TTT scoring pass.
+  - This is a stronger budget cut than chunk-size or stride tweaks because it removes an entire eval phase rather than only shrinking it.
+- Command or config:
+  - Added wrappers:
+    - [icrn_h200_upstream_pr688_skipsliding_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr688_skipsliding_proxy.sh)
+    - [h100_upstream_pr688_skipsliding_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr688_skipsliding_exact.sh)
+    - [h100_upstream_pr688_skipsliding_exact_3seed.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr688_skipsliding_exact_3seed.sh)
+    - [icrn_h200_upstream_pr688_qttt_light_skipsliding_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr688_qttt_light_skipsliding_proxy.sh)
+    - [h100_upstream_pr688_qttt_light_skipsliding_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr688_qttt_light_skipsliding_exact.sh)
+    - [h100_upstream_pr688_qttt_light_skipsliding_exact_3seed.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr688_qttt_light_skipsliding_exact_3seed.sh)
+  - New queue intent:
+    - `upstream_pr688_timed_nocompile_skipsliding_exact`
+    - `upstream_pr688_timed_nocompile_exact`
+    - `upstream_pr688_timed_nocompile_qttt_exact`
+    - `upstream_pr688_timed_nocompile_qttt_nopolyak_exact`
+    - `upstream_pr688_timed_nocompile_qttt_light_exact`
+    - `upstream_pr688_timed_nocompile_qttt_light_skipsliding_exact`
+    - then the chunk / stride / chunk+stride PR688 extremes
+- Decision:
+  - Treat `SKIP_SLIDING` as the highest-priority exact PR688 budget cut because it should preserve the final TTT metric path while saving the most eval time cleanly.

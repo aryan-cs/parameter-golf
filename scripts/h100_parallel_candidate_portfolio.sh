@@ -51,6 +51,9 @@ run_candidate() {
     upstream_pr688_timed_nocompile_exact)
       exec env TIMED_MODE=1 COMPILE_ENABLED=0 bash "$ROOT_DIR/scripts/h100_upstream_pr688_exact.sh"
       ;;
+    upstream_pr688_timed_nocompile_skipsliding_exact)
+      exec env TIMED_MODE=1 COMPILE_ENABLED=0 RUN_ID="${RUN_ID:-h100_upstream_pr688_timed_nocompile_skipsliding_seed${SEED:-2045}}" bash "$ROOT_DIR/scripts/h100_upstream_pr688_skipsliding_exact.sh"
+      ;;
     upstream_pr688_timed_nocompile_qttt_exact)
       exec env TIMED_MODE=1 COMPILE_ENABLED=0 RUN_ID="${RUN_ID:-h100_upstream_pr688_timed_nocompile_qttt_seed${SEED:-2045}}" bash "$ROOT_DIR/scripts/h100_upstream_pr688_qttt_exact.sh"
       ;;
@@ -60,6 +63,9 @@ run_candidate() {
     upstream_pr688_timed_nocompile_qttt_light_exact)
       exec env TIMED_MODE=1 COMPILE_ENABLED=0 RUN_ID="${RUN_ID:-h100_upstream_pr688_timed_nocompile_qttt_light_seed${SEED:-2045}}" bash "$ROOT_DIR/scripts/h100_upstream_pr688_qttt_light_exact.sh"
       ;;
+    upstream_pr688_timed_nocompile_qttt_light_skipsliding_exact)
+      exec env TIMED_MODE=1 COMPILE_ENABLED=0 RUN_ID="${RUN_ID:-h100_upstream_pr688_timed_nocompile_qttt_light_skipsliding_seed${SEED:-2045}}" bash "$ROOT_DIR/scripts/h100_upstream_pr688_qttt_light_skipsliding_exact.sh"
+      ;;
     upstream_pr688_timed_nocompile_qttt_light_chunk256_exact)
       exec env TIMED_MODE=1 COMPILE_ENABLED=0 RUN_ID="${RUN_ID:-h100_upstream_pr688_timed_nocompile_qttt_light_chunk256_seed${SEED:-2045}}" bash "$ROOT_DIR/scripts/h100_upstream_pr688_qttt_light_chunk256_exact.sh"
       ;;
@@ -68,6 +74,9 @@ run_candidate() {
       ;;
     upstream_pr688_timed_nocompile_qttt_light_chunk256_stride64_exact)
       exec env TIMED_MODE=1 COMPILE_ENABLED=0 RUN_ID="${RUN_ID:-h100_upstream_pr688_timed_nocompile_qttt_light_chunk256_stride64_seed${SEED:-2045}}" bash "$ROOT_DIR/scripts/h100_upstream_pr688_qttt_light_chunk256_stride64_exact.sh"
+      ;;
+    upstream_pr688_timed_nocompile_qttt_light_chunk256_stride64_skipsliding_exact)
+      exec env TIMED_MODE=1 COMPILE_ENABLED=0 RUN_ID="${RUN_ID:-h100_upstream_pr688_timed_nocompile_qttt_light_chunk256_stride64_skipsliding_seed${SEED:-2045}}" bash "$ROOT_DIR/scripts/h100_upstream_pr688_qttt_light_chunk256_stride64_skipsliding_exact.sh"
       ;;
     upstream_pr674_crownq_exact)
       exec bash "$ROOT_DIR/scripts/h100_upstream_pr674_crownq_exact.sh"
@@ -498,9 +507,11 @@ Run one candidate on each 8xH100 node by setting CANDIDATE:
   CANDIDATE=upstream_pr688_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr688_timed_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr688_timed_nocompile_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=upstream_pr688_timed_nocompile_skipsliding_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr688_timed_nocompile_qttt_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr688_timed_nocompile_qttt_nopolyak_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr688_timed_nocompile_qttt_light_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=upstream_pr688_timed_nocompile_qttt_light_skipsliding_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr688_timed_nocompile_qttt_light_chunk256_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr688_timed_nocompile_qttt_light_stride64_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr688_timed_nocompile_qttt_light_chunk256_stride64_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
@@ -627,12 +638,16 @@ Candidate meanings:
                        exact upstream PR #688 HedgeMixer + legal TTT lane with warmup and periodic validation removed to make the budget path explicit
   upstream_pr688_timed_nocompile_exact
                        timed PR #688 lane with COMPILE_ENABLED=0, giving us a budget-first comparison against the PR674 timed nocompile family
+  upstream_pr688_timed_nocompile_skipsliding_exact
+                       timed PR #688 lane with COMPILE_ENABLED=0 and `SKIP_SLIDING=1`, removing the pre-TTT sliding eval to cut budget with no intended change to final TTT scoring
   upstream_pr688_timed_nocompile_qttt_exact
                        timed PR #688 lane with COMPILE_ENABLED=0 plus QTTT-only adaptation over the last 4 blocks, as a smaller and potentially more quantization-safe TTT hedge
   upstream_pr688_timed_nocompile_qttt_nopolyak_exact
                        timed PR #688 qTTT lane with Polyak averaging disabled, explicitly testing a lower-overhead score path on the exact upstream trainer
   upstream_pr688_timed_nocompile_qttt_light_exact
                        timed PR #688 qTTT lane with only the last 3 blocks adapted and adaptive LR disabled, serving as the leanest exact-upstream PR688 budget hedge
+  upstream_pr688_timed_nocompile_qttt_light_skipsliding_exact
+                       timed PR #688 qTTT light lane with `SKIP_SLIDING=1`, pairing the leanest adaptation recipe with the cleanest exact-upstream eval-time cut
   upstream_pr688_timed_nocompile_qttt_light_chunk256_exact
                        timed PR #688 qTTT light lane with `TTT_CHUNK_TOKENS=262144`, reducing legal adaptation phases to probe the lowest-overhead exact-upstream PR688 path
   upstream_pr688_timed_nocompile_qttt_light_stride64_exact
