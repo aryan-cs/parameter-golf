@@ -25,6 +25,6 @@ NEXT_RECORD674_LAM18_SMOKE_LOG="$LOG_DIR/h200_artifact_ngram_record674_lam18_h10
 NEXT_RECORD674_LAM22_SMOKE_LOG="$LOG_DIR/h200_artifact_ngram_record674_lam22_h100proxy7185_swiglu_seed1337_smoke.txt" \
 NEXT_RECORD674_MIN3_SMOKE_LOG="$LOG_DIR/h200_artifact_ngram_record674_min3_h100proxy7185_swiglu_seed1337_smoke.txt" \
 NEXT_CONF07_LOG="$LOG_DIR/h200_artifact_ngram_record659_conf07_h100proxy7185_swiglu_seed1337.txt" \
-RUN_NEARBY_SMOKES="${RUN_NEARBY_SMOKES:-1}" \
+RUN_NEARBY_SMOKES="${RUN_NEARBY_SMOKES:-0}" \
 RUN_CONF07_TAIL="${RUN_CONF07_TAIL:-0}" \
 bash "$ROOT_DIR/scripts/after_record674_launch_arch.sh"

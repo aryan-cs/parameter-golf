@@ -30,3 +30,4 @@ workbench/
 .sync_commit
 pre_export_model.pt
 records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/final_model.pt
+records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/final_model_*

@@ -15,6 +15,15 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 
 ## Entries
 
+- Timestamp: 2026-03-25 19:27 UTC
+- Commit: uncommitted
+- Lane: h200 queue hygiene / push readiness
+- Objective: Make the repo match the live `record674 -> podracing674 -> swiglu` queue state and keep the local artifact-preservation copies from blocking a clean push.
+- Command or config: Added [after_podracing674_record674_launch_swiglu.sh](/home/aryang9/parameter-golf/scripts/after_podracing674_record674_launch_swiglu.sh) so the `swiglu` proxy waits specifically for the `podracing674` `record674` exact log instead of only the earlier baseline chain. Kept [after_baseline_record674_launch_podracing674_then_swiglu.sh](/home/aryang9/parameter-golf/scripts/after_baseline_record674_launch_podracing674_then_swiglu.sh) defaulting to `RUN_NEARBY_SMOKES=0`, and added a path-specific ignore rule in [.gitignore](/home/aryang9/parameter-golf/.gitignore) so preserved named copies like `final_model_h100proxy7185_seed1337.*` and the already-journaled mismatched `longartifact` pair stay local while the canonical tracked `final_model.int6.ptz` remains versioned.
+- Result: The queue helpers now reflect the actual staged handoff points, the canonical in-budget int6 artifact stays tracked, and the extra named checkpoint copies no longer prevent a clean working tree.
+- Decision: Commit the queue-wrapper cleanup, the ignore rule, and the refreshed canonical artifact together; keep the preserved named copies as local provenance only.
+- Next step: Push `master` so `origin/master` catches up to the current local frontier history.
+
 - Timestamp: 2026-03-25 09:24 UTC
 - Commit: uncommitted
 - Lane: exact-upstream PR688 / queue integrity
