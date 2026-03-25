@@ -30,6 +30,30 @@ run_candidate() {
     warmup0_vr1_bg3072_tttlr25)
       exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_vr1_bg3072_tttlr25.sh"
       ;;
+    ngram659)
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_ngram659.sh"
+      ;;
+    warmup0_ngram659)
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_ngram659.sh"
+      ;;
+    vr1_bg3072_ngram659)
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_vr1_bg3072_ngram659.sh"
+      ;;
+    warmup0_vr1_bg3072_ngram659)
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_vr1_bg3072_ngram659.sh"
+      ;;
+    ngram659_tttlr25)
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_ngram659_tttlr25.sh"
+      ;;
+    warmup0_ngram659_tttlr25)
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_ngram659_tttlr25.sh"
+      ;;
+    vr1_bg3072_ngram659_tttlr25)
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_vr1_bg3072_ngram659_tttlr25.sh"
+      ;;
+    warmup0_vr1_bg3072_ngram659_tttlr25)
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_vr1_bg3072_ngram659_tttlr25.sh"
+      ;;
     *)
       echo "unknown candidate: $candidate" >&2
       exit 1
@@ -54,6 +78,14 @@ Run one candidate on each 8xH100 node by setting CANDIDATE:
   CANDIDATE=vr1_bg3072_tttlr25 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0_vr1_bg3072_tttlr25 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=ngram659 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=warmup0_ngram659 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=vr1_bg3072_ngram659 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=warmup0_vr1_bg3072_ngram659 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=ngram659_tttlr25 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=warmup0_ngram659_tttlr25 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=vr1_bg3072_ngram659_tttlr25 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=warmup0_vr1_bg3072_ngram659_tttlr25 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
 
 Candidate meanings:
   baseline             recovered winning stack
@@ -65,6 +97,18 @@ Candidate meanings:
   warmup0              baseline + WARMUP_STEPS=0 to claw back timed-run headroom
   warmup0_vr1_bg3072_tttlr25
                        combo bet plus WARMUP_STEPS=0 for score and compliance
+  ngram659             PR #659-style 5-gram eval cache with TTT disabled
+  warmup0_ngram659     ngram659 plus WARMUP_STEPS=0 for more timing headroom
+  vr1_bg3072_ngram659  stronger architecture knobs plus PR #659 eval cache
+  warmup0_vr1_bg3072_ngram659
+                       architecture knobs plus PR #659 eval cache plus WARMUP_STEPS=0
+  ngram659_tttlr25     PR #659 eval cache combined with legal score-first TTT
+  warmup0_ngram659_tttlr25
+                       ngram659_tttlr25 plus WARMUP_STEPS=0 for timing headroom
+  vr1_bg3072_ngram659_tttlr25
+                       architecture knobs plus combined PR #659 eval cache and TTT
+  warmup0_vr1_bg3072_ngram659_tttlr25
+                       strongest combo bet with extra timing headroom
 
 For a surviving candidate, rerun the significance seeds with:
 

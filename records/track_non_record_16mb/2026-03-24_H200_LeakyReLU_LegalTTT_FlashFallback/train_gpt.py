@@ -109,6 +109,8 @@ class Hyperparameters:
     ngram_max_n = int(os.environ.get("NGRAM_MAX_N", 5))
     ngram_confidence_threshold = float(os.environ.get("NGRAM_CONFIDENCE_THRESHOLD", 0.5))
     ngram_min_count = int(os.environ.get("NGRAM_MIN_COUNT", 3))
+    ngram_ttt_enabled = bool(int(os.environ.get("NGRAM_TTT_ENABLED", "0")))
+    ngram_ttt_stride = int(os.environ.get("NGRAM_TTT_STRIDE", os.environ.get("EVAL_STRIDE", "64")))
 
 # --- Batched Newton-Schulz orthogonalization ---
 
@@ -1064,6 +1066,31 @@ class OnlineNgramCache:
                 return math.log(cnt / total)
         return None
 
+
+def build_quantized_eval_model(args: Hyperparameters, device: torch.device, deq_state: dict[str, Tensor]) -> nn.Module:
+    eval_model = GPT(
+        vocab_size=args.vocab_size, num_layers=args.num_layers, model_dim=args.model_dim,
+        num_heads=args.num_heads, num_kv_heads=args.num_kv_heads, mlp_mult=args.mlp_mult,
+        tie_embeddings=args.tie_embeddings, tied_embed_init_std=args.tied_embed_init_std,
+        logit_softcap=args.logit_softcap, rope_base=args.rope_base, qk_gain_init=args.qk_gain_init,
+        mtp_num_heads=0, mtp_loss_weight=0.0,
+        bigram_vocab_size=args.bigram_vocab_size, bigram_dim=args.bigram_dim,
+        xsa_last_n=args.xsa_last_n,
+        rope_dims=args.rope_dims, ln_scale=args.ln_scale, dtg=args.dtg_enabled,
+        ve_enabled=args.ve_enabled, ve_dim=args.ve_dim, ve_layers=args.ve_layers,
+        gated_attention=args.gated_attention, value_residual=args.value_residual,
+    ).to(device).bfloat16()
+    eval_model.qo_bank.data = eval_model.qo_bank.data.float()
+    eval_model.kv_bank.data = eval_model.kv_bank.data.float()
+    eval_model.mlp_up_bank.data = eval_model.mlp_up_bank.data.float()
+    eval_model.mlp_down_bank.data = eval_model.mlp_down_bank.data.float()
+    for m in eval_model.modules():
+        if isinstance(m, CastedLinear):
+            m.float()
+    restore_low_dim_params_to_fp32(eval_model)
+    eval_model.load_state_dict(deq_state, strict=True)
+    return eval_model
+
 # --- Sliding window evaluation ---
 
 def eval_val_sliding(
@@ -1435,6 +1462,224 @@ def eval_val_sliding_ttt(
 
     log0(f"ttt_sliding:done val_loss={val_loss:.6f} val_bpb={val_bpb:.6f} "
          f"elapsed={time.perf_counter() - t0:.1f}s")
+    return val_loss, val_bpb
+
+
+def eval_val_sliding_ttt_ngram(
+    args: Hyperparameters, base_model: nn.Module, rank: int, world_size: int,
+    device: torch.device, val_tokens: Tensor, base_bytes_lut: Tensor,
+    has_leading_space_lut: Tensor, is_boundary_token_lut: Tensor,
+    stride: int, batch_seqs: int = 32,
+    ngram_lambda: float = 0.15, ngram_max_n: int = 5,
+    confidence_threshold: float = 0.5, min_count: int = 3, log0=print,
+) -> tuple[float, float]:
+    """Legal score-first TTT with backward-looking n-gram cache during scoring."""
+    seq_len = args.train_seq_len
+    total_tokens = val_tokens.numel() - 1
+    ttt_chunk = args.ttt_chunk_tokens
+    log_conf_thresh = math.log(confidence_threshold) if confidence_threshold < 1.0 else 0.0
+    log_1_minus_lam = math.log(1.0 - ngram_lambda)
+    log_lam = math.log(ngram_lambda)
+
+    window_starts = [ws for ws in range(0, total_tokens, stride)
+                     if min(ws + seq_len, total_tokens) - ws >= stride or ws == 0]
+    num_chunks = (total_tokens + ttt_chunk - 1) // ttt_chunk
+    chunk_windows: list[list[int]] = [[] for _ in range(num_chunks)]
+    for ws in window_starts:
+        end = min(ws + seq_len, total_tokens)
+        wlen = end - ws
+        s = 0 if ws == 0 else max(wlen - stride, 0)
+        scored_start = ws + s
+        ci = min(scored_start // ttt_chunk, num_chunks - 1)
+        chunk_windows[ci].append(ws)
+
+    log0(
+        f"ttt_ngram:start chunks={num_chunks} chunk_tokens={ttt_chunk} "
+        f"total_windows={len(window_starts)} stride={stride} "
+        f"ttt_lr={args.ttt_lr} ttt_epochs={args.ttt_epochs} "
+        f"freeze_blocks={args.ttt_freeze_blocks} "
+        f"ngram_lambda={ngram_lambda} ngram_max_n={ngram_max_n} "
+        f"confidence_threshold={confidence_threshold}"
+    )
+
+    loss_sum = torch.zeros((), device=device, dtype=torch.float64)
+    token_count = torch.zeros((), device=device, dtype=torch.float64)
+    byte_count = torch.zeros((), device=device, dtype=torch.float64)
+    ngram = OnlineNgramCache(args.vocab_size, max_n=ngram_max_n)
+    ngram_improvements = 0
+    ngram_attempts = 0
+    ngram_skipped = 0
+
+    frozen_block_ids = set(range(min(args.ttt_freeze_blocks, len(base_model.blocks))))
+    ttt_params = []
+    for name, p in base_model.named_parameters():
+        freeze = any(f"blocks.{bi}." in name for bi in frozen_block_ids)
+        if freeze:
+            p.requires_grad_(False)
+        else:
+            p.requires_grad_(True)
+            ttt_params.append(p)
+
+    optimizer = torch.optim.SGD(ttt_params, lr=args.ttt_lr, momentum=args.ttt_momentum)
+    t0 = time.perf_counter()
+
+    for ci in range(num_chunks):
+        windows = chunk_windows[ci]
+        if not windows:
+            continue
+        chunk_start = ci * ttt_chunk
+        chunk_end = min((ci + 1) * ttt_chunk, total_tokens)
+
+        my_s = (len(windows) * rank) // world_size
+        my_e = (len(windows) * (rank + 1)) // world_size
+        my_windows = windows[my_s:my_e]
+
+        base_model.eval()
+        with torch.inference_mode():
+            for bi in range(0, len(my_windows), batch_seqs):
+                batch_ws = my_windows[bi:bi + batch_seqs]
+                bsz = len(batch_ws)
+                x_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
+                y_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
+                wlens: list[int] = []
+                for i, ws in enumerate(batch_ws):
+                    end = min(ws + seq_len, total_tokens)
+                    wlen = end - ws
+                    wlens.append(wlen)
+                    chunk_tok = val_tokens[ws:end + 1].to(dtype=torch.int64, device=device)
+                    x_batch[i, :wlen] = chunk_tok[:-1]
+                    y_batch[i, :wlen] = chunk_tok[1:]
+
+                with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                    logits = base_model.forward_logits(x_batch)
+                logits_f = logits.float()
+                nll = F.cross_entropy(
+                    logits_f.reshape(-1, logits_f.size(-1)),
+                    y_batch.reshape(-1),
+                    reduction="none",
+                ).reshape(bsz, seq_len)
+
+                for i, ws in enumerate(batch_ws):
+                    wlen = wlens[i]
+                    s = 0 if ws == 0 else max(wlen - stride, 0)
+                    scored_nll = nll[i, s:wlen].to(torch.float64).clone()
+                    if ws > 0:
+                        log_sm = F.log_softmax(logits_f[i, s:wlen], dim=-1)
+                        max_logp_cpu = log_sm.max(dim=-1).values.cpu().tolist()
+                        x_cpu = x_batch[i, :wlen].cpu().tolist()
+                        y_cpu = y_batch[i, s:wlen].cpu().tolist()
+                        uncertain_indices: list[int] = []
+                        prev_contexts: list[list[int]] = []
+                        targets: list[int] = []
+                        n_scored = wlen - s
+                        for t_off in range(n_scored):
+                            if max_logp_cpu[t_off] > log_conf_thresh:
+                                ngram_skipped += 1
+                                continue
+                            t_idx = s + t_off
+                            uncertain_indices.append(t_off)
+                            ctx_start = max(0, t_idx - ngram_max_n + 1)
+                            prev_contexts.append(x_cpu[ctx_start : t_idx + 1])
+                            targets.append(y_cpu[t_off])
+                        if uncertain_indices:
+                            ng_logps = [ngram.logprob_target(ctx, tgt, min_count=min_count) for ctx, tgt in zip(prev_contexts, targets)]
+                            unc_idx_t = torch.tensor(uncertain_indices, dtype=torch.long, device=log_sm.device)
+                            tgt_t = torch.tensor(targets, dtype=torch.long, device=log_sm.device)
+                            model_logps = log_sm[unc_idx_t, tgt_t].cpu().tolist()
+                            for j, t_off in enumerate(uncertain_indices):
+                                ng_lp = ng_logps[j]
+                                if ng_lp is None:
+                                    continue
+                                ngram_attempts += 1
+                                model_lp = model_logps[j]
+                                a = log_1_minus_lam + model_lp
+                                b = log_lam + ng_lp
+                                mixed_lp = max(a, b) + math.log1p(math.exp(-abs(a - b)))
+                                new_nll = -mixed_lp
+                                old_nll = scored_nll[t_off].item()
+                                if new_nll < old_nll:
+                                    scored_nll[t_off] = new_nll
+                                    ngram_improvements += 1
+
+                    loss_sum += scored_nll.sum()
+                    token_count += float(wlen - s)
+                    tgt = y_batch[i, s:wlen]
+                    prev = x_batch[i, s:wlen]
+                    tb = base_bytes_lut[tgt].to(torch.float64)
+                    tb += (has_leading_space_lut[tgt] & ~is_boundary_token_lut[prev]).to(torch.float64)
+                    byte_count += tb.sum()
+
+                for i in range(bsz):
+                    wlen = wlens[i]
+                    toks = x_batch[i, :wlen].cpu().tolist()
+                    toks.append(y_batch[i, wlen - 1].item())
+                    ngram.update_from_list(toks)
+
+        is_last_chunk = ci == num_chunks - 1
+        if not is_last_chunk and args.ttt_epochs > 0:
+            base_model.train()
+            chunk_seqs = (chunk_end - chunk_start) // seq_len
+            if chunk_seqs > 0:
+                cos_lr = args.ttt_lr * 0.5 * (1.0 + math.cos(math.pi * ci / max(num_chunks - 1, 1)))
+                for pg in optimizer.param_groups:
+                    pg["lr"] = cos_lr
+                for _ep in range(args.ttt_epochs):
+                    for bs in range(0, chunk_seqs, args.ttt_batch_seqs):
+                        be = min(bs + args.ttt_batch_seqs, chunk_seqs)
+                        start_tok = chunk_start + bs * seq_len
+                        end_tok = chunk_start + be * seq_len + 1
+                        if end_tok > val_tokens.numel():
+                            continue
+                        local = val_tokens[start_tok:end_tok].to(device=device, dtype=torch.int64)
+                        x = local[:-1].reshape(-1, seq_len)
+                        y = local[1:].reshape(-1, seq_len)
+                        optimizer.zero_grad(set_to_none=True)
+                        with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                            loss = base_model(x, y)
+                        loss.backward()
+                        if dist.is_available() and dist.is_initialized():
+                            all_reduce_avg_grads([p for p in ttt_params if p.grad is not None])
+                        torch.nn.utils.clip_grad_norm_(ttt_params, args.ttt_grad_clip)
+                        optimizer.step()
+
+        if dist.is_available() and dist.is_initialized():
+            dist.barrier()
+
+        if ci % 10 == 0 or ci == num_chunks - 1:
+            total_loss = loss_sum.clone()
+            total_tokens_scored = token_count.clone()
+            total_bytes = byte_count.clone()
+            counts = torch.tensor([float(ngram_improvements), float(ngram_attempts), float(ngram_skipped)], device=device, dtype=torch.float64)
+            if dist.is_available() and dist.is_initialized():
+                dist.all_reduce(total_loss, op=dist.ReduceOp.SUM)
+                dist.all_reduce(total_tokens_scored, op=dist.ReduceOp.SUM)
+                dist.all_reduce(total_bytes, op=dist.ReduceOp.SUM)
+                dist.all_reduce(counts, op=dist.ReduceOp.SUM)
+            if rank == 0 and total_tokens_scored.item() > 0:
+                rbpb = total_loss.item() / total_tokens_scored.item() / math.log(2.0) * (total_tokens_scored.item() / max(total_bytes.item(), 1))
+                hit = counts[0].item() / max(counts[1].item(), 1.0) * 100.0
+                skip = counts[2].item() / max((counts[2] + counts[1]).item(), 1.0) * 100.0
+                log0(f"  ttt_ngram_chunk [{ci+1}/{num_chunks}] bpb={rbpb:.6f} hit={hit:.1f}% skip={skip:.0f}% time={time.perf_counter() - t0:.1f}s")
+
+    if dist.is_available() and dist.is_initialized():
+        counts = torch.tensor([float(ngram_improvements), float(ngram_attempts), float(ngram_skipped)], device=device, dtype=torch.float64)
+        dist.all_reduce(loss_sum, op=dist.ReduceOp.SUM)
+        dist.all_reduce(token_count, op=dist.ReduceOp.SUM)
+        dist.all_reduce(byte_count, op=dist.ReduceOp.SUM)
+        dist.all_reduce(counts, op=dist.ReduceOp.SUM)
+        ngram_improvements, ngram_attempts, ngram_skipped = (int(v) for v in counts.tolist())
+
+    val_loss = (loss_sum / token_count).item()
+    val_bpb = val_loss / math.log(2.0) * (token_count.item() / byte_count.item())
+
+    for p in base_model.parameters():
+        p.requires_grad_(True)
+    base_model.eval()
+
+    log0(
+        f"ttt_ngram:done val_loss={val_loss:.6f} val_bpb={val_bpb:.6f} "
+        f"elapsed={time.perf_counter() - t0:.1f}s improved={ngram_improvements}/{ngram_attempts} skipped={ngram_skipped}"
+    )
     return val_loss, val_bpb
 
 
@@ -2027,27 +2272,7 @@ def main() -> None:
     deq_unbanked = dequantize_mixed_int6(quant_state["w"], quant_state["m"], unbanked_sd)
     # Re-bank the dequantized tensors
     deq_state = _rebank_state_dict(deq_unbanked, args.num_layers, sd_cpu)
-    eval_model = GPT(
-        vocab_size=args.vocab_size, num_layers=args.num_layers, model_dim=args.model_dim,
-        num_heads=args.num_heads, num_kv_heads=args.num_kv_heads, mlp_mult=args.mlp_mult,
-        tie_embeddings=args.tie_embeddings, tied_embed_init_std=args.tied_embed_init_std,
-        logit_softcap=args.logit_softcap, rope_base=args.rope_base, qk_gain_init=args.qk_gain_init,
-        mtp_num_heads=0, mtp_loss_weight=0.0,
-        bigram_vocab_size=args.bigram_vocab_size, bigram_dim=args.bigram_dim,
-        xsa_last_n=args.xsa_last_n,
-        rope_dims=args.rope_dims, ln_scale=args.ln_scale, dtg=args.dtg_enabled,
-        ve_enabled=args.ve_enabled, ve_dim=args.ve_dim, ve_layers=args.ve_layers,
-        gated_attention=args.gated_attention, value_residual=args.value_residual,
-    ).to(device).bfloat16()
-    eval_model.qo_bank.data = eval_model.qo_bank.data.float()
-    eval_model.kv_bank.data = eval_model.kv_bank.data.float()
-    eval_model.mlp_up_bank.data = eval_model.mlp_up_bank.data.float()
-    eval_model.mlp_down_bank.data = eval_model.mlp_down_bank.data.float()
-    for m in eval_model.modules():
-        if isinstance(m, CastedLinear):
-            m.float()
-    restore_low_dim_params_to_fp32(eval_model)
-    eval_model.load_state_dict(deq_state, strict=True)
+    eval_model = build_quantized_eval_model(args, device, deq_state)
     compiled_eval = torch.compile(eval_model, dynamic=False, fullgraph=True)
     torch.cuda.synchronize()
     t_qeval = time.perf_counter()
@@ -2118,10 +2343,11 @@ def main() -> None:
         log0(f"final_ngram_eval_exact val_loss:{ngram_val_loss:.8f} val_bpb:{ngram_val_bpb:.8f}")
     # Legal score-first TTT (PR #461 recipe)
     if args.ttt_enabled:
+        eval_model_ttt = build_quantized_eval_model(args, device, deq_state)
         torch.cuda.synchronize()
         t_ttt = time.perf_counter()
         ttt_loss, ttt_bpb = eval_val_sliding_ttt(
-            args, eval_model, rank, world_size, device,
+            args, eval_model_ttt, rank, world_size, device,
             val_tokens, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut,
             stride=args.eval_stride, log0=log0,
         )
@@ -2129,6 +2355,25 @@ def main() -> None:
         log0(f"legal_ttt val_loss:{ttt_loss:.4f} val_bpb:{ttt_bpb:.4f} "
              f"eval_time:{1000.0 * (time.perf_counter() - t_ttt):.0f}ms")
         log0(f"legal_ttt_exact val_loss:{ttt_loss:.8f} val_bpb:{ttt_bpb:.8f}")
+    if args.ngram_ttt_enabled:
+        eval_model_ttt_ngram = build_quantized_eval_model(args, device, deq_state)
+        torch.cuda.synchronize()
+        t_ttt_ngram = time.perf_counter()
+        ttt_ngram_loss, ttt_ngram_bpb = eval_val_sliding_ttt_ngram(
+            args, eval_model_ttt_ngram, rank, world_size, device,
+            val_tokens, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut,
+            stride=args.ngram_ttt_stride,
+            batch_seqs=args.ttt_batch_seqs,
+            ngram_lambda=args.ngram_lambda,
+            ngram_max_n=args.ngram_max_n,
+            confidence_threshold=args.ngram_confidence_threshold,
+            min_count=args.ngram_min_count,
+            log0=log0,
+        )
+        torch.cuda.synchronize()
+        log0(f"legal_ttt_ngram val_loss:{ttt_ngram_loss:.4f} val_bpb:{ttt_ngram_bpb:.4f} "
+             f"eval_time:{1000.0 * (time.perf_counter() - t_ttt_ngram):.0f}ms")
+        log0(f"legal_ttt_ngram_exact val_loss:{ttt_ngram_loss:.8f} val_bpb:{ttt_ngram_bpb:.8f}")
     if distributed:
         dist.destroy_process_group()
 if __name__ == "__main__":
