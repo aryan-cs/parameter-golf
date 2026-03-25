@@ -48,6 +48,8 @@ PROXY_ORDER = [
     "upstream_pr674_mixer5_timed_nocompile_exact",
     "upstream_pr674_crownq_exact",
     "upstream_pr674_crownq_timed_nocompile_exact",
+    "upstream_pr674_crownq_mixer5_exact",
+    "upstream_pr674_crownq_mixer5_timed_nocompile_exact",
     "upstream_pr674_enhattn_exact",
     "upstream_pr674_enhattn_timed_exact",
     "upstream_pr676_exact",
@@ -329,6 +331,10 @@ def proxy_log_path(log_dir: Path, arch_candidate: str, ttt_candidate: str, seed:
         return log_dir / f"h200_upstream_pr674_crownq_proxy7185_seed{seed}.txt"
     if arch_candidate == "upstream_pr674_crownq_timed_nocompile_exact":
         return log_dir / f"h200_upstream_pr674_crownq_proxy7185_timed_nocompile_seed{seed}.txt"
+    if arch_candidate == "upstream_pr674_crownq_mixer5_exact":
+        return log_dir / f"h200_upstream_pr674_crownq_mixer5_proxy7185_seed{seed}.txt"
+    if arch_candidate == "upstream_pr674_crownq_mixer5_timed_nocompile_exact":
+        return log_dir / f"h200_upstream_pr674_crownq_mixer5_proxy7185_timed_nocompile_seed{seed}.txt"
     if arch_candidate == "upstream_pr674_enhattn_exact":
         return log_dir / f"h200_upstream_pr674_enhattn_proxy7185_seed{seed}.txt"
     if arch_candidate == "upstream_pr674_enhattn_timed_exact":
@@ -534,6 +540,10 @@ def h100_command(root_dir: Path, arch_candidate: str, ttt_candidate: str, seed: 
         return f"SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr674_crownq_exact.sh'}"
     if arch_candidate == "upstream_pr674_crownq_timed_nocompile_exact":
         return f"TIMED_MODE=1 COMPILE_ENABLED=0 SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr674_crownq_exact.sh'}"
+    if arch_candidate == "upstream_pr674_crownq_mixer5_exact":
+        return f"SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr674_crownq_mixer5_exact.sh'}"
+    if arch_candidate == "upstream_pr674_crownq_mixer5_timed_nocompile_exact":
+        return f"TIMED_MODE=1 COMPILE_ENABLED=0 SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr674_crownq_mixer5_exact.sh'}"
     if arch_candidate == "upstream_pr674_enhattn_exact":
         return f"SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr674_enhattn_exact.sh'}"
     if arch_candidate == "upstream_pr674_enhattn_timed_exact":
@@ -581,6 +591,10 @@ def h100_three_seed_command(root_dir: Path, arch_candidate: str, ttt_candidate: 
         return f"bash {root_dir / 'scripts/h100_upstream_pr674_crownq_exact_3seed.sh'}"
     if arch_candidate == "upstream_pr674_crownq_timed_nocompile_exact":
         return f"TIMED_MODE=1 COMPILE_ENABLED=0 bash {root_dir / 'scripts/h100_upstream_pr674_crownq_exact_3seed.sh'}"
+    if arch_candidate == "upstream_pr674_crownq_mixer5_exact":
+        return f"bash {root_dir / 'scripts/h100_upstream_pr674_crownq_mixer5_exact_3seed.sh'}"
+    if arch_candidate == "upstream_pr674_crownq_mixer5_timed_nocompile_exact":
+        return f"TIMED_MODE=1 COMPILE_ENABLED=0 bash {root_dir / 'scripts/h100_upstream_pr674_crownq_mixer5_exact_3seed.sh'}"
     if arch_candidate == "upstream_pr674_enhattn_exact":
         return f"bash {root_dir / 'scripts/h100_upstream_pr674_enhattn_exact_3seed.sh'}"
     if arch_candidate == "upstream_pr674_enhattn_timed_exact":

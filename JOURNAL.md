@@ -3923,3 +3923,33 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Decision:
   - Keep current live PR-`#674` timed `nocompile` training uninterrupted.
   - Treat PR-`#674` + CROWN-Q as the main bytes-first hedge once the current exact-upstream score-side branches have run.
+
+- Timestamp: 2026-03-25 07:53 UTC
+- Commit: uncommitted
+- Lane: exact-upstream PR `#674` + CROWN-Q + mixer5 combined hedge
+- Objective: Combine the two strongest portable exact-upstream ideas we now have:
+  - PR `#688`-style mixer5 for score
+  - PR `#692`-style CROWN-Q for byte/quant robustness
+- Sources:
+  - PR `#688` Hedge Mixer:
+    - https://github.com/openai/parameter-golf/pull/688
+  - PR `#692` CROWN-Q + Full GPTQ:
+    - https://github.com/openai/parameter-golf/pull/692
+  - PR `#674` Podracing:
+    - https://github.com/openai/parameter-golf/pull/674
+- Command or config:
+  - Added combined launchers:
+    - [icrn_h200_upstream_pr674_crownq_mixer5_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr674_crownq_mixer5_proxy.sh)
+    - [h100_upstream_pr674_crownq_mixer5_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr674_crownq_mixer5_exact.sh)
+    - [h100_upstream_pr674_crownq_mixer5_exact_3seed.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr674_crownq_mixer5_exact_3seed.sh)
+  - These apply [patch_pr674_crownq.py](/home/aryang9/parameter-golf/scripts/patch_pr674_crownq.py) and [patch_pr674_mixer5.py](/home/aryang9/parameter-golf/scripts/patch_pr674_mixer5.py) sequentially to the PR-`#674` worktree trainer.
+  - Added new portfolio/status entries:
+    - `upstream_pr674_crownq_mixer5_exact`
+    - `upstream_pr674_crownq_mixer5_timed_nocompile_exact`
+- Result:
+  - Live H200 head run is still [h200_upstream_pr674_proxy7185_timed_nocompile_seed1337.txt](/home/aryang9/parameter-golf/records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs/h200_upstream_pr674_proxy7185_timed_nocompile_seed1337.txt), latest:
+    - `step:1000/7185 val_bpb:1.3081`
+  - The combined exact-upstream `pr674_crownq_mixer5` lane is now staged as the strongest clean compound hedge behind the score-side and bytes-side single-factor branches.
+- Decision:
+  - Keep current live training untouched.
+  - Once the queued artifact-side and exact-upstream single-factor branches finish, use the combined `pr674_crownq_mixer5` lane as the first compound exact-upstream bet.
