@@ -3433,3 +3433,22 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
   - Exact upstream H100 runs now leave behind deterministic log files under the shared record log directory without needing manual shell redirection.
 - Decision:
   - Keep exact upstream `pr674` and `pr676` as the top H100 bets once the H200 queue ranks their proxy versions.
+
+- Timestamp: 2026-03-25 07:05 UTC
+- Commit: uncommitted
+- Lane: tertiary exact-upstream fallback staging
+- Objective: Stage the new open record PR `#684` as a lower-priority exact-upstream fallback without distracting from the active `#674 -> #676` queue.
+- Research:
+  - Reviewed [PR #684](https://github.com/openai/parameter-golf/pull/684), which reports `1.0573` with Sidecar48 + enhanced attention + async mmap pipeline + AdamW TTT.
+  - Conclusion: it is weaker than `#674`, so it should not displace `#674/#676`, but it is a legitimate under-cap exact-upstream hedge worth having ready.
+- Code / ops:
+  - Added [icrn_h200_upstream_pr684_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr684_proxy.sh) for a fixed-step `1xH200` proxy on the exact record-folder code.
+  - Added [h100_upstream_pr684_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr684_exact.sh) and [h100_upstream_pr684_exact_3seed.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr684_exact_3seed.sh).
+  - Added `upstream_pr684_exact` to [h100_parallel_candidate_portfolio.sh](/home/aryang9/parameter-golf/scripts/h100_parallel_candidate_portfolio.sh) and [record_push_status.py](/home/aryang9/parameter-golf/scripts/record_push_status.py).
+  - Updated [rearm_proxy_record674_queue.sh](/home/aryang9/parameter-golf/scripts/rearm_proxy_record674_queue.sh) so the next future rearm can queue:
+    - exact upstream `pr674`
+    - exact upstream `pr676`
+    - exact upstream `pr684`
+    - then the surrogate ladder
+- Decision:
+  - Keep `#684` behind `#674/#676`, but have it launch-ready for the first window where exact upstream fallbacks matter more than surrogate exploration.

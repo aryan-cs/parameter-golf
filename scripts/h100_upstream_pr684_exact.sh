@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+WORKTREE_DIR="${WORKTREE_DIR:-$ROOT_DIR/../parameter-golf-pr684-worktree}"
+PR684_RECORD_DIR="records/track_10min_16mb/2026-03-25_Sidecar48_Enhanced_Attention_Async_Data_Pipeline_AdamW_TTT"
+SEED="${SEED:-1337}"
+RUN_ID="${RUN_ID:-h100_upstream_pr684_seed${SEED}}"
+DATA_PATH="${DATA_PATH:-$ROOT_DIR/data/datasets/fineweb10B_sp1024}"
+TOKENIZER_PATH="${TOKENIZER_PATH:-$ROOT_DIR/data/tokenizers/fineweb_1024_bpe.model}"
+LOG_DIR="${LOG_DIR:-$ROOT_DIR/records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs}"
+LOG_PATH="${LOG_PATH:-$LOG_DIR/${RUN_ID}.txt}"
+
+mkdir -p "$LOG_DIR"
+
+if [[ ! -d "$WORKTREE_DIR/.git" && ! -f "$WORKTREE_DIR/.git" ]]; then
+  git -C "$ROOT_DIR" worktree add "$WORKTREE_DIR" pr684
+fi
+git config --global --add safe.directory "$WORKTREE_DIR" >/dev/null 2>&1 || true
+
+cd "$ROOT_DIR"
+source .venv/bin/activate
+
+cd "$WORKTREE_DIR/$PR684_RECORD_DIR"
+
+env \
+  DATA_PATH="$DATA_PATH" \
+  TOKENIZER_PATH="$TOKENIZER_PATH" \
+  SEED="$SEED" \
+  RUN_ID="$RUN_ID" \
+  /usr/bin/time -f 'elapsed=%E' \
+  torchrun --standalone --nproc_per_node=8 train_gpt.py | tee "$LOG_PATH"

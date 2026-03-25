@@ -41,6 +41,7 @@ PROXY_ORDER = [
     "baseline",
     "upstream_pr674_exact",
     "upstream_pr676_exact",
+    "upstream_pr684_exact",
     "podracing674",
     "podracing674_swiglu",
     "swiglu676",
@@ -276,6 +277,8 @@ def proxy_log_path(log_dir: Path, arch_candidate: str, ttt_candidate: str, seed:
         return log_dir / f"h200_upstream_pr674_proxy7185_seed{seed}.txt"
     if arch_candidate == "upstream_pr676_exact":
         return log_dir / f"h200_upstream_pr676_proxy7185_seed{seed}.txt"
+    if arch_candidate == "upstream_pr684_exact":
+        return log_dir / f"h200_upstream_pr684_proxy6555_seed{seed}.txt"
     slug = compose_slug(arch_candidate, ttt_candidate)
     if slug == "baseline":
         return log_dir / f"h200_ttt_h100proxy7185_seed{seed}.txt"
@@ -447,6 +450,8 @@ def h100_command(root_dir: Path, arch_candidate: str, ttt_candidate: str, seed: 
         return f"SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr674_exact.sh'}"
     if arch_candidate == "upstream_pr676_exact":
         return f"SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr676_exact.sh'}"
+    if arch_candidate == "upstream_pr684_exact":
+        return f"SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr684_exact.sh'}"
     return (
         f"ARCH_CANDIDATE={arch_candidate} "
         f"TTT_CANDIDATE={ttt_candidate} "
@@ -460,6 +465,8 @@ def h100_three_seed_command(root_dir: Path, arch_candidate: str, ttt_candidate: 
         return f"bash {root_dir / 'scripts/h100_upstream_pr674_exact_3seed.sh'}"
     if arch_candidate == "upstream_pr676_exact":
         return f"bash {root_dir / 'scripts/h100_upstream_pr676_exact_3seed.sh'}"
+    if arch_candidate == "upstream_pr684_exact":
+        return f"bash {root_dir / 'scripts/h100_upstream_pr684_exact_3seed.sh'}"
     return (
         f"ARCH_CANDIDATE={arch_candidate} "
         f"TTT_CANDIDATE={ttt_candidate} "

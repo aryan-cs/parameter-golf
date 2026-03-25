@@ -15,6 +15,9 @@ run_candidate() {
     upstream_pr676_exact)
       exec bash "$ROOT_DIR/scripts/h100_upstream_pr676_exact.sh"
       ;;
+    upstream_pr684_exact)
+      exec bash "$ROOT_DIR/scripts/h100_upstream_pr684_exact.sh"
+      ;;
     vr1)
       exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_vr1.sh"
       ;;

@@ -9,6 +9,7 @@ RUN_NEARBY_SMOKES="${RUN_NEARBY_SMOKES:-0}"
 RUN_CONF07_TAIL="${RUN_CONF07_TAIL:-0}"
 UPSTREAM_WAIT_PATTERN="${UPSTREAM_WAIT_PATTERN:-^final_int6_sliding_window_ngram5_exact val_loss:}"
 UPSTREAM_PR676_WAIT_PATTERN="${UPSTREAM_PR676_WAIT_PATTERN:-^legal_ttt_exact val_loss:}"
+UPSTREAM_PR684_WAIT_PATTERN="${UPSTREAM_PR684_WAIT_PATTERN:-^final_int6_sliding_window_exact val_loss:}"
 
 launch_after_record674_arch() {
   local wait_log="$1"
@@ -56,6 +57,7 @@ BASE_RECORD674_MIN3_SMOKE_LOG="$LOG_DIR/h200_artifact_ngram_record674_min3_h100p
 BASE_CONF07_LOG="$LOG_DIR/h200_artifact_ngram_record659_conf07_h100proxy7185_seed${SEED}.txt"
 UPSTREAM_PR674_LOG="$LOG_DIR/h200_upstream_pr674_proxy7185_seed${SEED}.txt"
 UPSTREAM_PR676_LOG="$LOG_DIR/h200_upstream_pr676_proxy7185_seed${SEED}.txt"
+UPSTREAM_PR684_LOG="$LOG_DIR/h200_upstream_pr684_proxy6555_seed${SEED}.txt"
 
 PROXY_TRAIN_LOG="$BASE_PROXY_TRAIN_LOG" \
 PROXY_ARTIFACT_PT="$BASE_PROXY_ARTIFACT_PT" \
@@ -85,12 +87,21 @@ NEXT_RUN_ID="h200_upstream_pr676_proxy7185_seed${SEED}" \
 NEXT_SEED="$SEED" \
 setsid bash "$ROOT_DIR/scripts/after_log_launch_script.sh" >/tmp/h200_after_baseline_record674_launch_upstream_pr674.log 2>&1 < /dev/null &
 
+WAIT_LOG="$UPSTREAM_PR676_LOG" \
+WAIT_PATTERN="$UPSTREAM_PR676_WAIT_PATTERN" \
+TARGET_LABEL="upstream_pr684_exact" \
+TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr684_proxy.sh" \
+TARGET_LOG_PATH="$UPSTREAM_PR684_LOG" \
+TARGET_RUN_ID="h200_upstream_pr684_proxy6555_seed${SEED}" \
+TARGET_SEED="$SEED" \
+setsid bash "$ROOT_DIR/scripts/after_log_launch_script.sh" >/tmp/h200_after_upstream_pr676_launch_upstream_pr684.log 2>&1 < /dev/null &
+
 POD_RECORD674_LOG="$LOG_DIR/h200_artifact_ngram_record674_h100proxy7185_podracing674_seed${SEED}.txt"
 POD_SWIGLU_RECORD674_LOG="$LOG_DIR/h200_artifact_ngram_record674_h100proxy7185_podracing674_swiglu_seed${SEED}.txt"
 SWIGLU676_RECORD674_LOG="$LOG_DIR/h200_artifact_ngram_record674_h100proxy7185_swiglu676_seed${SEED}.txt"
 XSA11_RECORD674_LOG="$LOG_DIR/h200_artifact_ngram_record674_h100proxy7185_xsa11_seed${SEED}.txt"
 
-launch_after_record674_arch "$UPSTREAM_PR676_LOG" "podracing674" "$UPSTREAM_PR676_WAIT_PATTERN"
+launch_after_record674_arch "$UPSTREAM_PR684_LOG" "podracing674" "$UPSTREAM_PR684_WAIT_PATTERN"
 launch_after_record674_arch "$POD_RECORD674_LOG" "podracing674_swiglu"
 launch_after_record674_arch "$POD_SWIGLU_RECORD674_LOG" "swiglu676"
 launch_after_record674_arch "$SWIGLU676_RECORD674_LOG" "xsa11"
