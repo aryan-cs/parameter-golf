@@ -119,6 +119,8 @@ torchrun --standalone --nproc_per_node=8 train_gpt.py
 
 - H200 proxy reproduction: `scripts/icrn_h200_ttt_recordstack.sh`
 - H200 resumed legal-TTT recovery: `scripts/icrn_h200_resume_legal_ttt.sh`
+- H200 artifact-only legal-TTT candidate launcher: `scripts/icrn_h200_artifact_ttt_candidate.sh`
+- H200 artifact-only legal-TTT portfolio helper: `scripts/icrn_h200_artifact_ttt_portfolio.sh`
 - H200 H100-step proxy: `scripts/icrn_h200_ttt_h100_proxy.sh`
 - 8xH100 repro/submit path: `scripts/h100_repro_leaky_ttt_parallel_muon.sh`
 - 8xH100 3-seed wrapper: `scripts/h100_repro_leaky_ttt_parallel_muon_3seed.sh`

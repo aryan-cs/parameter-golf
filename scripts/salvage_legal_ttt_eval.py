@@ -77,6 +77,11 @@ def main() -> None:
     parser.add_argument("--batch-seqs", type=int, default=32)
     parser.add_argument("--bigram-vocab-size", type=int, default=1536)
     parser.add_argument("--ttt-freeze-blocks", type=int, default=0)
+    parser.add_argument("--ttt-lr", type=float)
+    parser.add_argument("--ttt-epochs", type=int)
+    parser.add_argument("--ttt-chunk-tokens", type=int)
+    parser.add_argument("--ttt-momentum", type=float)
+    parser.add_argument("--ttt-grad-clip", type=float)
     args_ns = parser.parse_args()
 
     run_dir = args_ns.run_dir.resolve()
@@ -96,6 +101,16 @@ def main() -> None:
     args.ttt_batch_seqs = args_ns.batch_seqs
     args.bigram_vocab_size = args_ns.bigram_vocab_size
     args.ttt_freeze_blocks = args_ns.ttt_freeze_blocks
+    if args_ns.ttt_lr is not None:
+        args.ttt_lr = args_ns.ttt_lr
+    if args_ns.ttt_epochs is not None:
+        args.ttt_epochs = args_ns.ttt_epochs
+    if args_ns.ttt_chunk_tokens is not None:
+        args.ttt_chunk_tokens = args_ns.ttt_chunk_tokens
+    if args_ns.ttt_momentum is not None:
+        args.ttt_momentum = args_ns.ttt_momentum
+    if args_ns.ttt_grad_clip is not None:
+        args.ttt_grad_clip = args_ns.ttt_grad_clip
     args.eval_stride = 64
     args.extra_stride64_final_eval = False
 
