@@ -62,11 +62,21 @@ case "$CANDIDATE" in
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_conf06_smoke.txt}"
     ;;
   record659_conf07)
+    STRIDE="128"
+    NGRAM_LAMBDA="0.15"
     CONFIDENCE_THRESHOLD="0.7"
+    MIN_COUNT="3"
+    APPLY_MODE="improve_only"
+    CACHE_KIND="exact"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_conf07.txt}"
     ;;
   record659_conf07_smoke)
+    STRIDE="128"
+    NGRAM_LAMBDA="0.15"
     CONFIDENCE_THRESHOLD="0.7"
+    MIN_COUNT="3"
+    APPLY_MODE="improve_only"
+    CACHE_KIND="exact"
     MAX_WINDOWS="128"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_conf07_smoke.txt}"
     ;;
@@ -234,31 +244,31 @@ case "$CANDIDATE" in
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_lam20_conf08.txt}"
     ;;
   record674_smoke)
-    STRIDE="${STRIDE:-64}"
+    STRIDE="64"
     NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.20}"
-    CONFIDENCE_THRESHOLD="${CONFIDENCE_THRESHOLD:-1.0}"
+    CONFIDENCE_THRESHOLD="1.0"
     MIN_COUNT="${MIN_COUNT:-2}"
-    APPLY_MODE="${APPLY_MODE:-always}"
-    CACHE_KIND="${CACHE_KIND:-hashed}"
+    APPLY_MODE="always"
+    CACHE_KIND="hashed"
     MAX_WINDOWS="128"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record674_smoke.txt}"
     ;;
   record674)
-    STRIDE="${STRIDE:-64}"
+    STRIDE="64"
     NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.20}"
-    CONFIDENCE_THRESHOLD="${CONFIDENCE_THRESHOLD:-1.0}"
+    CONFIDENCE_THRESHOLD="1.0"
     MIN_COUNT="${MIN_COUNT:-2}"
-    APPLY_MODE="${APPLY_MODE:-always}"
-    CACHE_KIND="${CACHE_KIND:-hashed}"
+    APPLY_MODE="always"
+    CACHE_KIND="hashed"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record674.txt}"
     ;;
   record674_proxy7185)
-    STRIDE="${STRIDE:-64}"
+    STRIDE="64"
     NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.20}"
-    CONFIDENCE_THRESHOLD="${CONFIDENCE_THRESHOLD:-1.0}"
+    CONFIDENCE_THRESHOLD="1.0"
     MIN_COUNT="${MIN_COUNT:-2}"
-    APPLY_MODE="${APPLY_MODE:-always}"
-    CACHE_KIND="${CACHE_KIND:-hashed}"
+    APPLY_MODE="always"
+    CACHE_KIND="hashed"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record674_h100proxy7185_seed1337.txt}"
     ;;
   record659_warm_conf07)

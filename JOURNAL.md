@@ -3452,3 +3452,47 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
     - then the surrogate ladder
 - Decision:
   - Keep `#684` behind `#674/#676`, but have it launch-ready for the first window where exact upstream fallbacks matter more than surrogate exploration.
+
+- Timestamp: 2026-03-25 07:52 UTC
+- Commit: uncommitted
+- Lane: record674 launch hygiene + PR685 legal-subset staging
+- Objective: Stop wasting H200 time on a silently degraded `record674` proxy eval, then turn the new PR `#685` frontier into a submission-safe hedge without inheriting its likely-invalid multi-pass `min(NLL)` step.
+- Research:
+  - Pulled and inspected [PR #685](https://github.com/openai/parameter-golf/pull/685) directly.
+  - Important finding: the reported `1.0366` uses `best_nll[...] = torch.minimum(...)` across `TTT_PASSES=3`, and the README explicitly says final BPB is the per-token `min(NLL)` across passes.
+  - That makes the full chained submission legality-sensitive. The clean reusable subset is **Phase 1 only**: `TTT_EPOCHS=20`, `TTT_LR=5e-4`, and `TTT_PASSES=1`, which preserves the cosine AdamW recovery but removes the multi-pass per-token min behavior.
+- Problems found:
+  - The live proxy-artifact `record674` watcher had inherited stale `STRIDE=128`, `CACHE_KIND=exact`, `APPLY_MODE=improve_only`, etc., so the first launched run was **not** the intended hashed PR-`#674` path.
+  - The candidate script itself was also too permissive for `record674_proxy7185`: inherited env vars could override stride/cache/apply-mode even when the caller intended the canonical `#674` semantics.
+- Code / ops:
+  - Hardened watcher hygiene:
+    - [after_proxy_train_run_record674_then_conf07.sh](/home/aryang9/parameter-golf/scripts/after_proxy_train_run_record674_then_conf07.sh) now launches `record674` and `conf07` through explicit helper env blocks instead of inheriting ambient n-gram settings.
+    - [after_record674_launch_arch.sh](/home/aryang9/parameter-golf/scripts/after_record674_launch_arch.sh) now `unset`s inherited n-gram/eval env before launching the next proxy train.
+    - [after_log_launch_script.sh](/home/aryang9/parameter-golf/scripts/after_log_launch_script.sh) now does the same before launching exact-upstream scripts.
+  - Hardened candidate semantics:
+    - [icrn_h200_artifact_ngram_candidate.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_artifact_ngram_candidate.sh) now forces canonical settings for:
+      - `record674*`: `stride=64`, `apply_mode=always`, `cache_kind=hashed`, `confidence_threshold=1.0`
+      - `record659_conf07*`: `stride=128`, `apply_mode=improve_only`, `cache_kind=exact`, `confidence_threshold=0.7`
+    - This still allows nearby-smoke overrides for `NGRAM_LAMBDA` / `MIN_COUNT`, but blocks the accidental stale-env regressions that matter most.
+  - Restarted the live queue with the fixed scripts. The new `record674` proxy eval came back correctly:
+    - [h200_artifact_ngram_record674_h100proxy7185_seed1337.txt](/home/aryang9/parameter-golf/records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs/h200_artifact_ngram_record674_h100proxy7185_seed1337.txt)
+    - config now logs `apply_mode=always`, `cache_kind=hashed`, `stride=64`, `min_count=2`, `ngram_lambda=0.2`
+  - Staged a legal exact-upstream PR685 hedge:
+    - [icrn_h200_upstream_pr685_phase1_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr685_phase1_proxy.sh)
+    - [h100_upstream_pr685_phase1_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr685_phase1_exact.sh)
+    - [h100_upstream_pr685_phase1_exact_3seed.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr685_phase1_exact_3seed.sh)
+    - These use the exact PR685 record-folder code but force `TTT_PASSES=1`, giving us a clean “cosine recovery only” hedge.
+  - Updated handoff/reporting:
+    - [h100_parallel_candidate_portfolio.sh](/home/aryang9/parameter-golf/scripts/h100_parallel_candidate_portfolio.sh) now includes `upstream_pr685_phase1_exact`
+    - [record_push_status.py](/home/aryang9/parameter-golf/scripts/record_push_status.py) now knows the PR685 phase-1 logs and H100 commands
+    - [prepare_submission_metadata.py](/home/aryang9/parameter-golf/scripts/prepare_submission_metadata.py) now parses `final_int8_zlib_roundtrip_exact`, which PR685 uses for its final exact metric line
+    - [rearm_proxy_record674_queue.sh](/home/aryang9/parameter-golf/scripts/rearm_proxy_record674_queue.sh) now stages future queue order as `pr674 -> pr676 -> pr685_phase1 -> pr684 -> surrogate ladder`
+- Validation:
+  - `bash -n` passed for all modified/new shell scripts
+  - `python -m py_compile` passed for [prepare_submission_metadata.py](/home/aryang9/parameter-golf/scripts/prepare_submission_metadata.py) and [record_push_status.py](/home/aryang9/parameter-golf/scripts/record_push_status.py)
+  - `git diff --check` passed
+  - Polling the restarted log confirmed the corrected `record674` config and early progress to `2.6% -> 1.739220`
+- Decision:
+  - Keep the restarted hashed `record674` proxy eval running.
+  - Treat full PR685 as **research only / legality-sensitive** until the competition reviewers make that path clearly acceptable.
+  - Treat `pr685_phase1` as the safe exact-upstream hedge to compare against `pr674`, `pr676`, and `pr684` in the next free H200 slots.

@@ -15,6 +15,9 @@ run_candidate() {
     upstream_pr676_exact)
       exec bash "$ROOT_DIR/scripts/h100_upstream_pr676_exact.sh"
       ;;
+    upstream_pr685_phase1_exact)
+      exec bash "$ROOT_DIR/scripts/h100_upstream_pr685_phase1_exact.sh"
+      ;;
     upstream_pr684_exact)
       exec bash "$ROOT_DIR/scripts/h100_upstream_pr684_exact.sh"
       ;;
@@ -393,6 +396,7 @@ Run one candidate on each 8xH100 node by setting CANDIDATE:
   CANDIDATE=baseline bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr674_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr676_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=upstream_pr685_phase1_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=vr1 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=bg3072 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=vr1_bg3072 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
@@ -478,6 +482,8 @@ Candidate meanings:
   baseline             recovered winning stack
   upstream_pr674_exact exact upstream PR #674 root-trainer frontier run via worktree
   upstream_pr676_exact exact upstream PR #676 record-folder SwiGLU run via worktree
+  upstream_pr685_phase1_exact
+                       exact upstream PR #685 record-folder code with TTT_PASSES=1 for a legal cosine-recovery hedge
   vr1                  baseline + VALUE_RESIDUAL=1
   bg3072               baseline + BIGRAM_VOCAB_SIZE=3072
   vr1_bg3072           baseline + VALUE_RESIDUAL=1 + BIGRAM_VOCAB_SIZE=3072
