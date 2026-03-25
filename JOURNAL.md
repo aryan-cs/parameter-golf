@@ -16,7 +16,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 ## Entries
 
 - Timestamp: 2026-03-25 19:27 UTC
-- Commit: uncommitted
+- Commit: `601ae14`
 - Lane: h200 queue hygiene / push readiness
 - Objective: Make the repo match the live `record674 -> podracing674 -> swiglu` queue state and keep the local artifact-preservation copies from blocking a clean push.
 - Command or config: Added [after_podracing674_record674_launch_swiglu.sh](/home/aryang9/parameter-golf/scripts/after_podracing674_record674_launch_swiglu.sh) so the `swiglu` proxy waits specifically for the `podracing674` `record674` exact log instead of only the earlier baseline chain. Kept [after_baseline_record674_launch_podracing674_then_swiglu.sh](/home/aryang9/parameter-golf/scripts/after_baseline_record674_launch_podracing674_then_swiglu.sh) defaulting to `RUN_NEARBY_SMOKES=0`, and added a path-specific ignore rule in [.gitignore](/home/aryang9/parameter-golf/.gitignore) so preserved named copies like `final_model_h100proxy7185_seed1337.*` and the already-journaled mismatched `longartifact` pair stay local while the canonical tracked `final_model.int6.ptz` remains versioned.
@@ -25,7 +25,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Next step: Push `master` so `origin/master` catches up to the current local frontier history.
 
 - Timestamp: 2026-03-25 09:24 UTC
-- Commit: uncommitted
+- Commit: `ed31c85`
 - Lane: exact-upstream PR688 / queue integrity
 - Objective: Repair the PR688 watcher chain after replacing the fake `nocache` branch, so the honest lean lanes launch in the right order.
 - Command or config: After confirming that `USE_CACHE`, `CACHE_ALPHA`, and `PPM_ALPHA` are dead on the exact PR688 TTT path, rewired [rearm_after_current_timed_nocompile_with_hedge.sh](/home/aryang9/parameter-golf/scripts/rearm_after_current_timed_nocompile_with_hedge.sh) so the active ladder is:
@@ -41,7 +41,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Next step: Rearm the watchers again, confirm the fresh log targets stay unused, then commit the correction batch.
 
 - Timestamp: 2026-03-25 09:32 UTC
-- Commit: uncommitted
+- Commit: `1317436`
 - Lane: exact-upstream PR688 / budget fit
 - Objective: Correct the fake PR688 `nocache` idea before it burns H200 time, and replace it with honest exact-path cuts.
 - Command or config: Re-read the real PR688 trainer and confirmed `USE_CACHE`, `CACHE_ALPHA`, and `PPM_ALPHA` are dead on the exact TTT path: they are threaded into `eval_val_sliding_ttt(...)` but never referenced inside the body. Replaced the queued fake cache cut with three real branches built on the current cleanest optimizer lane:
@@ -57,7 +57,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Next step: Validate the corrected wrappers and queue, rearm the watchers, and let the live PR674 head run continue untouched while the honest PR688 lean lanes wait behind it.
 
 - Timestamp: 2026-03-25 09:20 UTC
-- Commit: uncommitted
+- Commit: `348a730`
 - Lane: exact-upstream PR688 / budget fit
 - Objective: Add lean score-path PR688 probes after the pure-SGD momentum-zero ladder and before reducing TTT epochs.
 - Command or config: Re-read the real PR688 TTT loop and confirmed three remaining exact-path levers after optimizer and microbatching:
@@ -73,7 +73,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Next step: Validate the new wrappers and rearmed queue, then let the live PR674 head run continue untouched while the lean PR688 lanes wait behind the optimizer ladder.
 
 - Timestamp: 2026-03-25 09:10 UTC
-- Commit: uncommitted
+- Commit: `6c287f5`
 - Lane: exact-upstream PR688 / budget fit
 - Objective: Add pure-SGD momentum-zero PR688 hedges and repair the downstream watcher chain so the new optimizer probes launch in the right order.
 - Command or config: Patched [patch_pr688_compile_gate.py](/home/aryang9/parameter-golf/scripts/patch_pr688_compile_gate.py) so patched PR688 trainers now honor `TTT_MOMENTUM` in both exact TTT call sites, log `mom=...`, and keep the earlier `TTT_BATCH_SEQS` support. Added new exact-upstream launchers:
@@ -94,7 +94,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Next step: Rearm the watcher chain against the repaired queue, keep the live PR674 head run untouched, and commit the PR688 nomom batch once the queue is confirmed healthy.
 
 - Timestamp: 2026-03-25 19:25 UTC
-- Commit: uncommitted
+- Commit: `e5efcdd`
 - Lane: exact-upstream PR688 / budget fit
 - Objective: Add one true maximum-budget-cut PR688 lane before falling through to the PR674 overlay family.
 - Command or config: Re-checked the latest open PR list directly from the GitHub API (`#696`, `#695`, `#694`, `#693`, `#691`, `#688`) and confirmed nothing newer displaced PR `#688` as the best clean budget-first family. Verified from the actual PR688 trainer that `SKIP_SLIDING=1` only removes the pre-TTT sliding-window pass while leaving final TTT scoring on `final_int6_ttt_exact`. Added `upstream_pr688_timed_nocompile_qttt_light_chunk256_stride64_skipsliding_exact` with `QTTT=1`, `TTT_FREEZE_BLOCKS=3`, `USE_POLYAK=0`, `ADAPTIVE_LR=0`, `TTT_CHUNK_TOKENS=262144`, `EVAL_STRIDE=64`, and `SKIP_SLIDING=1`, plus H200/H100 launchers, status mappings, and queue wiring.
@@ -103,7 +103,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Next step: Validate the new wrappers and queue, rearm the watcher chain, then let the live PR674 head run continue untouched while the PR688 ladder waits behind it.
 
 - Timestamp: 2026-03-25 19:43 UTC
-- Commit: uncommitted
+- Commit: `27a5a62`
 - Lane: exact-upstream PR688 / budget fit
 - Objective: Cut the expensive final TTT phase itself, not just the pre-TTT sliding pass.
 - Command or config: Re-read the actual PR688 trainer around `eval_val_sliding_ttt(...)` and confirmed `TTT_EPOCHS` directly scales the final `final_int6_ttt_exact` path. Added two new exact-upstream PR688 light `skipsliding` candidates:
@@ -116,7 +116,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 
 ## 2026-03-25 20:59 UTC — Correct PR688 qTTT block-count interpretation
 
-- Commit: uncommitted
+- Commit: `07ea6b2`
 - Lane: exact-upstream PR `#688` / budget fit
 - Objective: Stage truly smaller qTTT branches after discovering that our previous `qttt_light` naming was misleading.
 - Finding:
@@ -151,7 +151,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
   - Let the live PR674 head run continue, then observe whether the smaller PR688 qTTT write sets are enough to preserve score while cutting eval cost more cleanly than chunk/stride alone.
 
 - Timestamp: 2026-03-25 06:56 UTC
-- Commit: uncommitted
+- Commit: `749b5d9`
 - Lane: H200 exact-upstream / constraint fit
 - Objective: Shift the next-dev queue away from low-value duplicate proxy-artifact eval and toward stronger exact-upstream, budget-aware candidates while staging a new legal PR `#688`-inspired hedge.
 - Command or config: Compared the live exact upstream PR `#674` proxy against the earlier baseline proxy and found the compile-enabled timed lane only reached `step:0` after a long startup, while three duplicate `record674` artifact-eval workers were still burning the H200 on the same over-cap proxy artifact. Added a new PR674-side legal Hedge mix patch (`patch_pr674_hedgemix.py`) that adaptively combines neural and hashed 5-gram scores using an online 2-expert Hedge update. Added H200/H100 launchers for the new `upstream_pr674_hedgemix` family, inserted it into `record_push_status.py`, `h100_parallel_candidate_portfolio.sh`, and the exact-upstream rearm scripts, killed the duplicate artifact-eval workers, and relaunched the H200 onto `TIMED_MODE=1 COMPILE_ENABLED=0` exact upstream PR `#674`.
@@ -160,7 +160,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Next step: Watch the new `timed + nocompile` PR `#674` lane to the first meaningful training checkpoints, then launch the staged `upstream_pr674_hedgemix_timed_nocompile_exact` follow-up if it holds up.
 
 - Timestamp: 2026-03-25 09:05 UTC
-- Commit: uncommitted
+- Commit: `d34f2d5`
 - Lane: H200 proxy / PR674 alignment
 - Objective: Correct the local PR `#674` surrogate after re-reading the primary-source PR page and stop over-prioritizing the misleading `XSA_LAST_N=11` root-file default.
 - Command or config: Checked PR `#674` directly on GitHub; its reproduce line is `XSA_LAST_N=4 BIGRAM_VOCAB_SIZE=1536 ROPE_DIMS=24`, while the root trainer still defaults `LATE_QAT_THRESHOLD=0.5`. Patched `podracing674` to include `LATE_QAT_THRESHOLD=0.5`, added `podracing674_swiglu`, and added a queue-rearm helper so the waiting H200 chain runs `baseline -> podracing674 -> podracing674_swiglu -> xsa11 -> podracing674_xsa11`.
@@ -169,7 +169,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Next step: Validate the patched scripts, relaunch the watcher chain, and let the active baseline proxy continue uninterrupted.
 
 - Timestamp: 2026-03-25 05:02 UTC
-- Commit: uncommitted
+- Commit: `e18921d`
 - Lane: H200 proxy / PR674 recipe completion
 - Objective: Remove the remaining config drift between our `podracing674` candidate and PR `#674`'s actual reproduce line.
 - Command or config: Compared `scripts/h100_repro_leaky_ttt_parallel_muon.sh` and `scripts/icrn_h200_ttt_recordstack.sh` against PR `#674`'s root `train_gpt.py`; patched `record_push_candidate_lib.sh` so `podracing674`, `podracing674_swiglu`, and `podracing674_xsa11` now explicitly export `MLP_ACT=leaky_relu_sq`, `MLP_LEAKY_SLOPE=0.5`, `XSA_LAST_N=4` for the base PR-`#674` variants, plus `BIGRAM_VOCAB_SIZE=1536`, `ROPE_DIMS=24`, and `LATE_QAT_THRESHOLD=0.5`.
@@ -4264,7 +4264,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 
 ## 2026-03-25 19:00 UTC — Timed PR688 exact-upstream lane
 
-- Commit: uncommitted
+- Commit: `0e2a2d1`
 - Lane: exact-upstream PR `#688` HedgeMixer + legal TTT, budget-hardened
 - Objective: stop treating PR `#688` as only a full-fat exact lane and stage a real budget-first comparison against the PR674 timed family.
 - Sources:
@@ -4308,7 +4308,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 
 ## 2026-03-25 19:20 UTC — Align PR674 mixer overlay to actual PR688 code
 
-- Commit: uncommitted
+- Commit: `3009498`
 - Lane: PR674 + mixer5 patch hygiene
 - Objective: make the queued PR674 mixer branches match the actual PR688 trainer code more closely, rather than the README summary.
 - Sources:
@@ -4346,7 +4346,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 
 ## 2026-03-25 19:35 UTC — Move exact PR688 earlier in the downstream slate
 
-- Commit: uncommitted
+- Commit: `aea71f4`
 - Lane: queue / status prioritization
 - Objective: run a true frontier-family comparison sooner instead of spending multiple slots on patched PR674 overlays first.
 - Command or config:
@@ -4373,7 +4373,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 
 ## 2026-03-25 19:50 UTC — Add PR688 qTTT budget hedge
 
-- Commit: uncommitted
+- Commit: `daf49cf`
 - Lane: exact-upstream PR `#688` timed eval variants
 - Objective: add a smaller, more quantization-safe PR688 TTT hedge before spending more H200 slots on PR674 overlay branches.
 - Sources:
@@ -4414,7 +4414,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 
 ## 2026-03-25 20:05 UTC — Add lighter exact PR688 qTTT budget sweeps
 
-- Commit: uncommitted
+- Commit: `10b0319`
 - Lane: exact-upstream PR `#688` timed eval variants
 - Objective: widen the budget-first PR688 sweep with lower-overhead qTTT variants before spending more H200 slots on heavier PR674 compounds.
 - Sources:
@@ -4457,7 +4457,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 
 ## 2026-03-25 20:18 UTC — Add PR688 qTTT light chunk-256k budget hedge
 
-- Commit: uncommitted
+- Commit: `9a9523c`
 - Lane: exact-upstream PR `#688` timed eval variants
 - Objective: add an even lower-overhead exact-upstream PR688 hedge by reducing the number of legal score-train chunks directly.
 - Source:
@@ -4498,7 +4498,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 
 ## 2026-03-25 20:31 UTC — Add PR688 qTTT light stride-64 budget hedge
 
-- Commit: uncommitted
+- Commit: `fa31247`
 - Lane: exact-upstream PR `#688` timed eval variants
 - Objective: stage the strongest clean eval-time reduction inside exact PR688 by reducing scored-window density directly.
 - Source:
@@ -4527,7 +4527,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 
 ## 2026-03-25 20:40 UTC — Add PR688 qTTT light chunk256+stride64 extreme budget hedge
 
-- Commit: uncommitted
+- Commit: `a627bbc`
 - Lane: exact-upstream PR `#688` timed eval variants
 - Objective: stage the lowest-overhead exact-upstream PR688 lane before falling through to PR674 overlays.
 - Finding:
@@ -4559,7 +4559,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 
 ## 2026-03-25 20:52 UTC — Promote SKIP_SLIDING exact PR688 budget cuts
 
-- Commit: uncommitted
+- Commit: `e5efcdd`
 - Lane: exact-upstream PR `#688` timed eval variants
 - Objective: promote the cleanest exact-upstream time cut by removing the pre-TTT sliding window pass entirely.
 - Source:
@@ -4590,6 +4590,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
   - Treat `SKIP_SLIDING` as the highest-priority exact PR688 budget cut because it should preserve the final TTT metric path while saving the most eval time cleanly.
 ## 2026-03-25 08:51 UTC - PR688 TTT batch-seq budget hedges
 
+- Commit: `9739007`
 - Confirmed the exact upstream PR688 trainer hardcodes `batch_seqs=32` inside `eval_val_sliding_ttt(...)` for both scoring batches and score-first TTT train batches.
 - Patched [patch_pr688_compile_gate.py](/home/aryang9/parameter-golf/scripts/patch_pr688_compile_gate.py) so patched PR688 run dirs now honor:
   - `TTT_BATCH_SEQS`
@@ -4605,6 +4606,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 
 ## 2026-03-25 08:54 UTC - PR688 SGD budget hedges
 
+- Commit: `62b2f85`
 - Confirmed exact upstream PR688 already supports `TTT_OPTIMIZER=sgd` natively, so no trainer patch was needed for an optimizer-side throughput probe.
 - Added new exact-upstream PR688 budget variants:
   - [icrn_h200_upstream_pr688_qttt_light_skipsliding_sgd_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr688_qttt_light_skipsliding_sgd_proxy.sh)
@@ -4617,6 +4619,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 
 ## 2026-03-25 08:56 UTC - PR688 pure-SGD momentum-zero hedges
 
+- Commit: `6c287f5`
 - Extended the patched PR688 trainer overlay to honor `TTT_MOMENTUM` from env and log it in the TTT banner.
 - Added new exact-upstream PR688 budget variants:
   - pure SGD `momentum=0`
@@ -4626,6 +4629,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 
 ## 2026-03-25 09:02 UTC - Stage PR698 as clean under-budget fallback family
 
+- Commit: `a185e7f`
 - Pulled upstream [PR #698](https://github.com/openai/parameter-golf/pull/698) locally into `/home/aryang9/parameter-golf-pr698-worktree`.
 - Verified the clean package is a real under-budget `track_10min_16mb` family:
   - `train_time=580.213s`
@@ -4648,6 +4652,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 
 ## 2026-03-25 09:06 UTC - Deprioritize PR697 and finish PR698 tooling pass
 
+- Commit: `741d0d8`
 - Checked upstream [PR #697](https://github.com/openai/parameter-golf/pull/697) directly.
 - Decision:
   - do **not** promote PR697 as a main family
@@ -4660,6 +4665,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 
 ## 2026-03-25 09:15 UTC - Stage post-training GPTQ re-quant sweep on best artifact family
 
+- Commit: `b67718a`
 - Confirmed the best completed `1.08035892` run finished at `2026-03-25 04:15 UTC`, before the later proxy artifact overwrite.
 - Verified by hash/timestamp that the preserved best-artifact family is:
   - [final_model_longartifact_seed1337.pt](/home/aryang9/parameter-golf/records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/final_model_longartifact_seed1337.pt)
@@ -4680,6 +4686,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 
 ## 2026-03-25 09:52 UTC - De-queue mismatched longartifact re-quant branch
 
+- Commit: `b67718a`
 - Objective:
   - Validate the new post-training re-quant sweep before spending the next free H200 slot on it.
 - Findings:
@@ -4700,6 +4707,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 
 ## 2026-03-25 18:26 UTC - Add exact PR688 mixer-eta skipsliding sweeps
 
+- Commit: `2048c75`
 - Objective:
   - Add a real scored-path PR688 sweep with near-zero runtime impact while the live PR674 timed `nocompile` run stays on-GPU.
 - Findings:
@@ -4720,6 +4728,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 
 ## 2026-03-25 18:34 UTC - Promote exact PR700 and fix copied-worktree upstream launchers
 
+- Commit: `2048c75`
 - Objective:
   - Repair the copied-worktree exact-upstream launchers so PR688-family branches can actually start on this host, and stage the newly discovered PR700 record family as the next mainline under-budget probe.
 - Findings:
@@ -4744,6 +4753,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 
 ## 2026-03-25 18:49 UTC - Re-anchor to the legal frontier and pivot the live H200
 
+- Commit: `658d5ae`
 - Objective:
   - Stop optimizing against stale or illegal public targets and point the scarce H200 at the strongest current legal-looking record branch.
 - Findings:
@@ -4768,6 +4778,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 
 ## 2026-03-25 18:58 UTC - PR753 research pivot: local backoff port + upstream launchers
 
+- Commit: `9b81021`
 - Objective:
   - Move from the older PR700 / PR688 frontier to the freshest open public claim and make sure we can test both the exact upstream branch and the eval-side idea independently.
 - Findings:
@@ -4810,6 +4821,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 
 ## 2026-03-25 19:12 UTC - Fix the artifact-candidate default bug and pivot the live H200 to upstream PR753
 
+- Commit: `d218cae`
 - Objective:
   - Stop wasting the H200 on a dead-end PR700 tail, correct the broken local `record753` candidate wiring, and get a clean upstream PR753 smoke running.
 - Findings:
@@ -4843,6 +4855,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 
 ## 2026-03-25 19:20 UTC - Prepare PR755 Gravity Tokenizer as the second ready-to-run lane
 
+- Commit: `d218cae`
 - Objective:
   - Turn the fresh tokenizer frontier into runnable repo state without derailing the live PR753 GPU run.
 - Findings:
@@ -4873,6 +4886,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 
 ## 2026-03-25 19:18 UTC - Generic artifact eval support and queued Gravity+PR753 hybrid
 
+- Commit: `f19d88c`
 - Objective:
   - Convert the separate PR753 and PR755 ideas into a real hybrid lane we can run automatically on the H200.
 - Findings:
