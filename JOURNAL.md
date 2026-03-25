@@ -3970,3 +3970,44 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Decision:
   - Keep using the artifact-side runs as the cheapest immediate filters.
   - Preserve the full exact-upstream tail in the helper so we can rearm safely without reconstructing the watcher chain by hand.
+
+- Timestamp: 2026-03-25 08:22 UTC
+- Commit: uncommitted
+- Lane: exact-upstream PR `#674` + PR `#684` enhattn + PR `#688` mixer5
+- Objective: Promote the strongest clean score-first compound hedge that still stays close to the most credible exact-upstream base:
+  - PR `#674` as the clearly valid frontier family
+  - PR `#684`'s tiny attention upgrades as a cheap architecture lift
+  - PR `#688`'s five-expert online mixer as the best portable eval overlay
+- Sources:
+  - PR `#674` Podracing:
+    - https://github.com/openai/parameter-golf/pull/674
+  - PR `#684` enhanced attention:
+    - https://github.com/openai/parameter-golf/pull/684
+  - PR `#688` Hedge Mixer:
+    - https://github.com/openai/parameter-golf/pull/688
+- Command or config:
+  - Added launchers:
+    - [icrn_h200_upstream_pr674_enhattn_mixer5_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr674_enhattn_mixer5_proxy.sh)
+    - [h100_upstream_pr674_enhattn_mixer5_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr674_enhattn_mixer5_exact.sh)
+    - [h100_upstream_pr674_enhattn_mixer5_exact_3seed.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr674_enhattn_mixer5_exact_3seed.sh)
+  - These sequentially apply:
+    - [patch_pr674_enhattn.py](/home/aryang9/parameter-golf/scripts/patch_pr674_enhattn.py)
+    - [patch_pr674_mixer5.py](/home/aryang9/parameter-golf/scripts/patch_pr674_mixer5.py)
+  - Updated:
+    - [record_push_status.py](/home/aryang9/parameter-golf/scripts/record_push_status.py)
+    - [h100_parallel_candidate_portfolio.sh](/home/aryang9/parameter-golf/scripts/h100_parallel_candidate_portfolio.sh)
+    - [rearm_after_current_timed_nocompile_with_hedge.sh](/home/aryang9/parameter-golf/scripts/rearm_after_current_timed_nocompile_with_hedge.sh)
+- Result:
+  - Verified:
+    - `bash -n` on the new launchers and updated queue helper
+    - `python -m py_compile` on the status tool and both patch scripts
+    - temp-copy patch application against the PR-`#674` worktree followed by `python -m py_compile`
+  - Rearmed the live watcher chain so the downstream order now includes:
+    - `... -> pr674_mixer5 -> pr674_enhattn_mixer5 -> pr674_hedgemix -> pr674_crownq -> pr674_crownq_mixer5`
+  - Live head run remains unchanged:
+    - [h200_upstream_pr674_proxy7185_timed_nocompile_seed1337.txt](/home/aryang9/parameter-golf/records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs/h200_upstream_pr674_proxy7185_timed_nocompile_seed1337.txt)
+    - latest stable checkpoint still around:
+      - `step:1500/7185 train_loss:2.1370`
+- Decision:
+  - Keep the current exact-upstream PR-`#674` timed `nocompile` run uninterrupted.
+  - Treat `pr674_enhattn_mixer5` as the new strongest clean score-first compound hedge, ahead of the older `hedgemix` and bytes-first tails.
