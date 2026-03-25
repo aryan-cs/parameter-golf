@@ -1,81 +1,81 @@
-# Runpod Ready
+# 8xH100 Ready
 
-## Current Best
+This file is the handoff checklist for when `8xH100 SXM` time is available.
 
-- Best completed quantized score: `1.1159 val_bpb`
-- Status: invalid
-- Reason: artifact was `16,333,801` bytes, which is `333,801` bytes over the `16,000,000` byte cap
+## Current Objective
 
-## Current Lane
+Promote one H200-vetted candidate into an exact `8xH100` run, then continue to `3` seeds only if the first seed is submission-viable.
 
-- Primary recipe: `VRL + Full GPTQ`
-- Best pre-export curve:
-  - `1000 -> 1.3111`
-  - `2000 -> 1.2527`
-  - `3000 -> 1.2294`
-  - `4000 -> 1.2136`
-  - `5000 -> 1.1893`
-  - `6000 -> 1.1636`
-  - `6926 -> 1.1370`
-- Byte-cap strategy:
-  - packed int6 payloads
-  - compact metadata
-  - export-only prune ladder `05 -> 08 -> 11 -> 14 -> 17 -> 20`
+Current practical gate:
 
-## When Credits Land
+- `legal_ttt_exact <= 1.1144`
+- artifact under `16,000,000` bytes
+- train under `600s`
+- eval under `600s`
 
-Run this first to verify the local restart plan is still consistent:
+## Before Booking 8xH100
+
+Run:
 
 ```bash
-python3 runpod/check_ready.py
+python scripts/record_push_status.py --seed 1337
 ```
 
-### 1x H100 SXM recovery
+That report is the source of truth for:
 
-Use this first if we want to verify the new serializer and prune ladder before spending on `8x`:
+- the promoted winner
+- the fallback runner-up
+- the exact seed-1337 handoff command
+- the exact three-seed follow-up command
+
+## First Exact Run
+
+Use the printed winner command from `record_push_status.py`, or the generic form below:
 
 ```bash
-bash runpod/local_recover_export_chain.sh root@HOST /workspace/golf PORT 80
+ARCH_CANDIDATE=baseline TTT_CANDIDATE=baseline SEED=1337 \
+bash scripts/h100_record_push_candidate.sh
 ```
 
-This will:
-- sync the repo
-- bootstrap the pod
-- launch `non_ttt_vrl_gptq_1gpu_long`
-- queue export-only `prune05 -> prune08 -> prune11 -> prune14 -> prune17 -> prune20`
+Do not continue to `3` seeds unless that first exact run clears bytes, time, and the `1.1144` score gate.
 
-### 8x H100 SXM recovery
+## If Seed 1337 Clears
 
-Use this once we want the real final lane:
+Immediately run the exact three-seed wrapper:
 
 ```bash
-bash runpod/local_recover_export_chain_8gpu.sh root@HOST /workspace/golf PORT 80
+ARCH_CANDIDATE=baseline TTT_CANDIDATE=baseline SEEDS="1337 42 2025" \
+bash scripts/h100_record_push_candidate_3seed.sh
 ```
 
-This will:
-- sync the repo
-- bootstrap the pod
-- launch `non_ttt_vrl_gptq_8gpu`
-- queue export-only `prune05 -> prune08 -> prune11 -> prune14 -> prune17 -> prune20`
+## If Seed 1337 Misses
 
-## After Launch
+Run exactly one seed-1337 repro of the fallback candidate printed by `record_push_status.py`, then reassess instead of opening a wide search on expensive hardware.
 
-Watch the latest run:
+## Packaging Checklist
+
+Before calling a run submission-ready, make sure the folder includes:
+
+- `README.md`
+- `submission.json`
+- train logs
+- merged train + resumed-eval metadata if legal TTT was resumed separately
+- artifact bytes
+- the exact launch command and env
+- `3`-seed evidence with `p < 0.01`
+
+Useful helpers:
 
 ```bash
-bash runpod/local_watch_latest.sh root@HOST /workspace/golf PORT non_ttt_vrl_gptq 1337
+python scripts/prepare_submission_metadata.py LOG_A LOG_B
+python scripts/summarize_record_runs.py --merge-logs LOG_A LOG_B
 ```
 
-Fetch results back:
+## Current Working Folder
 
-```bash
-bash runpod/local_fetch_from_pod.sh root@HOST /workspace/golf runs PORT
-```
-
-## Files To Check
-
-- [JOURNAL.md](/Users/aryan/Desktop/golf/JOURNAL.md)
-- [candidates/non_ttt_vrl_gptq/train_gpt.py](/Users/aryan/Desktop/golf/candidates/non_ttt_vrl_gptq/train_gpt.py)
-- [runpod/local_recover_export_chain.sh](/Users/aryan/Desktop/golf/runpod/local_recover_export_chain.sh)
-- [runpod/local_recover_export_chain_8gpu.sh](/Users/aryan/Desktop/golf/runpod/local_recover_export_chain_8gpu.sh)
-- [runpod/pod_launch_export_chain.sh](/Users/aryan/Desktop/golf/runpod/pod_launch_export_chain.sh)
+- Record-prep lane:
+  [`records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback`](records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback)
+- Orchestrator:
+  [`scripts/icrn_h200_record_push.sh`](scripts/icrn_h200_record_push.sh)
+- Status report:
+  [`scripts/record_push_status.py`](scripts/record_push_status.py)

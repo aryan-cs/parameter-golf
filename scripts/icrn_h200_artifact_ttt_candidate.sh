@@ -23,24 +23,45 @@ case "$CANDIDATE" in
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ttt_baseline.txt}"
     ;;
   tttlr25)
-    TTT_LR="${TTT_LR:-0.0025}"
+    TTT_LR="0.0025"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ttt_tttlr25.txt}"
     ;;
   tttlr30)
-    TTT_LR="${TTT_LR:-0.0030}"
+    TTT_LR="0.0030"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ttt_tttlr30.txt}"
     ;;
   batch48)
-    TTT_BATCH_SEQS="${TTT_BATCH_SEQS:-48}"
+    TTT_BATCH_SEQS="48"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ttt_batch48.txt}"
     ;;
+  tttlr25_batch48)
+    TTT_LR="0.0025"
+    TTT_BATCH_SEQS="48"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ttt_tttlr25_batch48.txt}"
+    ;;
   chunk16k)
-    TTT_CHUNK_TOKENS="${TTT_CHUNK_TOKENS:-16384}"
+    TTT_CHUNK_TOKENS="16384"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ttt_chunk16k.txt}"
     ;;
+  freeze2_tttlr25)
+    TTT_FREEZE_BLOCKS="2"
+    TTT_LR="0.0025"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ttt_freeze2_tttlr25.txt}"
+    ;;
+  epochs2_tttlr25)
+    TTT_EPOCHS="2"
+    TTT_LR="0.0025"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ttt_epochs2_tttlr25.txt}"
+    ;;
+  freeze2_epochs2_tttlr25)
+    TTT_FREEZE_BLOCKS="2"
+    TTT_EPOCHS="2"
+    TTT_LR="0.0025"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ttt_freeze2_epochs2_tttlr25.txt}"
+    ;;
   bg3072_tttlr25)
-    BIGRAM_VOCAB_SIZE="${BIGRAM_VOCAB_SIZE:-3072}"
-    TTT_LR="${TTT_LR:-0.0025}"
+    BIGRAM_VOCAB_SIZE="3072"
+    TTT_LR="0.0025"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ttt_bg3072_tttlr25.txt}"
     ;;
   *)

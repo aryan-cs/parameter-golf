@@ -19,12 +19,20 @@ python -m pip install --force-reinstall \
   --index-url https://download.pytorch.org/whl/cu128 \
   torch==2.11.0+cu128
 
+python -m pip install einops
+python -m pip install \
+  --index-url https://download.pytorch.org/whl/cu128 \
+  --extra-index-url https://pypi.org/simple \
+  flash-attn-3
+
 python - <<'PY'
 import torch
+from flash_attn_interface import flash_attn_func
 
 print("torch", torch.__version__)
 print("cuda_available", torch.cuda.is_available())
 print("device_count", torch.cuda.device_count())
 if torch.cuda.is_available():
     print("device_name", torch.cuda.get_device_name(0))
+print("flash_attn_3", "available")
 PY

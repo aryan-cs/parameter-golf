@@ -122,12 +122,49 @@ torchrun --standalone --nproc_per_node=8 train_gpt.py
 - H200 artifact-only legal-TTT candidate launcher: `scripts/icrn_h200_artifact_ttt_candidate.sh`
 - H200 artifact-only legal-TTT portfolio helper: `scripts/icrn_h200_artifact_ttt_portfolio.sh`
 - H200 H100-step proxy: `scripts/icrn_h200_ttt_h100_proxy.sh`
+- H200 generic proxy candidate runner: `scripts/icrn_h200_ttt_h100_proxy_candidate.sh`
+- H200-first record-push orchestrator: `scripts/icrn_h200_record_push.sh`
+- H200 search-state reporter + `8xH100` handoff helper: `scripts/record_push_status.py`
 - 8xH100 repro/submit path: `scripts/h100_repro_leaky_ttt_parallel_muon.sh`
 - 8xH100 3-seed wrapper: `scripts/h100_repro_leaky_ttt_parallel_muon_3seed.sh`
+- 8xH100 generic promoted-candidate runner: `scripts/h100_record_push_candidate.sh`
+- 8xH100 generic promoted-candidate 3-seed wrapper: `scripts/h100_record_push_candidate_3seed.sh`
 - 8xH100 parallel portfolio selector: `scripts/h100_parallel_candidate_portfolio.sh`
 - 8xH100 parallel portfolio 3-seed wrapper: `scripts/h100_parallel_candidate_3seed.sh`
 - Log-to-submission metadata: `scripts/prepare_submission_metadata.py`
 - Multi-run summary helper: `scripts/summarize_record_runs.py`
+
+## H200-First Push Order
+
+Use the encoded search order instead of ad hoc launches:
+
+```bash
+bash scripts/icrn_h200_record_push.sh artifact
+bash scripts/icrn_h200_record_push.sh proxy
+bash scripts/icrn_h200_record_push.sh combined
+bash scripts/icrn_h200_record_push.sh report
+```
+
+or run the whole sequence in one command:
+
+```bash
+bash scripts/icrn_h200_record_push.sh all
+```
+
+The orchestrator uses this exact order:
+
+1. Artifact-only legal-TTT sweep:
+   `baseline -> tttlr25 -> batch48 -> tttlr25_batch48 -> bg3072_tttlr25 -> chunk16k -> epochs2_tttlr25 -> freeze2_tttlr25 -> freeze2_epochs2_tttlr25 -> tttlr30`
+2. H200 H100-step proxy sweep:
+   `baseline -> vr1 -> bg3072 -> vr1_bg3072`
+3. One combined H200 proxy run only if both the best non-baseline artifact candidate and best non-baseline proxy candidate exist.
+4. Promote exactly one winner and keep exactly one fallback for `8xH100`.
+
+At any point you can inspect the current rankings and exact `8xH100` handoff commands with:
+
+```bash
+python scripts/record_push_status.py --seed 1337
+```
 
 ## Parallel H100 Portfolio
 
@@ -141,6 +178,20 @@ When `8xH100` access is available, the fastest way to search beyond the recovere
 - `vr1_bg3072_tttlr25`: combo bet on all three knobs
 
 Each candidate has its own launcher under `scripts/`, and `scripts/h100_parallel_candidate_portfolio.sh` prints the one-command invocations for spreading them across multiple `8xH100` nodes in parallel.
+
+For the promoted-candidate handoff path used by the H200-first push, use:
+
+```bash
+ARCH_CANDIDATE=baseline TTT_CANDIDATE=baseline SEED=1337 \
+bash scripts/h100_record_push_candidate.sh
+```
+
+and only after the exact `8xH100` seed-1337 run clears bytes, train/eval time, and `legal_ttt_exact <= 1.1144`, continue with:
+
+```bash
+ARCH_CANDIDATE=baseline TTT_CANDIDATE=baseline SEEDS="1337 42 2025" \
+bash scripts/h100_record_push_candidate_3seed.sh
+```
 
 You can package the recovered winning H200 lane with:
 
