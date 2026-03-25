@@ -9,11 +9,16 @@ from pathlib import Path
 
 from prepare_submission_metadata import merge_summaries, parse_log
 
-# Public frontier claim as of 2026-03-25 from PR #674 ("Podracing: 1.0461 BPB").
-CURRENT_PUBLIC_SOTA_BPB = 1.0461
+# Public frontier snapshot as of 2026-03-25:
+# - PR #685 claimed 1.0366 but was closed as illegal (multi-pass min-NLL selection).
+# - PR #700 is the strongest open legal-looking claim at 1.0541.
+CURRENT_PUBLIC_ILLEGAL_FRONTIER_BPB = 1.0366
+CURRENT_PUBLIC_ILLEGAL_FRONTIER_LABEL = "PR #685 (closed illegal)"
+CURRENT_PUBLIC_LEGAL_CLAIM_BPB = 1.0541
+CURRENT_PUBLIC_LEGAL_CLAIM_LABEL = "PR #700 (open legal-looking claim)"
 RECORD_DELTA_NAT = 0.005
 APPROX_BPB_PER_NAT = 0.5923
-PRACTICAL_WIN_GATE_BPB = CURRENT_PUBLIC_SOTA_BPB - RECORD_DELTA_NAT * APPROX_BPB_PER_NAT
+PRACTICAL_WIN_GATE_BPB = CURRENT_PUBLIC_LEGAL_CLAIM_BPB - RECORD_DELTA_NAT * APPROX_BPB_PER_NAT
 COMPETITION_ARTIFACT_LIMIT_BYTES = 16_000_000
 COMPETITION_TRAIN_LIMIT_SECONDS = 600
 COMPETITION_EVAL_LIMIT_SECONDS = 600
@@ -1163,7 +1168,8 @@ def build_status(root_dir: Path, seed: int) -> dict[str, object]:
     handoff = None
     if promoted is not None:
         handoff = {
-            "current_public_sota_bpb": CURRENT_PUBLIC_SOTA_BPB,
+            "current_public_legal_claim_bpb": CURRENT_PUBLIC_LEGAL_CLAIM_BPB,
+            "current_public_illegal_frontier_bpb": CURRENT_PUBLIC_ILLEGAL_FRONTIER_BPB,
             "practical_win_gate_bpb": PRACTICAL_WIN_GATE_BPB,
             "winner": promoted,
             "runner_up": runner_up,
@@ -1299,8 +1305,15 @@ def main() -> None:
             f"log={combined['log_path']}"
         )
     print()
-    print(f"Current public SOTA (2026-03-25): {CURRENT_PUBLIC_SOTA_BPB:.4f}")
-    print(f"Approx record-claim gate (0.005 nat better): <= {PRACTICAL_WIN_GATE_BPB:.4f}")
+    print(
+        "Current public legal frontier (2026-03-25): "
+        f"{CURRENT_PUBLIC_LEGAL_CLAIM_BPB:.4f} from {CURRENT_PUBLIC_LEGAL_CLAIM_LABEL}"
+    )
+    print(
+        "Closed illegal frontier (do not target): "
+        f"{CURRENT_PUBLIC_ILLEGAL_FRONTIER_BPB:.4f} from {CURRENT_PUBLIC_ILLEGAL_FRONTIER_LABEL}"
+    )
+    print(f"Approx legal record-claim gate (0.005 nat better): <= {PRACTICAL_WIN_GATE_BPB:.4f}")
     print(f"Record folder: {status['record_dir']}")
     print("Constraint guardrails")
     print(f"  competition_artifact_cap_bytes={COMPETITION_ARTIFACT_LIMIT_BYTES}")

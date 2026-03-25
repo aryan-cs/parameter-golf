@@ -4732,3 +4732,27 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Decision:
   - Put `upstream_pr700_timed_nocompile_exact` at the front of the exact-upstream queue, ahead of the PR688 ladder.
   - Keep the PR688 eta/qTTT budget ladder immediately behind PR700 once the copied-worktree failure is fixed.
+
+## 2026-03-25 18:49 UTC - Re-anchor to the legal frontier and pivot the live H200
+
+- Objective:
+  - Stop optimizing against stale or illegal public targets and point the scarce H200 at the strongest current legal-looking record branch.
+- Findings:
+  - Public frontier check on March 25, 2026:
+    - [PR #685](https://github.com/openai/parameter-golf/pull/685) claims `1.0366`, but it is explicitly closed as illegal because it selects `min(NLL)` over multiple passes.
+    - [PR #684](https://github.com/openai/parameter-golf/pull/684) is also closed as illegal for multi-epoch TTT on eval tokens.
+    - [PR #700](https://github.com/openai/parameter-golf/pull/700) is now the strongest open legal-looking claim at `1.0541`, with reported worst-seed bytes `15.89 MB` and eval time `336s`.
+    - [PR #688](https://github.com/openai/parameter-golf/pull/688) remains a viable legal backup at `1.0745`.
+  - The in-house `podracing674` H200 proxy that was running locally had only reached `step:10/7185`, so the opportunity cost of redirecting the GPU was very small.
+  - Our own baseline `7185`-step proxy artifact is still over the byte cap (`16,662,627` bytes), which makes more size-disciplined upstream stacks a better use of the next H200 slot than continuing local closed-PR architecture hedges.
+- Code / ops:
+  - Updated [scripts/record_push_status.py](/home/aryang9/parameter-golf/scripts/record_push_status.py) to distinguish:
+    - current open legal frontier: `1.0541` from `PR #700`
+    - closed illegal frontier: `1.0366` from `PR #685`
+    - practical legal claim gate: about `1.0511`
+  - Added [scripts/icrn_h200_upstream_pr700_proxybudget.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr700_proxybudget.sh) so we can run a PR700 H200 dev pass under the repo’s `~91.7 min` train-proxy guardrail instead of ad-hoc wallclock guesses.
+  - Stopped the barely-started local `podracing674` proxy run and replaced it with a direct H200 smoke of [scripts/icrn_h200_upstream_pr700_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr700_proxy.sh) using `TIMED_MODE=1 COMPILE_ENABLED=0 SEED=1337`.
+- Decision:
+  - Treat PR700 as the main legal frontier to reproduce locally.
+  - Use the exact timed H200 smoke first as a fast correctness / timing / size readout, then escalate to the new PR700 budget-proxy wrapper if the smoke looks healthy.
+  - Keep PR688 as the immediate fallback lane if PR700 underperforms or breaks locally.
