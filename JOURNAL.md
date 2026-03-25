@@ -3953,3 +3953,20 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Decision:
   - Keep current live training untouched.
   - Once the queued artifact-side and exact-upstream single-factor branches finish, use the combined `pr674_crownq_mixer5` lane as the first compound exact-upstream bet.
+
+- Timestamp: 2026-03-25 08:01 UTC
+- Commit: uncommitted
+- Lane: queue sync for compound exact-upstream hedge
+- Objective: Make sure the checked-in rearm helper matches the live manual watcher chain, so future reruns preserve the new `pr674_crownq_mixer5` tail.
+- Command or config:
+  - Updated [rearm_after_current_timed_nocompile_with_hedge.sh](/home/aryang9/parameter-golf/scripts/rearm_after_current_timed_nocompile_with_hedge.sh) to add:
+    - `UPSTREAM_PR674_CROWNQ_MIXER5_TIMED_NOCOMPILE_LOG`
+    - a final watcher for `upstream_pr674_crownq_mixer5_timed_nocompile_exact`
+  - Verified:
+    - `bash -n scripts/rearm_after_current_timed_nocompile_with_hedge.sh`
+- Result:
+  - The repo helper now encodes the same tail that is already live via manual waiters:
+    - `... -> pr674_mixer5 -> pr674_hedgemix -> pr674_crownq -> pr674_crownq_mixer5`
+- Decision:
+  - Keep using the artifact-side runs as the cheapest immediate filters.
+  - Preserve the full exact-upstream tail in the helper so we can rearm safely without reconstructing the watcher chain by hand.
