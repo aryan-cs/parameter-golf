@@ -50,6 +50,7 @@ NGRAM_ORDER = [
     "record659_conf06",
     "record659_conf07_smoke",
     "record659_conf07",
+    "record659_conf07_proxy7185",
     "record659_cool_conf07_smoke",
     "record659_cool_conf07",
     "record659_cool_conf07_min4_smoke",
@@ -126,6 +127,7 @@ NGRAM_LOG_NAMES = {
     "record659_conf06_smoke": "h200_artifact_ngram_record659_conf06_smoke.txt",
     "record659_conf07": "h200_artifact_ngram_record659_conf07.txt",
     "record659_conf07_smoke": "h200_artifact_ngram_record659_conf07_smoke.txt",
+    "record659_conf07_proxy7185": "h200_artifact_ngram_record659_conf07_h100proxy7185_seed1337.txt",
     "record659_cool_conf07": "h200_artifact_ngram_record659_cool_conf07.txt",
     "record659_cool_conf07_smoke": "h200_artifact_ngram_record659_cool_conf07_smoke.txt",
     "record659_cool_conf07_min4": "h200_artifact_ngram_record659_cool_conf07_min4.txt",
@@ -257,9 +259,9 @@ def parse_result(
         "artifact_cap_pass": None,
         "h200_dev_train_cap_pass": None,
     }
-    existing_log_paths = [path for path in (log_path, *extra_log_paths) if path.exists()]
-    if not existing_log_paths:
+    if not log_path.exists():
         return result
+    existing_log_paths = [log_path, *[path for path in extra_log_paths if path.exists()]]
 
     summaries = [parse_log(path) for path in existing_log_paths]
     summary = merge_summaries(summaries) if len(summaries) > 1 else summaries[0]
@@ -387,11 +389,10 @@ def build_status(root_dir: Path, seed: int) -> dict[str, object]:
 
     artifact_results = []
     for candidate in ARTIFACT_ORDER:
-        extra_log_paths: tuple[Path, ...] = ()
+        extra_log_paths: tuple[Path, ...] = (recovered_train_log,)
         log_path = log_dir / ARTIFACT_LOG_NAMES[candidate]
         if candidate == "baseline" and not log_path.exists():
             log_path = recovered_resume_log
-            extra_log_paths = (recovered_train_log,)
         result = parse_result(
             log_path=log_path,
             label=candidate,
@@ -413,16 +414,22 @@ def build_status(root_dir: Path, seed: int) -> dict[str, object]:
     ]
     ngram_results = []
     for candidate in NGRAM_ORDER:
+        extra_log_paths = (
+            (proxy_log_path(log_dir, "baseline", "baseline", seed),)
+            if candidate == "record659_conf07_proxy7185"
+            else (recovered_train_log,)
+        )
         result = parse_result(
             log_path=log_dir / NGRAM_LOG_NAMES[candidate],
             label=candidate,
             source="ngram",
+            extra_log_paths=extra_log_paths,
             arch_candidate="baseline" if candidate != "vr1_record659" else "vr1",
             ttt_candidate=(
                 "ngram659_conf06"
                 if candidate in {"record659_conf06", "record659_conf06_smoke"}
                 else "ngram659_conf07"
-                if candidate in {"record659_conf07", "record659_conf07_smoke"}
+                if candidate in {"record659_conf07", "record659_conf07_smoke", "record659_conf07_proxy7185"}
                 else
                 "ngram659"
                 if candidate in {"record659", "record659_smoke", "vr1_record659"}
@@ -440,6 +447,7 @@ def build_status(root_dir: Path, seed: int) -> dict[str, object]:
             log_path=log_dir / TTT_NGRAM_LOG_NAMES[candidate],
             label=candidate,
             source="ttt_ngram",
+            extra_log_paths=(recovered_train_log,),
             arch_candidate="baseline" if candidate != "vr1_record659_tttlr25" else "vr1",
             ttt_candidate=(
                 "ngram659_adamw30ep_cosine_lr3e4"
@@ -500,7 +508,12 @@ def build_status(root_dir: Path, seed: int) -> dict[str, object]:
     ]
     if combined_result is not None and combined_result.get("completed"):
         promotion_pool.append(combined_result)
-    ranked_promotion_pool = sorted(promotion_pool, key=promotion_rank_key)
+    heuristic_valid_pool = [
+        candidate
+        for candidate in promotion_pool
+        if candidate.get("artifact_cap_pass") is not False and candidate.get("h200_dev_train_cap_pass") is not False
+    ]
+    ranked_promotion_pool = sorted(heuristic_valid_pool, key=promotion_rank_key)
     promotion_pool = []
     seen_specs: set[tuple[str, str]] = set()
     for candidate in ranked_promotion_pool:

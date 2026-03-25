@@ -187,6 +187,34 @@ def confidence_to_log_threshold(confidence_threshold: float) -> float:
     return math.log(confidence_threshold)
 
 
+def parse_lambda_schedule(spec: str, default_lambda: float) -> list[tuple[float, float]]:
+    schedule = [(0.0, default_lambda)]
+    if not spec.strip():
+        return schedule
+    parsed: list[tuple[float, float]] = []
+    for item in spec.split(","):
+        frac_s, value_s = item.strip().split(":", 1)
+        frac = min(max(float(frac_s), 0.0), 1.0)
+        value = float(value_s)
+        if not (0.0 < value < 1.0):
+            raise ValueError(f"lambda schedule values must lie in (0, 1), got {value}")
+        parsed.append((frac, value))
+    parsed.sort()
+    if parsed[0][0] > 0.0:
+        parsed.insert(0, (0.0, default_lambda))
+    return parsed
+
+
+def lambda_for_progress(schedule: list[tuple[float, float]], progress: float) -> float:
+    current = schedule[0][1]
+    for frac, value in schedule:
+        if progress + 1e-12 >= frac:
+            current = value
+        else:
+            break
+    return current
+
+
 def parse_order_lambdas(spec: str, max_n: int, default_lambda: float) -> dict[int, float]:
     order_lambdas = {n: default_lambda for n in range(2, max_n + 1)}
     if not spec.strip():
@@ -205,6 +233,10 @@ def parse_order_lambdas(spec: str, max_n: int, default_lambda: float) -> dict[in
 
 def format_confidence_schedule(schedule: list[tuple[float, float]]) -> str:
     return ",".join(f"{frac:.2f}:{value:.2f}" for frac, value in schedule)
+
+
+def format_lambda_schedule(schedule: list[tuple[float, float]]) -> str:
+    return ",".join(f"{frac:.2f}:{value:.3f}" for frac, value in schedule)
 
 
 def format_order_lambdas(order_lambdas: dict[int, float]) -> str:
@@ -231,6 +263,7 @@ def eval_val_sliding_ttt_ngram(
     ttt_passes: int = 1,
     include_base_pass: bool = False,
     packed_cache: bool = False,
+    lambda_schedule_spec: str = "",
     confidence_schedule_spec: str = "",
     order_lambdas_spec: str = "",
     log=print,
@@ -238,9 +271,9 @@ def eval_val_sliding_ttt_ngram(
     seq_len = args.train_seq_len
     total_tokens = val_tokens.numel() - 1
     ttt_chunk = args.ttt_chunk_tokens
+    lambda_schedule = parse_lambda_schedule(lambda_schedule_spec, ngram_lambda)
     confidence_schedule = parse_confidence_schedule(confidence_schedule_spec, confidence_threshold)
-    order_lambdas = parse_order_lambdas(order_lambdas_spec, ngram_max_n, ngram_lambda)
-    order_log_lambdas = {n: (math.log(1.0 - lam), math.log(lam)) for n, lam in order_lambdas.items()}
+    static_order_lambdas = parse_order_lambdas(order_lambdas_spec, ngram_max_n, ngram_lambda)
 
     window_starts = [ws for ws in range(0, total_tokens, stride) if min(ws + seq_len, total_tokens) - ws >= stride or ws == 0]
     num_chunks = (total_tokens + ttt_chunk - 1) // ttt_chunk
@@ -266,8 +299,9 @@ def eval_val_sliding_ttt_ngram(
         f"include_base_pass={int(include_base_pass)} ngram_lambda={ngram_lambda} "
         f"ngram_max_n={ngram_max_n} confidence_threshold={confidence_threshold} "
         f"packed={int(packed_cache)} "
+        f"lambda_schedule={format_lambda_schedule(lambda_schedule)} "
         f"confidence_schedule={format_confidence_schedule(confidence_schedule)} "
-        f"order_lambdas={format_order_lambdas(order_lambdas)}"
+        f"order_lambdas={format_order_lambdas(static_order_lambdas)}"
     )
 
     best_nll = torch.full((total_tokens,), float("inf"), device=device, dtype=torch.float32)
@@ -313,8 +347,14 @@ def eval_val_sliding_ttt_ngram(
                 continue
             chunk_start, chunk_end = chunk_token_span(ci)
             progress = ci / max(num_chunks, 1)
+            chunk_lambda = lambda_for_progress(lambda_schedule, progress)
             chunk_confidence_threshold = confidence_for_progress(confidence_schedule, progress)
             log_conf_thresh = confidence_to_log_threshold(chunk_confidence_threshold)
+            if order_lambdas_spec.strip():
+                chunk_order_lambdas = static_order_lambdas
+            else:
+                chunk_order_lambdas = {n: chunk_lambda for n in range(2, ngram_max_n + 1)}
+            chunk_order_log_lambdas = {n: (math.log(1.0 - lam), math.log(lam)) for n, lam in chunk_order_lambdas.items()}
 
             base_model.eval()
             with torch.inference_mode():
@@ -375,7 +415,7 @@ def eval_val_sliding_ttt_ngram(
                                     ng_lp, ng_order, _ = ng_lookup
                                     pass_attempts += 1
                                     model_lp = model_logps[j]
-                                    log_1_minus_lam, log_lam = order_log_lambdas[ng_order]
+                                    log_1_minus_lam, log_lam = chunk_order_log_lambdas[ng_order]
                                     a = log_1_minus_lam + model_lp
                                     b = log_lam + ng_lp
                                     mixed_lp = max(a, b) + math.log1p(math.exp(-abs(a - b)))
@@ -445,7 +485,7 @@ def eval_val_sliding_ttt_ngram(
                 log(
                     f"  ttt_ngram_pass {pass_name} [{pos_idx+1}/{len(chunk_indices)}] "
                     f"best_bpb={rbpb:.6f} hit={hit:.1f}% skip={skip:.0f}% "
-                    f"conf={chunk_confidence_threshold:.2f} time={elapsed:.1f}s"
+                    f"conf={chunk_confidence_threshold:.2f} lam={chunk_lambda:.3f} time={elapsed:.1f}s"
                 )
 
         ngram_improvements += pass_improvements
@@ -508,6 +548,7 @@ def main() -> None:
     parser.add_argument("--confidence-threshold", type=float, default=0.5)
     parser.add_argument("--min-count", type=int, default=3)
     parser.add_argument("--packed-cache", action="store_true")
+    parser.add_argument("--lambda-schedule", type=str, default="")
     parser.add_argument("--confidence-schedule", type=str, default="")
     parser.add_argument("--order-lambdas", type=str, default="")
     parser.add_argument("--max-chunks", type=int, default=0)
@@ -649,6 +690,7 @@ def main() -> None:
         ttt_passes=args_ns.ttt_passes,
         include_base_pass=args_ns.include_base_pass,
         packed_cache=args_ns.packed_cache,
+        lambda_schedule_spec=args_ns.lambda_schedule,
         confidence_schedule_spec=args_ns.confidence_schedule,
         order_lambdas_spec=args_ns.order_lambdas,
         log=log,

@@ -188,6 +188,34 @@ def confidence_to_log_threshold(confidence_threshold: float) -> float:
     return math.log(confidence_threshold)
 
 
+def parse_lambda_schedule(spec: str, default_lambda: float) -> list[tuple[float, float]]:
+    schedule = [(0.0, default_lambda)]
+    if not spec.strip():
+        return schedule
+    parsed: list[tuple[float, float]] = []
+    for item in spec.split(","):
+        frac_s, value_s = item.strip().split(":", 1)
+        frac = min(max(float(frac_s), 0.0), 1.0)
+        value = float(value_s)
+        if not (0.0 < value < 1.0):
+            raise ValueError(f"lambda schedule values must lie in (0, 1), got {value}")
+        parsed.append((frac, value))
+    parsed.sort()
+    if parsed[0][0] > 0.0:
+        parsed.insert(0, (0.0, default_lambda))
+    return parsed
+
+
+def lambda_for_progress(schedule: list[tuple[float, float]], progress: float) -> float:
+    current = schedule[0][1]
+    for frac, value in schedule:
+        if progress + 1e-12 >= frac:
+            current = value
+        else:
+            break
+    return current
+
+
 def parse_order_lambdas(spec: str, max_n: int, default_lambda: float) -> dict[int, float]:
     order_lambdas = {n: default_lambda for n in range(2, max_n + 1)}
     if not spec.strip():
@@ -206,6 +234,10 @@ def parse_order_lambdas(spec: str, max_n: int, default_lambda: float) -> dict[in
 
 def format_confidence_schedule(schedule: list[tuple[float, float]]) -> str:
     return ",".join(f"{frac:.2f}:{value:.2f}" for frac, value in schedule)
+
+
+def format_lambda_schedule(schedule: list[tuple[float, float]]) -> str:
+    return ",".join(f"{frac:.2f}:{value:.3f}" for frac, value in schedule)
 
 
 def format_order_lambdas(order_lambdas: dict[int, float]) -> str:
@@ -239,6 +271,7 @@ def eval_val_ngram(
     ngram_adapt_decay: float = 0.001,
     packed_cache: bool = False,
     ngram_adapt_last_n_blocks: int = 3,
+    lambda_schedule_spec: str = "",
     confidence_schedule_spec: str = "",
     order_lambdas_spec: str = "",
     max_windows: int = 0,
@@ -256,9 +289,9 @@ def eval_val_ngram(
     ngram_improvements = 0
     ngram_attempts = 0
     ngram_skipped = 0
+    lambda_schedule = parse_lambda_schedule(lambda_schedule_spec, ngram_lambda)
     confidence_schedule = parse_confidence_schedule(confidence_schedule_spec, confidence_threshold)
-    order_lambdas = parse_order_lambdas(order_lambdas_spec, ngram_max_n, ngram_lambda)
-    order_log_lambdas = {n: (math.log(1.0 - lam), math.log(lam)) for n, lam in order_lambdas.items()}
+    static_order_lambdas = parse_order_lambdas(order_lambdas_spec, ngram_max_n, ngram_lambda)
     ngram_adapt_optimizer = None
     global_weights = None
 
@@ -284,15 +317,22 @@ def eval_val_ngram(
         f"stride={stride} lambda={ngram_lambda} max_n={ngram_max_n} "
         f"confidence_threshold={confidence_threshold} gate_mode={gate_mode} min_count={min_count} "
         f"adapt={int(ngram_adapt_enabled)} packed={int(packed_cache)} "
+        f"lambda_schedule={format_lambda_schedule(lambda_schedule)} "
         f"confidence_schedule={format_confidence_schedule(confidence_schedule)} "
-        f"order_lambdas={format_order_lambdas(order_lambdas)}"
+        f"order_lambdas={format_order_lambdas(static_order_lambdas)}"
     )
     for bi in range(0, len(window_starts), batch_seqs):
         batch_ws = window_starts[bi : bi + batch_seqs]
         bsz = len(batch_ws)
         batch_progress = bi / max(len(window_starts), 1)
+        batch_lambda = lambda_for_progress(lambda_schedule, batch_progress)
         batch_confidence_threshold = confidence_for_progress(confidence_schedule, batch_progress)
         log_conf_thresh = gate_value_to_log_threshold(batch_confidence_threshold)
+        if order_lambdas_spec.strip():
+            batch_order_lambdas = static_order_lambdas
+        else:
+            batch_order_lambdas = {n: batch_lambda for n in range(2, ngram_max_n + 1)}
+        batch_order_log_lambdas = {n: (math.log(1.0 - lam), math.log(lam)) for n, lam in batch_order_lambdas.items()}
         x_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
         y_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
         wlens: list[int] = []
@@ -351,7 +391,7 @@ def eval_val_ngram(
                         ng_lp, ng_order, _ = ng_lookup
                         ngram_attempts += 1
                         model_lp = target_logps[j]
-                        log_1_minus_lam, log_lam = order_log_lambdas[ng_order]
+                        log_1_minus_lam, log_lam = batch_order_log_lambdas[ng_order]
                         a = log_1_minus_lam + model_lp
                         b = log_lam + ng_lp
                         mixed_lp = max(a, b) + math.log1p(math.exp(-abs(a - b)))
@@ -403,7 +443,7 @@ def eval_val_ngram(
             suffix = " +ngram_adapt" if ngram_adapt_enabled else ""
             log(
                 f"  ngram [{pct:5.1f}%] bpb={rb:.6f} hit={hit:.1f}% skip={skip:.0f}% "
-                f"conf={batch_confidence_threshold:.2f}{suffix}"
+                f"conf={batch_confidence_threshold:.2f} lam={batch_lambda:.3f}{suffix}"
             )
 
     val_loss = (loss_sum / token_count).item()
@@ -437,6 +477,7 @@ def main() -> None:
     parser.add_argument("--ngram-adapt-decay", type=float, default=0.001)
     parser.add_argument("--ngram-adapt-last-n-blocks", type=int, default=3)
     parser.add_argument("--packed-cache", action="store_true")
+    parser.add_argument("--lambda-schedule", type=str, default="")
     parser.add_argument("--confidence-schedule", type=str, default="")
     parser.add_argument("--order-lambdas", type=str, default="")
     parser.add_argument("--max-windows", type=int, default=0)
@@ -546,6 +587,7 @@ def main() -> None:
         ngram_adapt_decay=args_ns.ngram_adapt_decay,
         ngram_adapt_last_n_blocks=args_ns.ngram_adapt_last_n_blocks,
         packed_cache=args_ns.packed_cache,
+        lambda_schedule_spec=args_ns.lambda_schedule,
         confidence_schedule_spec=args_ns.confidence_schedule,
         order_lambdas_spec=args_ns.order_lambdas,
         max_windows=args_ns.max_windows,

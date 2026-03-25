@@ -14,12 +14,18 @@ Run one candidate at a time on the saved winning artifact by setting CANDIDATE:
 
   CANDIDATE=record659 bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
+  CANDIDATE=record659_lamcool bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
+  CANDIDATE=record659_lamcool_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_conf06 bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_conf06_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_conf07 bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_conf07_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
+  CANDIDATE=record659_conf07_lamcool bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
+  CANDIDATE=record659_conf07_lamcool_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_cool_conf07 bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_cool_conf07_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
+  CANDIDATE=record659_cool_conf07_lamcool bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
+  CANDIDATE=record659_cool_conf07_lamcool_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_cool_conf07_min4 bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_cool_conf07_min4_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_conf08 bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
@@ -56,12 +62,18 @@ Candidate meanings:
   All runs default to the packed-cache implementation for speed unless PACKED_CACHE=0.
   record659     PR #659 settings: stride=128, lambda=0.15, conf=0.5
   record659_smoke PR #659 settings on first 128 windows only
+  record659_lamcool PR #659 confidence gate with lambda tapering from 0.15 to 0.06 late
+  record659_lamcool_smoke lambda-cooldown variant on first 128 windows only
   record659_conf06 PR #659 lambda with confidence threshold raised to 0.6
   record659_conf06_smoke conf=0.6 on first 128 windows only
   record659_conf07 PR #659 lambda with confidence threshold raised to 0.7
   record659_conf07_smoke conf=0.7 on first 128 windows only
+  record659_conf07_lamcool conf=0.7 plus lambda taper from 0.15 to 0.06 late
+  record659_conf07_lamcool_smoke conf=0.7 plus lambda taper on first 128 windows only
   record659_cool_conf07 conf=0.7 early, then cool to 0.65/0.60/0.55 late
   record659_cool_conf07_smoke cooldown-confidence variant on first 128 windows only
+  record659_cool_conf07_lamcool cooldown-confidence plus lambda taper
+  record659_cool_conf07_lamcool_smoke cooldown-confidence plus lambda taper on first 128 windows only
   record659_cool_conf07_min4 cooldown-confidence variant with min_count=4
   record659_cool_conf07_min4_smoke cooldown-confidence + min_count=4 on first 128 windows only
   record659_conf08 PR #659 lambda with confidence threshold raised to 0.8

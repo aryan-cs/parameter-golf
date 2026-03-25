@@ -15,6 +15,7 @@ NGRAM_MAX_N="${NGRAM_MAX_N:-5}"
 CONFIDENCE_THRESHOLD="${CONFIDENCE_THRESHOLD:-0.5}"
 GATE_MODE="${GATE_MODE:-max}"
 MIN_COUNT="${MIN_COUNT:-3}"
+LAMBDA_SCHEDULE="${LAMBDA_SCHEDULE:-}"
 NGRAM_ADAPT_ENABLED="${NGRAM_ADAPT_ENABLED:-0}"
 NGRAM_ADAPT_LR="${NGRAM_ADAPT_LR:-0.0003}"
 NGRAM_ADAPT_DECAY="${NGRAM_ADAPT_DECAY:-0.001}"
@@ -36,6 +37,15 @@ case "$CANDIDATE" in
     MAX_WINDOWS="128"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_smoke.txt}"
     ;;
+  record659_lamcool_smoke)
+    LAMBDA_SCHEDULE="0.00:0.15,0.50:0.12,0.65:0.09,0.80:0.06"
+    MAX_WINDOWS="128"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_lamcool_smoke.txt}"
+    ;;
+  record659_lamcool)
+    LAMBDA_SCHEDULE="0.00:0.15,0.50:0.12,0.65:0.09,0.80:0.06"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_lamcool.txt}"
+    ;;
   record659_conf06)
     CONFIDENCE_THRESHOLD="0.6"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_conf06.txt}"
@@ -53,6 +63,17 @@ case "$CANDIDATE" in
     CONFIDENCE_THRESHOLD="0.7"
     MAX_WINDOWS="128"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_conf07_smoke.txt}"
+    ;;
+  record659_conf07_lamcool_smoke)
+    CONFIDENCE_THRESHOLD="0.7"
+    LAMBDA_SCHEDULE="0.00:0.15,0.50:0.12,0.65:0.09,0.80:0.06"
+    MAX_WINDOWS="128"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_conf07_lamcool_smoke.txt}"
+    ;;
+  record659_conf07_lamcool)
+    CONFIDENCE_THRESHOLD="0.7"
+    LAMBDA_SCHEDULE="0.00:0.15,0.50:0.12,0.65:0.09,0.80:0.06"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_conf07_lamcool.txt}"
     ;;
   record659_cool_conf07)
     CONFIDENCE_THRESHOLD="0.7"
@@ -77,6 +98,19 @@ case "$CANDIDATE" in
     CONFIDENCE_SCHEDULE="0.00:0.70,0.50:0.65,0.65:0.60,0.80:0.55"
     MAX_WINDOWS="128"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_cool_conf07_min4_smoke.txt}"
+    ;;
+  record659_cool_conf07_lamcool_smoke)
+    CONFIDENCE_THRESHOLD="0.7"
+    CONFIDENCE_SCHEDULE="0.00:0.70,0.50:0.65,0.65:0.60,0.80:0.55"
+    LAMBDA_SCHEDULE="0.00:0.15,0.50:0.12,0.65:0.09,0.80:0.06"
+    MAX_WINDOWS="128"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_cool_conf07_lamcool_smoke.txt}"
+    ;;
+  record659_cool_conf07_lamcool)
+    CONFIDENCE_THRESHOLD="0.7"
+    CONFIDENCE_SCHEDULE="0.00:0.70,0.50:0.65,0.65:0.60,0.80:0.55"
+    LAMBDA_SCHEDULE="0.00:0.15,0.50:0.12,0.65:0.09,0.80:0.06"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_cool_conf07_lamcool.txt}"
     ;;
   record659_conf08)
     CONFIDENCE_THRESHOLD="0.8"
@@ -267,6 +301,7 @@ exec python scripts/eval_ngram_cache_artifact.py \
   --confidence-threshold "$CONFIDENCE_THRESHOLD" \
   --gate-mode "$GATE_MODE" \
   --min-count "$MIN_COUNT" \
+  --lambda-schedule "$LAMBDA_SCHEDULE" \
   --confidence-schedule "$CONFIDENCE_SCHEDULE" \
   --order-lambdas "$ORDER_LAMBDAS" \
   $( [[ "$NGRAM_ADAPT_ENABLED" == "1" ]] && printf '%s ' --ngram-adapt-enabled ) \

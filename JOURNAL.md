@@ -2571,6 +2571,38 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
   - Keep the live eval queue running.
   - Use the new `record_push_status.py` output as the default check before promoting any candidate toward `8xH100`.
 
+- Timestamp: 2026-03-25 05:05 UTC
+- Commit: `working tree`
+- Lane: Heuristic-valid proxy-artifact recovery
+- Objective: Stop treating long-train artifact eval wins as promotion candidates. The next meaningful target is an in-budget `7185`-step H200 proxy artifact paired with the strongest eval stack.
+- Finding:
+  - Best completed local score remains `1.08590477`, but it is sourced from the older `7,503,164ms` H200 train artifact and therefore fails the current dev-side train heuristic.
+  - The strongest completed heuristic-valid artifact is still the plain `7185`-step proxy run at `legal_ttt_exact = 1.12011356`.
+  - So the missing proof is not more theory; it is a full strong eval on a proxy-valid artifact.
+- Code / ops:
+  - Updated `scripts/record_push_status.py` so artifact-only eval logs inherit the train log of the artifact they were run on.
+  - Filtered the handoff promotion pool down to heuristic-valid candidates only, instead of accidentally preferring long-artifact eval wins.
+  - Added `record659_conf07_proxy7185` as a tracked n-gram candidate slot for the upcoming proxy-artifact full eval.
+  - Added `scripts/after_conf07_run_budget_proxy_conf07.sh`, which:
+    - waits for the current long-artifact `conf07` eval to finish
+    - snapshots the current long artifact and log
+    - reruns the in-budget `7185`-step H200 proxy train
+    - snapshots the proxy artifact
+    - runs full packed-cache `record659_conf07` on that proxy artifact
+    - prints a refreshed `record_push_status.py` summary
+- Live state:
+  - Long-artifact `record659_conf07` is still running and had reached `78.6%` at `1.080169` when this entry was written.
+  - A detached background orchestrator is now armed in `/tmp/h200_after_conf07_budget_proxy_conf07.log` and waiting for that run to finish before taking over the H200.
+- Decision:
+  - The main path is now explicit:
+    - finish the current strong long-artifact eval for signal
+    - immediately convert that signal into a heuristic-valid proxy-artifact measurement
+    - only then decide whether the lane is truly plausible enough for `8xH100`
+- Next step:
+  - Let the current `conf07` finish.
+  - Wait for the automatic proxy retrain + proxy-artifact full `conf07` eval chain to complete.
+  - If the proxy-artifact `conf07` score is still close enough to the long-artifact result, promote that lane and deprioritize further long-artifact-only sweeps.
+
 - Timestamp: 2026-03-25 03:51 UTC
 - Commit: `working tree`
 - Lane: pure n-gram frontier
