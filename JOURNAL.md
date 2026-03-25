@@ -4627,3 +4627,15 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
   - `upstream_pr698_exact`
   - `upstream_pr698_timed_exact`
   - `upstream_pr698_timed_nocompile_exact`
+
+## 2026-03-25 09:06 UTC - Deprioritize PR697 and finish PR698 tooling pass
+
+- Checked upstream [PR #697](https://github.com/openai/parameter-golf/pull/697) directly.
+- Decision:
+  - do **not** promote PR697 as a main family
+  - it is built on the older `1.1194` lineage and only reports smoke validation, so it is weaker than the clean PR688 / PR674 exact-upstream path we already have staged
+- Finished the PR698 consistency pass by adding it to the human-facing candidate list in [h100_parallel_candidate_portfolio.sh](/home/aryang9/parameter-golf/scripts/h100_parallel_candidate_portfolio.sh).
+- Current strategy ranking remains:
+  - exact PR688 budget-fit ladder
+  - exact PR674 base and overlays
+  - PR698 only as an under-budget fallback family

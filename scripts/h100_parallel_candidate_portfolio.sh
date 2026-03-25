@@ -572,6 +572,9 @@ Run one candidate on each 8xH100 node by setting CANDIDATE:
   CANDIDATE=upstream_pr688_timed_nocompile_qttt_light_chunk256_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr688_timed_nocompile_qttt_light_stride64_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr688_timed_nocompile_qttt_light_chunk256_stride64_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=upstream_pr698_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=upstream_pr698_timed_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=upstream_pr698_timed_nocompile_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr674_crownq_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr674_crownq_timed_nocompile_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr674_crownq_mixer5_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
@@ -729,6 +732,12 @@ Candidate meanings:
                        timed PR #688 qTTT light lane with `EVAL_STRIDE=64`, explicitly halving scored-window density to probe the strongest clean eval-time cut in the exact upstream family
   upstream_pr688_timed_nocompile_qttt_light_chunk256_stride64_exact
                        timed PR #688 qTTT light lane with both `TTT_CHUNK_TOKENS=262144` and `EVAL_STRIDE=64`, giving the lowest-overhead exact-upstream PR688 budget probe
+  upstream_pr698_exact
+                       exact upstream PR #698 clean under-budget merged-top-stack run via worktree, staged as a cap-safe fallback family rather than a new score leader
+  upstream_pr698_timed_exact
+                       timed PR #698 lane with warmup and periodic validation removed, useful as a direct cap-compliance probe on the clean under-budget family
+  upstream_pr698_timed_nocompile_exact
+                       timed PR #698 lane with `COMPILE_ENABLED=0`, giving a lower-startup fallback probe when compile cost dominates on H200
   upstream_pr674_crownq_exact
                        exact upstream PR #674 plus PR #692-style CROWN-Q warmdown penalty to reduce quantization damage
   upstream_pr674_crownq_timed_nocompile_exact
