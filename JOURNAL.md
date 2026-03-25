@@ -4928,7 +4928,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 
 ## 2026-03-25 19:39 UTC - Pivot the mainline to exact PR758 and reorder the H200 ladder around PR755
 
-- Commit: `TBD`
+- Commit: `0751840`
 - Objective:
   - Replace the stale PR674/PR700-first automation with a cleaner readiness ladder centered on the newest reproducible-looking exact-upstream family.
 - Findings:
