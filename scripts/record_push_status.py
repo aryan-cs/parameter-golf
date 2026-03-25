@@ -12,13 +12,13 @@ from prepare_submission_metadata import merge_summaries, parse_log
 # Public frontier snapshot as of 2026-03-25:
 # - PR #685 claimed 1.0366 but was closed as illegal (multi-pass min-NLL selection).
 # - PR #753 is the newest best open claim at 0.9625 via legal-looking eval-side changes.
-# - PR #700 remains the strongest earlier open claim we have already integrated locally.
+# - PR #755 is the strongest secondary open claim we can plausibly hybridize with eval-side methods.
 CURRENT_PUBLIC_ILLEGAL_FRONTIER_BPB = 1.0366
 CURRENT_PUBLIC_ILLEGAL_FRONTIER_LABEL = "PR #685 (closed illegal)"
 CURRENT_PUBLIC_BEST_OPEN_CLAIM_BPB = 0.9625
 CURRENT_PUBLIC_BEST_OPEN_CLAIM_LABEL = "PR #753 (open, unreviewed 7-gram backoff claim)"
-CURRENT_PUBLIC_SECONDARY_OPEN_CLAIM_BPB = 1.0541
-CURRENT_PUBLIC_SECONDARY_OPEN_CLAIM_LABEL = "PR #700 (open legal-looking hedge mixer claim)"
+CURRENT_PUBLIC_SECONDARY_OPEN_CLAIM_BPB = 1.0321
+CURRENT_PUBLIC_SECONDARY_OPEN_CLAIM_LABEL = "PR #755 (open gravity-tokenizer claim)"
 RECORD_DELTA_NAT = 0.005
 APPROX_BPB_PER_NAT = 0.5923
 PRACTICAL_WIN_GATE_BPB = CURRENT_PUBLIC_BEST_OPEN_CLAIM_BPB - RECORD_DELTA_NAT * APPROX_BPB_PER_NAT

@@ -4861,3 +4861,44 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
   - Treat PR755 as the prepared tokenizer hedge behind PR753:
     - PR753 remains the live GPU focus because it is the stronger open claim
     - PR755 is now ready for setup and H200 smoke as soon as we want a second serious lane
+
+## 2026-03-25 19:18 UTC - Generic artifact eval support and queued Gravity+PR753 hybrid
+
+- Objective:
+  - Convert the separate PR753 and PR755 ideas into a real hybrid lane we can run automatically on the H200.
+- Findings:
+  - Fresh public scan on March 25, 2026 found two supporting signals:
+    - [PR #757](https://github.com/openai/parameter-golf/pull/757) reports `1.1124` with very aggressive 30-epoch SGD TTT. Useful as evidence that eval-side adaptation still has room on older stacks, but not close to the main frontier.
+    - [PR #756](https://github.com/openai/parameter-golf/pull/756) reports negative results on newer val-GPTQ stacks: quant algorithm tweaks and TTT are neutral/worse there. That reinforces the idea that we should hybridize the strongest tokenizer / n-gram ideas, not spend our next block on marginal quant or TTT tweaks.
+  - The key technical blocker for a Gravity hybrid was local tooling, not theory:
+    - [scripts/eval_ngram_cache_artifact.py](/home/aryang9/parameter-golf/scripts/eval_ngram_cache_artifact.py) only knew how to reload our local `int6 + lzma` artifacts
+    - the evaluator also assumed the record-stack `GPT` constructor and `forward_logits` helper existed, which is not true for PR755’s simpler baseline-style model
+  - The fallback path now works on the actual PR755 training module:
+    - a validation import against the PR755 `train_gpt.py` successfully built the model and produced fallback logits with shape `(2, 8, 1024)`
+- Code / ops:
+  - Upgraded [scripts/eval_ngram_cache_artifact.py](/home/aryang9/parameter-golf/scripts/eval_ngram_cache_artifact.py) to be branch-agnostic enough for hybrid experiments:
+    - added auto-detection for `int6+l zma` vs `int8+zlib` artifacts
+    - added constructor introspection so it can instantiate both the banked frontier stacks and simple baseline-style stacks from each branch’s own `train_gpt.py`
+    - added a generic logits fallback for branches that do not implement `forward_logits`
+  - Extended [scripts/icrn_h200_artifact_ngram_candidate.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_artifact_ngram_candidate.sh) so artifact evals can override dataset and tokenizer paths. This is required for gravity-tokenizer experiments.
+  - Added the hybrid ladder:
+    - [scripts/icrn_h200_pr755_record753_ladder.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_pr755_record753_ladder.sh)
+    - [scripts/after_pr753_launch_pr755_record753.sh](/home/aryang9/parameter-golf/scripts/after_pr753_launch_pr755_record753.sh)
+  - The queued ladder is now armed behind the live PR753 smoke. It will:
+    1. set up Gravity tokenizer data
+    2. run an H200 PR755 smoke
+    3. evaluate the resulting PR755 artifact with PR753-style `record753` artifact scoring
+  - Cleaned up old queue clutter by killing stale [scripts/after_log_launch_script.sh](/home/aryang9/parameter-golf/scripts/after_log_launch_script.sh) processes from previous branches, leaving only the current PR755 handoff watcher active.
+- Current live result:
+  - The upstream PR753 timed smoke in [logs/h200_upstream_pr753_proxy600_timed_nocompile_seed1337.txt](/home/aryang9/parameter-golf/records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs/h200_upstream_pr753_proxy600_timed_nocompile_seed1337.txt) reached:
+    - `step:373/20000`
+    - `train_time:596316ms`
+    - `step_avg:1598.70ms`
+    - `val_bpb:2.8520`
+  - That confirms again that PR753 is too slow on `1xH200` to be our dev-side train proxy, but still useful as a branch-readiness lane.
+- Decision:
+  - Keep PR753 as the “exact branch sanity” lane.
+  - Move the next H200 slot onto the more plausible hybrid:
+    - PR755 gravity tokenizer for a simpler, already-under-cap base
+    - PR753-style backoff/adaptive artifact eval on top
+  - Update the public-frontier snapshot so PR755, not PR700, is the more relevant secondary open claim.

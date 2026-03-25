@@ -4,12 +4,14 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import io
+import inspect
 import json
 import lzma
 import math
 import os
 import sys
 import time
+import zlib
 from pathlib import Path
 
 import numpy as np
@@ -28,45 +30,136 @@ def load_module(train_gpt_path: Path):
     return module
 
 
+def gpt_constructor_kwargs(mod, args) -> dict[str, object]:
+    sig = inspect.signature(mod.GPT.__init__)
+    kwargs: dict[str, object] = {}
+    fallback_values = {
+        "bigram_vocab_size": getattr(args, "bigram_vocab_size", 0),
+        "bigram_dim": getattr(args, "bigram_dim", 0),
+        "xsa_last_n": getattr(args, "xsa_last_n", 0),
+        "rope_dims": getattr(args, "rope_dims", 0),
+        "ln_scale": getattr(args, "ln_scale", False),
+        "dtg": getattr(args, "dtg_enabled", False),
+        "ve_enabled": getattr(args, "ve_enabled", False),
+        "ve_dim": getattr(args, "ve_dim", 0),
+        "ve_layers": getattr(args, "ve_layers", 0),
+        "gated_attention": getattr(args, "gated_attention", False),
+        "value_residual": getattr(args, "value_residual", False),
+        "use_swiglu": getattr(args, "use_swiglu", False),
+        "swiglu_half_dim": getattr(args, "swiglu_half_dim", 1024),
+        "mtp_num_heads": getattr(args, "mtp_num_heads", 0),
+        "mtp_loss_weight": getattr(args, "mtp_loss_weight", 0.0),
+        "f1_corr_rank": getattr(args, "f1_corr_rank", 0),
+        "f1_corr_init_std": getattr(args, "f1_corr_init_std", 0.0),
+        "mlp_act": getattr(args, "mlp_act", "relu_sq"),
+        "mlp_leaky_slope": getattr(args, "mlp_leaky_slope", 0.5),
+    }
+    for name, param in sig.parameters.items():
+        if name == "self":
+            continue
+        if hasattr(args, name):
+            kwargs[name] = getattr(args, name)
+        elif name in fallback_values:
+            kwargs[name] = fallback_values[name]
+        elif param.default is inspect._empty:
+            raise RuntimeError(f"Missing required GPT constructor arg '{name}' for {mod.__file__}")
+    return kwargs
+
+
 def build_eval_model(mod, args, device: torch.device, deq_state: dict[str, torch.Tensor]) -> torch.nn.Module:
-    eval_model = mod.GPT(
-        vocab_size=args.vocab_size,
-        num_layers=args.num_layers,
-        model_dim=args.model_dim,
-        num_heads=args.num_heads,
-        num_kv_heads=args.num_kv_heads,
-        mlp_mult=args.mlp_mult,
-        tie_embeddings=args.tie_embeddings,
-        tied_embed_init_std=args.tied_embed_init_std,
-        logit_softcap=args.logit_softcap,
-        rope_base=args.rope_base,
-        qk_gain_init=args.qk_gain_init,
-        mtp_num_heads=0,
-        mtp_loss_weight=0.0,
-        bigram_vocab_size=args.bigram_vocab_size,
-        bigram_dim=args.bigram_dim,
-        xsa_last_n=args.xsa_last_n,
-        rope_dims=args.rope_dims,
-        ln_scale=args.ln_scale,
-        dtg=args.dtg_enabled,
-        ve_enabled=args.ve_enabled,
-        ve_dim=args.ve_dim,
-        ve_layers=args.ve_layers,
-        gated_attention=args.gated_attention,
-        value_residual=args.value_residual,
-        use_swiglu=getattr(args, "use_swiglu", False),
-        swiglu_half_dim=getattr(args, "swiglu_half_dim", 1024),
-    ).to(device).bfloat16()
-    eval_model.qo_bank.data = eval_model.qo_bank.data.float()
-    eval_model.kv_bank.data = eval_model.kv_bank.data.float()
-    eval_model.mlp_up_bank.data = eval_model.mlp_up_bank.data.float()
-    eval_model.mlp_down_bank.data = eval_model.mlp_down_bank.data.float()
-    for module in eval_model.modules():
-        if isinstance(module, mod.CastedLinear):
-            module.float()
-    mod.restore_low_dim_params_to_fp32(eval_model)
+    eval_model = mod.GPT(**gpt_constructor_kwargs(mod, args)).to(device).bfloat16()
+    for bank_name in ("qo_bank", "kv_bank", "mlp_up_bank", "mlp_down_bank"):
+        if hasattr(eval_model, bank_name):
+            getattr(eval_model, bank_name).data = getattr(eval_model, bank_name).data.float()
+    casted_linear = getattr(mod, "CastedLinear", None)
+    if casted_linear is not None:
+        for module in eval_model.modules():
+            if isinstance(module, casted_linear):
+                module.float()
+    if hasattr(mod, "restore_low_dim_params_to_fp32"):
+        mod.restore_low_dim_params_to_fp32(eval_model)
     eval_model.load_state_dict(deq_state, strict=True)
     return eval_model
+
+
+def generic_forward_logits(model: torch.nn.Module, input_ids: torch.Tensor) -> torch.Tensor:
+    if hasattr(model, "forward_logits"):
+        return model.forward_logits(input_ids)
+    required = ("tok_emb", "blocks", "final_norm", "tie_embeddings", "logit_softcap")
+    if not all(hasattr(model, name) for name in required):
+        raise RuntimeError(f"Model {type(model).__name__} has no forward_logits and no supported fallback path")
+
+    x = model.tok_emb(input_ids)
+    x = F.rms_norm(x, (x.size(-1),))
+    x0 = x
+    num_encoder_layers = getattr(model, "num_encoder_layers", len(model.blocks))
+    num_decoder_layers = getattr(model, "num_decoder_layers", 0)
+    skip_weights = getattr(model, "skip_weights", None)
+    skips: list[torch.Tensor] = []
+
+    for i in range(num_encoder_layers):
+        x = model.blocks[i](x, x0)
+        if num_decoder_layers > 0:
+            skips.append(x)
+    for i in range(num_decoder_layers):
+        if skips and skip_weights is not None:
+            x = x + skip_weights[i].to(dtype=x.dtype)[None, None, :] * skips.pop()
+        x = model.blocks[num_encoder_layers + i](x, x0)
+
+    x = model.final_norm(x)
+    if getattr(model, "tie_embeddings", False):
+        logits_proj = F.linear(x, model.tok_emb.weight)
+    else:
+        lm_head = getattr(model, "lm_head", None)
+        if lm_head is None:
+            raise RuntimeError("lm_head is required when tie_embeddings=False")
+        logits_proj = lm_head(x)
+    logit_softcap = float(getattr(model, "logit_softcap", 0.0))
+    if logit_softcap > 0.0:
+        return logit_softcap * torch.tanh(logits_proj / logit_softcap)
+    return logits_proj
+
+
+def compiled_logits_fn(base_model: torch.nn.Module):
+    return torch.compile(lambda input_ids: generic_forward_logits(base_model, input_ids), dynamic=False, fullgraph=True)
+
+
+def resolve_default_artifact_path(run_dir: Path) -> Path:
+    candidates = [
+        run_dir / "final_model.int6.ptz",
+        run_dir / "final_model.int8.ptz",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
+
+
+def load_dequantized_state(mod, args, export_sd: dict[str, torch.Tensor], artifact_path: Path):
+    quant_blob = artifact_path.read_bytes()
+    errors: list[str] = []
+
+    if hasattr(mod, "dequantize_mixed_int6") and hasattr(mod, "_unbank_state_dict") and hasattr(mod, "_rebank_state_dict"):
+        try:
+            quant_state = torch.load(io.BytesIO(lzma.decompress(quant_blob)), map_location="cpu")
+            if isinstance(quant_state, dict) and "w" in quant_state and "m" in quant_state:
+                unbanked_sd = mod._unbank_state_dict(export_sd, args.num_layers)
+                deq_unbanked = mod.dequantize_mixed_int6(quant_state["w"], quant_state["m"], unbanked_sd)
+                deq_state = mod._rebank_state_dict(deq_unbanked, args.num_layers, export_sd)
+                return deq_state, "int6_lzma"
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"int6_lzma:{exc}")
+
+    if hasattr(mod, "dequantize_state_dict_int8"):
+        try:
+            quant_state = torch.load(io.BytesIO(zlib.decompress(quant_blob)), map_location="cpu")
+            deq_state = mod.dequantize_state_dict_int8(quant_state)
+            return deq_state, "int8_zlib"
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"int8_zlib:{exc}")
+
+    detail = "; ".join(errors) if errors else "no compatible quantized artifact loader found"
+    raise RuntimeError(f"Could not decode artifact {artifact_path}: {detail}")
 
 
 class OnlineNgramCache:
@@ -303,7 +396,7 @@ def eval_val_mixer5(
     )
 
     base_model.eval()
-    compiled_logits = torch.compile(base_model.forward_logits, dynamic=False, fullgraph=True)
+    compiled_logits = compiled_logits_fn(base_model)
     log(
         "mixer5_eval:start "
         f"stride={stride} trigram_buckets={mixer_trigram_buckets} eta={mixer_eta:.4f} "
@@ -550,7 +643,7 @@ def eval_val_ngram(
         ngram_adapt_optimizer = torch.optim.RMSprop(update_params, lr=ngram_adapt_lr, alpha=0.99, eps=1e-8)
     else:
         base_model.eval()
-    compiled_logits = torch.compile(base_model.forward_logits, dynamic=False, fullgraph=True)
+    compiled_logits = compiled_logits_fn(base_model)
     log(
         "ngram_eval:start "
         f"stride={stride} lambda={ngram_lambda} max_n={ngram_max_n} "
@@ -760,7 +853,7 @@ def eval_val_hashed_ngram(
     )
 
     base_model.eval()
-    compiled_logits = torch.compile(base_model.forward_logits, dynamic=False, fullgraph=True)
+    compiled_logits = compiled_logits_fn(base_model)
     log(
         "hashed_ngram_eval:start "
         f"stride={stride} alpha={ngram_lambda} order={ngram_max_n} "
@@ -1114,7 +1207,7 @@ def main() -> None:
     args_ns = parser.parse_args()
 
     run_dir = args_ns.run_dir.resolve()
-    artifact_path = (args_ns.artifact_path or run_dir / "final_model.int6.ptz").resolve()
+    artifact_path = (args_ns.artifact_path or resolve_default_artifact_path(run_dir)).resolve()
     template_path = (args_ns.template_path or run_dir / "final_model.pt").resolve()
     train_gpt_path = (args_ns.train_gpt_path or run_dir / "train_gpt.py").resolve()
     log_path = args_ns.log_path.resolve()
@@ -1122,10 +1215,12 @@ def main() -> None:
 
     mod = load_module(train_gpt_path)
     args = mod.Hyperparameters()
-    args.data_path = str(args_ns.data_path.resolve())
+    if args_ns.data_path is not None:
+        args.data_path = str(args_ns.data_path.resolve())
     args.train_files = os.path.join(args.data_path, "fineweb_train_*.bin")
     args.val_files = os.path.join(args.data_path, "fineweb_val_*.bin")
-    args.tokenizer_path = str(args_ns.tokenizer_path.resolve())
+    if args_ns.tokenizer_path is not None:
+        args.tokenizer_path = str(args_ns.tokenizer_path.resolve())
     args.bigram_vocab_size = args_ns.bigram_vocab_size
     if args_ns.value_residual is not None:
         args.value_residual = bool(args_ns.value_residual)
@@ -1202,12 +1297,8 @@ def main() -> None:
     base_bytes_lut, has_leading_space_lut, is_boundary_token_lut = mod.build_sentencepiece_luts(sp, args.vocab_size, device)
 
     export_sd = torch.load(template_path, map_location="cpu")
-    with open(artifact_path, "rb") as f:
-        quant_blob = f.read()
-    quant_state = torch.load(io.BytesIO(lzma.decompress(quant_blob)), map_location="cpu")
-    unbanked_sd = mod._unbank_state_dict(export_sd, args.num_layers)
-    deq_unbanked = mod.dequantize_mixed_int6(quant_state["w"], quant_state["m"], unbanked_sd)
-    deq_state = mod._rebank_state_dict(deq_unbanked, args.num_layers, export_sd)
+    deq_state, artifact_format = load_dequantized_state(mod, args, export_sd, artifact_path)
+    log(f"resume_ngram_eval:artifact_format={artifact_format}")
     eval_model = build_eval_model(mod, args, device, deq_state)
 
     torch.cuda.synchronize()

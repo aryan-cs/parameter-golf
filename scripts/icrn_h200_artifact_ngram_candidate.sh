@@ -32,6 +32,8 @@ SKIP_COMPLETED="${SKIP_COMPLETED:-1}"
 ARTIFACT_PATH="${ARTIFACT_PATH:-}"
 TEMPLATE_PATH="${TEMPLATE_PATH:-}"
 TRAIN_GPT_PATH="${TRAIN_GPT_PATH:-}"
+EVAL_TOKENIZER_PATH="${EVAL_TOKENIZER_PATH:-}"
+EVAL_DATA_PATH="${EVAL_DATA_PATH:-}"
 CACHE_KIND="${CACHE_KIND-}"
 HASHED_BUCKETS="${HASHED_BUCKETS-}"
 NGRAM_MIN_ORDER="${NGRAM_MIN_ORDER-}"
@@ -638,6 +640,12 @@ if [[ -n "$TEMPLATE_PATH" ]]; then
 fi
 if [[ -n "$TRAIN_GPT_PATH" ]]; then
   args+=(--train-gpt-path "$TRAIN_GPT_PATH")
+fi
+if [[ -n "$EVAL_TOKENIZER_PATH" ]]; then
+  args+=(--tokenizer-path "$EVAL_TOKENIZER_PATH")
+fi
+if [[ -n "$EVAL_DATA_PATH" ]]; then
+  args+=(--data-path "$EVAL_DATA_PATH")
 fi
 
 exec python "${args[@]}"
