@@ -37,6 +37,10 @@ HASHED_BUCKETS="${HASHED_BUCKETS:-4194304}"
 HEDGE_ENABLED="${HEDGE_ENABLED:-0}"
 HEDGE_ETA="${HEDGE_ETA:-0.10}"
 HEDGE_NEURAL_BIAS="${HEDGE_NEURAL_BIAS:-2.0}"
+MIXER_ETA="${MIXER_ETA:-0.10}"
+MIXER_NEURAL_BIAS="${MIXER_NEURAL_BIAS:-2.0}"
+MIXER_TRIGRAM_BUCKETS="${MIXER_TRIGRAM_BUCKETS:-65536}"
+MIXER_WARMUP_TOKENS="${MIXER_WARMUP_TOKENS:-10000}"
 
 case "$CANDIDATE" in
   record659)
@@ -350,6 +354,45 @@ case "$CANDIDATE" in
     HEDGE_ENABLED="1"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record674_hedge_h100proxy7185_seed1337.txt}"
     ;;
+  record688_mixer5_smoke)
+    STRIDE="32"
+    CACHE_KIND="mixer5"
+    MIXER_ETA="0.10"
+    MIXER_NEURAL_BIAS="2.0"
+    MIXER_TRIGRAM_BUCKETS="65536"
+    MIXER_WARMUP_TOKENS="10000"
+    MAX_WINDOWS="128"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record688_mixer5_smoke.txt}"
+    ;;
+  record688_mixer5)
+    STRIDE="32"
+    CACHE_KIND="mixer5"
+    MIXER_ETA="0.10"
+    MIXER_NEURAL_BIAS="2.0"
+    MIXER_TRIGRAM_BUCKETS="65536"
+    MIXER_WARMUP_TOKENS="10000"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record688_mixer5.txt}"
+    ;;
+  record688_mixer5_eta05_smoke)
+    STRIDE="32"
+    CACHE_KIND="mixer5"
+    MIXER_ETA="0.05"
+    MIXER_NEURAL_BIAS="2.0"
+    MIXER_TRIGRAM_BUCKETS="65536"
+    MIXER_WARMUP_TOKENS="10000"
+    MAX_WINDOWS="128"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record688_mixer5_eta05_smoke.txt}"
+    ;;
+  record688_mixer5_eta20_smoke)
+    STRIDE="32"
+    CACHE_KIND="mixer5"
+    MIXER_ETA="0.20"
+    MIXER_NEURAL_BIAS="2.0"
+    MIXER_TRIGRAM_BUCKETS="65536"
+    MIXER_WARMUP_TOKENS="10000"
+    MAX_WINDOWS="128"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record688_mixer5_eta20_smoke.txt}"
+    ;;
   record659_warm_conf07)
     CONFIDENCE_SCHEDULE="0.00:0.50,0.20:0.60,0.40:0.70"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_warm_conf07.txt}"
@@ -467,6 +510,10 @@ args=(
   --hashed-buckets "$HASHED_BUCKETS"
   --hedge-eta "$HEDGE_ETA"
   --hedge-neural-bias "$HEDGE_NEURAL_BIAS"
+  --mixer-eta "$MIXER_ETA"
+  --mixer-neural-bias "$MIXER_NEURAL_BIAS"
+  --mixer-trigram-buckets "$MIXER_TRIGRAM_BUCKETS"
+  --mixer-warmup-tokens "$MIXER_WARMUP_TOKENS"
   --lambda-schedule "$LAMBDA_SCHEDULE"
   --confidence-schedule "$CONFIDENCE_SCHEDULE"
   --order-lambdas "$ORDER_LAMBDAS"

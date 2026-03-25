@@ -3781,3 +3781,61 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
   - Keep the live exact-upstream PR `#674` timed `nocompile` run on-GPU for now.
   - Use the new queue to get immediate signal on `record659_conf07_hedge` as soon as the GPU frees up.
   - If the Hedge smoke is good, port the same logic into the counted trainer path next instead of spending another full turn only on surrogate tuning.
+
+- Timestamp: 2026-03-25 07:10 UTC
+- Commit: uncommitted
+- Lane: PR `#688` frontier mining / artifact-side 5-expert mixer
+- Objective: Port the strongest legal part of PR `#688` into the saved-artifact evaluator so we can test a higher-upside score-side frontier without paying for another full retrain first.
+- Sources:
+  - PR `#688` summary and README:
+    - https://github.com/openai/parameter-golf/pull/688
+  - Local inspection clone:
+    - `/tmp/pr688_inspect/records/track_10min_16mb/2026-03-24_HedgeMixer_TTT/README.md`
+    - `/tmp/pr688_inspect/records/track_10min_16mb/2026-03-24_HedgeMixer_TTT/train_gpt.py`
+- Command or config:
+  - Added a new PR-`#688`-inspired evaluator path to [eval_ngram_cache_artifact.py](/home/aryang9/parameter-golf/scripts/eval_ngram_cache_artifact.py):
+    - new `cache_kind=mixer5`
+    - experts:
+      - neural
+      - unigram
+      - bigram
+      - hashed trigram
+      - entropy
+    - online Hedge update:
+      - `log_w -= eta * expert_mean_loss`
+    - new CLI flags:
+      - `--mixer-eta`
+      - `--mixer-neural-bias`
+      - `--mixer-trigram-buckets`
+      - `--mixer-warmup-tokens`
+  - Added new artifact candidates in [icrn_h200_artifact_ngram_candidate.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_artifact_ngram_candidate.sh):
+    - `record688_mixer5_smoke`
+    - `record688_mixer5`
+    - `record688_mixer5_eta05_smoke`
+    - `record688_mixer5_eta20_smoke`
+  - Documented them in [icrn_h200_artifact_ngram_portfolio.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_artifact_ngram_portfolio.sh).
+  - Added them to [record_push_status.py](/home/aryang9/parameter-golf/scripts/record_push_status.py).
+  - Fixed the queue strategy:
+    - the repo helper [rearm_after_current_timed_nocompile_with_hedge.sh](/home/aryang9/parameter-golf/scripts/rearm_after_current_timed_nocompile_with_hedge.sh) now inserts:
+      - `record659_conf07_hedge_smoke`
+      - `record659_conf07_hedge`
+      - `record688_mixer5_smoke`
+      - `record688_mixer5`
+      - `upstream_pr674_hedgemix_timed_nocompile`
+  - Verification:
+    - `python -m py_compile scripts/eval_ngram_cache_artifact.py scripts/record_push_status.py`
+    - `bash -n scripts/icrn_h200_artifact_ngram_candidate.sh scripts/icrn_h200_artifact_ngram_portfolio.sh scripts/rearm_after_current_timed_nocompile_with_hedge.sh`
+- Result:
+  - Live H200 head run is still exact-upstream PR `#674` timed `nocompile` in [h200_upstream_pr674_proxy7185_timed_nocompile_seed1337.txt](/home/aryang9/parameter-golf/records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs/h200_upstream_pr674_proxy7185_timed_nocompile_seed1337.txt).
+  - Latest checkpoint:
+    - `step:500/7185 val_bpb:1.3819`
+    - `step_avg:1483.88ms`
+  - H200 is still fully occupied by that run (`100%` GPU util, ~`32.8 GiB` used), so the new mixer path is queued, not yet run.
+  - I confirmed the detached queue issue was wrapper-related, not a problem with `after_log_launch_script.sh` itself.
+  - A clean manual four-stage watcher chain is now live behind the current run.
+- Decision:
+  - Keep the current exact-upstream PR `#674` timed `nocompile` lane alive until it finishes or clearly fails later.
+  - Spend the next free H200 slots on the cheapest highest-upside score-side checks:
+    - `record659_conf07_hedge`
+    - then `record688_mixer5`
+  - If either wins, port the best mixer variant into a counted trainer path next instead of only deepening the retrain ladder.

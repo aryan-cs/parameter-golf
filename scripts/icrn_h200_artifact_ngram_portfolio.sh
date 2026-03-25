@@ -55,6 +55,10 @@ Run one candidate at a time on the saved winning artifact by setting CANDIDATE:
   CANDIDATE=record674_hedge_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record674_proxy7185 bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record674_hedge_proxy7185 bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
+  CANDIDATE=record688_mixer5_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
+  CANDIDATE=record688_mixer5 bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
+  CANDIDATE=record688_mixer5_eta05_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
+  CANDIDATE=record688_mixer5_eta20_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_warm_conf07 bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_warm_conf07_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_orderlam bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
@@ -119,6 +123,10 @@ Candidate meanings:
   record674_hedge_smoke hashed Hedge mixer on first 128 windows only
   record674_proxy7185 same hashed PR #674-inspired eval, intended for the saved proxy artifact via ARTIFACT_PATH/TEMPLATE_PATH
   record674_hedge_proxy7185 hashed Hedge mixer, intended for the saved proxy artifact via ARTIFACT_PATH/TEMPLATE_PATH
+  record688_mixer5 PR #688-inspired 5-expert online mixer: neural, unigram, bigram, hashed trigram, entropy
+  record688_mixer5_smoke PR #688-inspired 5-expert mixer on first 128 windows only
+  record688_mixer5_eta05_smoke 5-expert mixer smoke with slower Hedge adaptation (eta=0.05)
+  record688_mixer5_eta20_smoke 5-expert mixer smoke with faster Hedge adaptation (eta=0.20)
   record659_warm_conf07 staged confidence: 0.50 -> 0.60 -> 0.70 as cache warms up
   record659_warm_conf07_smoke staged-confidence variant on first 128 windows only
   record659_orderlam order-aware lambda ramp: 2:0.08, 3:0.12, 4:0.17, 5:0.22

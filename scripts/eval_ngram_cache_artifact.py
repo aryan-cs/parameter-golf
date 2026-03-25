@@ -176,6 +176,215 @@ def build_hashed_ngram_keys(
     return ctx_key, full_key
 
 
+def _logsumexp_np(x: np.ndarray, axis: int = -1) -> np.ndarray:
+    x_max = np.max(x, axis=axis, keepdims=True)
+    return np.squeeze(x_max, axis=axis) + np.log(np.sum(np.exp(x - x_max), axis=axis))
+
+
+class OnlineContextMixer:
+    def __init__(
+        self,
+        vocab_size: int,
+        *,
+        trigram_buckets: int = 65_536,
+        eta: float = 0.1,
+        neural_bias: float = 2.0,
+        warmup_tokens: int = 10_000,
+    ) -> None:
+        if trigram_buckets < 1024 or (trigram_buckets & (trigram_buckets - 1)) != 0:
+            raise ValueError(f"trigram_buckets must be a power of two >=1024, got {trigram_buckets}")
+        self.vocab_size = vocab_size
+        self.trigram_buckets = trigram_buckets
+        self.eta = eta
+        self.warmup_tokens = warmup_tokens
+        self.log_weights = np.zeros((5,), dtype=np.float64)
+        self.log_weights[0] = neural_bias
+        self.uni_counts = np.zeros((vocab_size,), dtype=np.uint32)
+        self.bi_counts = np.zeros((vocab_size, vocab_size), dtype=np.uint32)
+        self.bi_row_totals = np.zeros((vocab_size,), dtype=np.uint32)
+        self.tri_counts = np.zeros((trigram_buckets, vocab_size), dtype=np.uint32)
+        self.tri_row_totals = np.zeros((trigram_buckets,), dtype=np.uint32)
+        self.total_tokens = 0
+        self.primes = np.array([np.uint64(36313), np.uint64(27191)], dtype=np.uint64)
+
+    def update_from_list(self, token_ids: list[int]) -> None:
+        if not token_ids:
+            return
+        toks = np.asarray(token_ids, dtype=np.int64)
+        self.total_tokens += int(toks.size)
+        np.add.at(self.uni_counts, toks, 1)
+        if toks.size >= 2:
+            prev = toks[:-1]
+            nxt = toks[1:]
+            np.add.at(self.bi_counts.reshape(-1), prev * self.vocab_size + nxt, 1)
+            np.add.at(self.bi_row_totals, prev, 1)
+        if toks.size >= 3:
+            prev2 = toks[:-2].astype(np.uint64)
+            prev1 = toks[1:-1].astype(np.uint64)
+            nxt = toks[2:]
+            tri_ctx = ((prev2 * self.primes[0]) ^ (prev1 * self.primes[1])) & np.uint64(self.trigram_buckets - 1)
+            np.add.at(self.tri_counts.reshape(-1), tri_ctx.astype(np.int64) * self.vocab_size + nxt, 1)
+            np.add.at(self.tri_row_totals, tri_ctx.astype(np.int64), 1)
+
+    def mix_token_batch(
+        self,
+        model_logps: np.ndarray,
+        entropies: np.ndarray,
+        prev_tokens: np.ndarray,
+        prev2_tokens: np.ndarray,
+        targets: np.ndarray,
+    ) -> np.ndarray:
+        model_probs = np.clip(np.exp(model_logps), 1e-12, 1.0)
+        if self.total_tokens < self.warmup_tokens:
+            return -np.log(model_probs)
+
+        uni_probs = (self.uni_counts[targets].astype(np.float64) + 0.1) / (
+            float(self.total_tokens) + 0.1 * self.vocab_size
+        )
+        bi_total = self.bi_row_totals[prev_tokens].astype(np.float64)
+        bi_count = self.bi_counts[prev_tokens, targets].astype(np.float64)
+        bi_probs = (bi_count + 0.1) / (bi_total + 0.1 * self.vocab_size)
+        tri_ctx = (
+            (prev2_tokens.astype(np.uint64) * self.primes[0]) ^ (prev_tokens.astype(np.uint64) * self.primes[1])
+        ) & np.uint64(self.trigram_buckets - 1)
+        tri_ctx_i = tri_ctx.astype(np.int64)
+        tri_total = self.tri_row_totals[tri_ctx_i].astype(np.float64)
+        tri_count = self.tri_counts[tri_ctx_i, targets].astype(np.float64)
+        tri_probs = (tri_count + 0.01) / (tri_total + 0.01 * self.vocab_size)
+
+        expert_nll = np.stack(
+            [
+                -np.log(model_probs),
+                -np.log(np.clip(uni_probs, 1e-12, 1.0)),
+                -np.log(np.clip(bi_probs, 1e-12, 1.0)),
+                -np.log(np.clip(tri_probs, 1e-12, 1.0)),
+                entropies,
+            ],
+            axis=-1,
+        )
+        norm_log_w = self.log_weights - np.logaddexp.reduce(self.log_weights)
+        mixed_lp = _logsumexp_np(norm_log_w[None, :] - expert_nll, axis=-1)
+        self.log_weights -= self.eta * expert_nll.mean(axis=0)
+        return -mixed_lp
+
+
+def eval_val_mixer5(
+    mod,
+    args,
+    base_model: torch.nn.Module,
+    device: torch.device,
+    val_tokens: torch.Tensor,
+    base_bytes_lut: torch.Tensor,
+    has_leading_space_lut: torch.Tensor,
+    is_boundary_token_lut: torch.Tensor,
+    *,
+    stride: int,
+    batch_seqs: int = 32,
+    eval_seq_len: int | None = None,
+    mixer_eta: float = 0.1,
+    mixer_neural_bias: float = 2.0,
+    mixer_trigram_buckets: int = 65_536,
+    mixer_warmup_tokens: int = 10_000,
+    log=print,
+) -> tuple[float, float]:
+    seq_len = eval_seq_len or args.train_seq_len
+    total_tokens = val_tokens.numel() - 1
+    window_starts = [ws for ws in range(0, total_tokens, stride) if min(ws + seq_len, total_tokens) - ws >= 1]
+    loss_sum = torch.zeros((), device=device, dtype=torch.float64)
+    token_count = torch.zeros((), device=device, dtype=torch.float64)
+    byte_count = torch.zeros((), device=device, dtype=torch.float64)
+    val_np = val_tokens.cpu().numpy()
+    mixer = OnlineContextMixer(
+        args.vocab_size,
+        trigram_buckets=mixer_trigram_buckets,
+        eta=mixer_eta,
+        neural_bias=mixer_neural_bias,
+        warmup_tokens=mixer_warmup_tokens,
+    )
+
+    base_model.eval()
+    compiled_logits = torch.compile(base_model.forward_logits, dynamic=False, fullgraph=True)
+    log(
+        "mixer5_eval:start "
+        f"stride={stride} trigram_buckets={mixer_trigram_buckets} eta={mixer_eta:.4f} "
+        f"neural_bias={mixer_neural_bias:.3f} warmup_tokens={mixer_warmup_tokens}"
+    )
+    for bi in range(0, len(window_starts), batch_seqs):
+        batch_ws = window_starts[bi : bi + batch_seqs]
+        bsz = len(batch_ws)
+        x_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
+        y_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
+        wlens: list[int] = []
+        for i, ws in enumerate(batch_ws):
+            end = min(ws + seq_len, total_tokens)
+            wlen = end - ws
+            wlens.append(wlen)
+            chunk = val_tokens[ws : end + 1].to(dtype=torch.int64, device=device)
+            x_batch[i, :wlen] = chunk[:-1]
+            y_batch[i, :wlen] = chunk[1:]
+
+        with torch.no_grad():
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                logits = compiled_logits(x_batch)
+        logits_f = logits.float()
+        log_sm = F.log_softmax(logits_f, dim=-1)
+        probs = log_sm.exp()
+        entropies = -(probs * log_sm).sum(dim=-1)
+
+        for i, ws in enumerate(batch_ws):
+            wlen = wlens[i]
+            s = 0 if ws == 0 else max(wlen - stride, 0)
+            seg_len = wlen - s
+            if seg_len <= 0:
+                continue
+
+            token_positions = np.arange(ws + s, ws + wlen, dtype=np.int64)
+            targets = y_batch[i, s:wlen].cpu().numpy().astype(np.int64)
+            prev_tokens = x_batch[i, s:wlen].cpu().numpy().astype(np.int64)
+            prev2_tokens = np.zeros_like(prev_tokens)
+            valid_prev2 = token_positions >= 1
+            if valid_prev2.any():
+                prev2_tokens[valid_prev2] = val_np[token_positions[valid_prev2] - 1]
+            seg_model_logps = log_sm[i, s:wlen].gather(1, y_batch[i, s:wlen].unsqueeze(-1)).squeeze(-1).cpu().numpy()
+            seg_entropies = entropies[i, s:wlen].cpu().numpy()
+            seg_nll = mixer.mix_token_batch(
+                seg_model_logps,
+                seg_entropies,
+                prev_tokens,
+                prev2_tokens,
+                targets,
+            )
+            scored_nll = torch.from_numpy(seg_nll).to(device=device, dtype=torch.float64)
+            loss_sum += scored_nll.sum()
+            token_count += float(seg_len)
+            tgt = y_batch[i, s:wlen]
+            prev = x_batch[i, s:wlen]
+            tb = base_bytes_lut[tgt].to(torch.float64)
+            tb += (has_leading_space_lut[tgt] & ~is_boundary_token_lut[prev]).to(torch.float64)
+            byte_count += tb.sum()
+
+        for i, ws in enumerate(batch_ws):
+            wlen = wlens[i]
+            toks = x_batch[i, :wlen].cpu().tolist()
+            toks.append(y_batch[i, wlen - 1].item())
+            mixer.update_from_list(toks)
+
+        if bi % (batch_seqs * 100) == 0 and bi > 0 and token_count.item() > 0:
+            rl = loss_sum.item() / token_count.item()
+            rb = (rl / math.log(2.0)) * (token_count.item() / max(byte_count.item(), 1))
+            pct = 100.0 * (bi + bsz) / max(len(window_starts), 1)
+            norm_log_w = mixer.log_weights - np.logaddexp.reduce(mixer.log_weights)
+            weights = ",".join(f"{w:.3f}" for w in np.exp(norm_log_w))
+            log(f"  mixer5 [{pct:5.1f}%] bpb={rb:.6f} weights={weights}")
+
+    val_loss = (loss_sum / token_count).item()
+    bits_per_token = val_loss / math.log(2.0)
+    tokens_per_byte = token_count.item() / byte_count.item()
+    final_log_w = mixer.log_weights - np.logaddexp.reduce(mixer.log_weights)
+    log(f"mixer5_eval:final_weights neural={np.exp(final_log_w[0]):.6f} unigram={np.exp(final_log_w[1]):.6f} bigram={np.exp(final_log_w[2]):.6f} trigram={np.exp(final_log_w[3]):.6f} entropy={np.exp(final_log_w[4]):.6f}")
+    return val_loss, bits_per_token * tokens_per_byte
+
+
 def parse_confidence_schedule(spec: str, default_threshold: float) -> list[tuple[float, float]]:
     schedule = [(0.0, default_threshold)]
     if not spec.strip():
@@ -687,11 +896,15 @@ def main() -> None:
     parser.add_argument("--ngram-adapt-decay", type=float, default=0.001)
     parser.add_argument("--ngram-adapt-last-n-blocks", type=int, default=3)
     parser.add_argument("--packed-cache", action="store_true")
-    parser.add_argument("--cache-kind", choices=["exact", "hashed"], default="exact")
+    parser.add_argument("--cache-kind", choices=["exact", "hashed", "mixer5"], default="exact")
     parser.add_argument("--hashed-buckets", type=int, default=4_194_304)
     parser.add_argument("--hedge-enabled", action="store_true")
     parser.add_argument("--hedge-eta", type=float, default=0.10)
     parser.add_argument("--hedge-neural-bias", type=float, default=2.0)
+    parser.add_argument("--mixer-eta", type=float, default=0.10)
+    parser.add_argument("--mixer-neural-bias", type=float, default=2.0)
+    parser.add_argument("--mixer-trigram-buckets", type=int, default=65_536)
+    parser.add_argument("--mixer-warmup-tokens", type=int, default=10_000)
     parser.add_argument("--lambda-schedule", type=str, default="")
     parser.add_argument("--confidence-schedule", type=str, default="")
     parser.add_argument("--order-lambdas", type=str, default="")
@@ -759,6 +972,10 @@ def main() -> None:
                 "hedge_enabled": int(args_ns.hedge_enabled),
                 "hedge_eta": args_ns.hedge_eta,
                 "hedge_neural_bias": args_ns.hedge_neural_bias,
+                "mixer_eta": args_ns.mixer_eta,
+                "mixer_neural_bias": args_ns.mixer_neural_bias,
+                "mixer_trigram_buckets": args_ns.mixer_trigram_buckets,
+                "mixer_warmup_tokens": args_ns.mixer_warmup_tokens,
                 "confidence_schedule": args_ns.confidence_schedule,
                 "order_lambdas": args_ns.order_lambdas,
                 "batch_seqs": args_ns.batch_seqs,
@@ -806,6 +1023,25 @@ def main() -> None:
             hedge_enabled=args_ns.hedge_enabled,
             hedge_eta=args_ns.hedge_eta,
             hedge_neural_bias=args_ns.hedge_neural_bias,
+            log=log,
+        )
+    elif args_ns.cache_kind == "mixer5":
+        val_loss, val_bpb = eval_val_mixer5(
+            mod,
+            args,
+            eval_model,
+            device,
+            val_tokens,
+            base_bytes_lut,
+            has_leading_space_lut,
+            is_boundary_token_lut,
+            stride=args_ns.stride,
+            batch_seqs=args_ns.batch_seqs,
+            eval_seq_len=effective_eval_seq_len,
+            mixer_eta=args_ns.mixer_eta,
+            mixer_neural_bias=args_ns.mixer_neural_bias,
+            mixer_trigram_buckets=args_ns.mixer_trigram_buckets,
+            mixer_warmup_tokens=args_ns.mixer_warmup_tokens,
             log=log,
         )
     else:
