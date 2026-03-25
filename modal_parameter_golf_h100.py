@@ -105,6 +105,8 @@ def _build_env(candidate: str, seed: int, run_id: str) -> dict[str, str]:
 @app.function(
     image=image,
     gpu="H100!:8",
+    cpu=16,
+    memory=65536,
     timeout=4 * 60 * 60,
     startup_timeout=30 * 60,
     volumes={
