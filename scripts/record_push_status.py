@@ -40,10 +40,11 @@ ARTIFACT_ORDER = [
 PROXY_ORDER = [
     "baseline",
     "podracing674",
+    "podracing674_swiglu",
     "swiglu",
-    "rope24",
     "xsa11",
     "podracing674_xsa11",
+    "rope24",
     "vr1",
     "bg3072",
     "vr1_bg3072",

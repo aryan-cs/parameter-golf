@@ -15,6 +15,15 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 
 ## Entries
 
+- Timestamp: 2026-03-25 09:05 UTC
+- Commit: uncommitted
+- Lane: H200 proxy / PR674 alignment
+- Objective: Correct the local PR `#674` surrogate after re-reading the primary-source PR page and stop over-prioritizing the misleading `XSA_LAST_N=11` root-file default.
+- Command or config: Checked PR `#674` directly on GitHub; its reproduce line is `XSA_LAST_N=4 BIGRAM_VOCAB_SIZE=1536 ROPE_DIMS=24`, while the root trainer still defaults `LATE_QAT_THRESHOLD=0.5`. Patched `podracing674` to include `LATE_QAT_THRESHOLD=0.5`, added `podracing674_swiglu`, and added a queue-rearm helper so the waiting H200 chain runs `baseline -> podracing674 -> podracing674_swiglu -> xsa11 -> podracing674_xsa11`.
+- Result: The future proxy ladder now stays much closer to the actual `#674` reproduce recipe instead of drifting too early into `xsa11`.
+- Decision: Treat corrected `podracing674` and `podracing674_swiglu` as the first serious post-baseline challengers; keep `xsa11` only as a later hedge.
+- Next step: Validate the patched scripts, relaunch the watcher chain, and let the active baseline proxy continue uninterrupted.
+
 - Timestamp: 2026-03-23 15:55 America/Chicago
 - Commit: `7c60955`
 - Lane: repo

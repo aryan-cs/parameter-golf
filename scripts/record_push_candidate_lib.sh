@@ -8,10 +8,19 @@ record_push_apply_arch_candidate() {
     podracing674)
       export BIGRAM_VOCAB_SIZE="${BIGRAM_VOCAB_SIZE:-1536}"
       export ROPE_DIMS="${ROPE_DIMS:-24}"
+      export LATE_QAT_THRESHOLD="${LATE_QAT_THRESHOLD:-0.5}"
+      ;;
+    podracing674_swiglu)
+      export BIGRAM_VOCAB_SIZE="${BIGRAM_VOCAB_SIZE:-1536}"
+      export ROPE_DIMS="${ROPE_DIMS:-24}"
+      export LATE_QAT_THRESHOLD="${LATE_QAT_THRESHOLD:-0.5}"
+      export USE_SWIGLU="${USE_SWIGLU:-1}"
+      export SWIGLU_HALF_DIM="${SWIGLU_HALF_DIM:-1024}"
       ;;
     podracing674_xsa11)
       export BIGRAM_VOCAB_SIZE="${BIGRAM_VOCAB_SIZE:-1536}"
       export ROPE_DIMS="${ROPE_DIMS:-24}"
+      export LATE_QAT_THRESHOLD="${LATE_QAT_THRESHOLD:-0.5}"
       export XSA_LAST_N="${XSA_LAST_N:-11}"
       ;;
     vr1)
