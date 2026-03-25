@@ -106,6 +106,11 @@ class Hyperparameters:
     ttt_momentum = float(os.environ.get("TTT_MOMENTUM", 0.9))
     ttt_batch_seqs = int(os.environ.get("TTT_BATCH_SEQS", 32))
     ttt_grad_clip = float(os.environ.get("TTT_GRAD_CLIP", 1.0))
+    ttt_schedule = os.environ.get("TTT_SCHEDULE", "chunk_cosine")
+    ttt_lr_grouping = os.environ.get("TTT_LR_GROUPING", "role")
+    ttt_proj_lr_mult = float(os.environ.get("TTT_PROJ_LR_MULT", 3.0))
+    ttt_fc_lr_mult = float(os.environ.get("TTT_FC_LR_MULT", 0.5))
+    ttt_other_lr_mult = float(os.environ.get("TTT_OTHER_LR_MULT", 1.0))
     extra_stride64_final_eval = bool(int(os.environ.get("EXTRA_STRIDE64_FINAL_EVAL", "1")))
     ngram_eval_enabled = bool(int(os.environ.get("NGRAM_EVAL_ENABLED", "0")))
     ngram_stride = int(os.environ.get("NGRAM_STRIDE", 128))
@@ -1239,11 +1244,21 @@ def _ttt_param_role(name: str, param: Tensor) -> str:
     return "matrix"
 
 
+def _ttt_lr_bucket(name: str) -> str:
+    if name == "mlp_down_bank" or ".mlp.proj." in name:
+        return "proj"
+    if name == "mlp_up_bank" or ".mlp.fc." in name:
+        return "fc"
+    return "other"
+
+
 def configure_ttt_params(
     args: Hyperparameters,
     base_model: nn.Module,
     log0=print,
-) -> tuple[list[Tensor], list[Tensor], list[Tensor], list[Tensor], list[tuple[Tensor, Tensor]]]:
+) -> tuple[
+    list[Tensor], list[Tensor], list[Tensor], list[Tensor], list[Tensor], list[Tensor], list[tuple[Tensor, Tensor]]
+]:
     num_layers = len(base_model.blocks)
     selected_layers = _ttt_selected_layers(args, num_layers)
     selected_list = sorted(selected_layers)
@@ -1251,6 +1266,9 @@ def configure_ttt_params(
     control_params: list[Tensor] = []
     matrix_params: list[Tensor] = []
     head_params: list[Tensor] = []
+    proj_params: list[Tensor] = []
+    fc_params: list[Tensor] = []
+    other_params: list[Tensor] = []
     bank_mask_items: list[tuple[Tensor, Tensor]] = []
     seen_ids: set[int] = set()
 
@@ -1265,6 +1283,13 @@ def configure_ttt_params(
             p.requires_grad_(True)
             ttt_params.append(p)
             matrix_params.append(p)
+            bucket = _ttt_lr_bucket(name)
+            if bucket == "proj":
+                proj_params.append(p)
+            elif bucket == "fc":
+                fc_params.append(p)
+            else:
+                other_params.append(p)
             bank_mask_items.append((p, bank_mask))
             continue
 
@@ -1286,6 +1311,13 @@ def configure_ttt_params(
             head_params.append(p)
         else:
             matrix_params.append(p)
+        bucket = _ttt_lr_bucket(name)
+        if bucket == "proj":
+            proj_params.append(p)
+        elif bucket == "fc":
+            fc_params.append(p)
+        else:
+            other_params.append(p)
 
     if not ttt_params:
         raise RuntimeError("No TTT parameters selected")
@@ -1300,9 +1332,12 @@ def configure_ttt_params(
             f"control={sum(p.numel() for p in control_params)} "
             f"matrix={sum(p.numel() for p in matrix_params)} "
             f"head={sum(p.numel() for p in head_params)} "
+            f"proj={sum(p.numel() for p in proj_params)} "
+            f"fc={sum(p.numel() for p in fc_params)} "
+            f"other={sum(p.numel() for p in other_params)} "
             f"optimizer={args.ttt_optimizer}"
         )
-    return ttt_params, control_params, matrix_params, head_params, bank_mask_items
+    return ttt_params, control_params, matrix_params, head_params, proj_params, fc_params, bank_mask_items
 
 
 def build_ttt_optimizer(
@@ -1311,16 +1346,40 @@ def build_ttt_optimizer(
     control_params: list[Tensor],
     matrix_params: list[Tensor],
     head_params: list[Tensor],
+    proj_params: list[Tensor],
+    fc_params: list[Tensor],
 ) -> torch.optim.Optimizer:
     opt_name = args.ttt_optimizer.lower()
     if opt_name in {"adamw", "grouped_adamw"}:
         groups = []
-        if control_params:
-            groups.append({"params": control_params, "lr": args.ttt_lr, "base_lr": args.ttt_lr})
-        if matrix_params:
-            groups.append({"params": matrix_params, "lr": args.ttt_lr, "base_lr": args.ttt_lr})
-        if head_params:
-            groups.append({"params": head_params, "lr": args.ttt_lr, "base_lr": args.ttt_lr})
+        if args.ttt_lr_grouping == "pr672":
+            other_params = [
+                p for p in ttt_params
+                if all(p is not q for q in proj_params) and all(p is not q for q in fc_params)
+            ]
+            if proj_params:
+                groups.append(
+                    {"params": proj_params, "lr": args.ttt_lr * args.ttt_proj_lr_mult, "base_lr": args.ttt_lr * args.ttt_proj_lr_mult}
+                )
+            if fc_params:
+                groups.append(
+                    {"params": fc_params, "lr": args.ttt_lr * args.ttt_fc_lr_mult, "base_lr": args.ttt_lr * args.ttt_fc_lr_mult}
+                )
+            if other_params:
+                groups.append(
+                    {
+                        "params": other_params,
+                        "lr": args.ttt_lr * args.ttt_other_lr_mult,
+                        "base_lr": args.ttt_lr * args.ttt_other_lr_mult,
+                    }
+                )
+        else:
+            if control_params:
+                groups.append({"params": control_params, "lr": args.ttt_lr, "base_lr": args.ttt_lr})
+            if matrix_params:
+                groups.append({"params": matrix_params, "lr": args.ttt_lr, "base_lr": args.ttt_lr})
+            if head_params:
+                groups.append({"params": head_params, "lr": args.ttt_lr, "base_lr": args.ttt_lr})
         return torch.optim.AdamW(
             groups,
             lr=args.ttt_lr,
@@ -1328,7 +1387,11 @@ def build_ttt_optimizer(
             betas=(args.ttt_beta1, args.ttt_beta2),
         )
     if opt_name == "sgd":
-        return torch.optim.SGD(ttt_params, lr=args.ttt_lr, momentum=args.ttt_momentum)
+        return torch.optim.SGD(
+            [{"params": ttt_params, "lr": args.ttt_lr, "base_lr": args.ttt_lr}],
+            lr=args.ttt_lr,
+            momentum=args.ttt_momentum,
+        )
     raise ValueError(f"unknown TTT optimizer: {args.ttt_optimizer}")
 
 
@@ -1336,6 +1399,50 @@ def apply_ttt_grad_masks(bank_mask_items: list[tuple[Tensor, Tensor]]) -> None:
     for param, mask in bank_mask_items:
         if param.grad is not None:
             param.grad.mul_(mask)
+
+
+def set_ttt_optimizer_scale(optimizer: torch.optim.Optimizer, scale: float) -> None:
+    for group in optimizer.param_groups:
+        base_lr = float(group.get("base_lr", group["lr"]))
+        group["lr"] = base_lr * scale
+
+
+def ttt_schedule_scale(args: Hyperparameters, progress: float) -> float:
+    schedule = args.ttt_schedule.lower()
+    progress = min(max(progress, 0.0), 1.0)
+    if schedule in {"constant", "none"}:
+        return 1.0
+    if schedule in {"chunk_cosine", "step_cosine"}:
+        return 0.5 * (1.0 + math.cos(math.pi * progress))
+    raise ValueError(f"unknown TTT schedule: {args.ttt_schedule}")
+
+
+def estimate_ttt_total_steps(
+    total_tokens: int,
+    ttt_chunk: int,
+    seq_len: int,
+    ttt_epochs: int,
+    ttt_batch_seqs: int,
+    *,
+    rank: int = 0,
+    world_size: int = 1,
+    shard_by_rank: bool,
+) -> int:
+    if ttt_epochs <= 0:
+        return 0
+    num_chunks = (total_tokens + ttt_chunk - 1) // ttt_chunk
+    total_steps = 0
+    for ci in range(max(num_chunks - 1, 0)):
+        chunk_start = ci * ttt_chunk
+        chunk_end = min((ci + 1) * ttt_chunk, total_tokens)
+        chunk_seqs = (chunk_end - chunk_start) // seq_len
+        if shard_by_rank:
+            my_seq_s = (chunk_seqs * rank) // world_size
+            my_seq_e = (chunk_seqs * (rank + 1)) // world_size
+            chunk_seqs = my_seq_e - my_seq_s
+        if chunk_seqs > 0:
+            total_steps += ttt_epochs * ((chunk_seqs + ttt_batch_seqs - 1) // ttt_batch_seqs)
+    return total_steps
 
 
 def build_quantized_eval_model(args: Hyperparameters, device: torch.device, deq_state: dict[str, Tensor]) -> nn.Module:
@@ -1847,16 +1954,28 @@ def eval_val_sliding_ttt(
          f"ttt_lr={args.ttt_lr} ttt_epochs={args.ttt_epochs} "
          f"freeze_blocks={args.ttt_freeze_blocks} "
          f"last_n_blocks={args.ttt_last_n_blocks} "
-         f"optimizer={args.ttt_optimizer}")
+         f"optimizer={args.ttt_optimizer} "
+         f"schedule={args.ttt_schedule} grouping={args.ttt_lr_grouping}")
 
     loss_sum = torch.zeros((), device=device, dtype=torch.float64)
     token_count = torch.zeros((), device=device, dtype=torch.float64)
     byte_count = torch.zeros((), device=device, dtype=torch.float64)
 
-    ttt_params, control_params, matrix_params, head_params, bank_mask_items = configure_ttt_params(
+    ttt_params, control_params, matrix_params, head_params, proj_params, fc_params, bank_mask_items = configure_ttt_params(
         args, base_model, log0=log0
     )
-    optimizer = build_ttt_optimizer(args, ttt_params, control_params, matrix_params, head_params)
+    optimizer = build_ttt_optimizer(args, ttt_params, control_params, matrix_params, head_params, proj_params, fc_params)
+    total_ttt_steps = estimate_ttt_total_steps(
+        total_tokens,
+        ttt_chunk,
+        seq_len,
+        args.ttt_epochs,
+        args.ttt_batch_seqs,
+        rank=rank,
+        world_size=world_size,
+        shard_by_rank=True,
+    )
+    ttt_step = 0
     t0 = time.perf_counter()
 
     for ci in range(num_chunks):
@@ -1909,9 +2028,10 @@ def eval_val_sliding_ttt(
             base_model.train()
             chunk_seqs = (chunk_end - chunk_start) // seq_len
             if chunk_seqs > 0:
-                cos_lr = args.ttt_lr * 0.5 * (1.0 + math.cos(math.pi * ci / max(num_chunks - 1, 1)))
-                for pg in optimizer.param_groups:
-                    pg['lr'] = cos_lr
+                if args.ttt_schedule.lower() == "chunk_cosine":
+                    set_ttt_optimizer_scale(optimizer, ttt_schedule_scale(args, ci / max(num_chunks - 1, 1)))
+                elif args.ttt_schedule.lower() in {"constant", "none"}:
+                    set_ttt_optimizer_scale(optimizer, 1.0)
                 my_seq_s = (chunk_seqs * rank) // world_size
                 my_seq_e = (chunk_seqs * (rank + 1)) // world_size
                 my_chunk_seqs = my_seq_e - my_seq_s
@@ -1926,6 +2046,10 @@ def eval_val_sliding_ttt(
                         local = val_tokens[start_tok:end_tok].to(device=device, dtype=torch.int64)
                         x = local[:-1].reshape(-1, seq_len)
                         y = local[1:].reshape(-1, seq_len)
+                        if args.ttt_schedule.lower() == "step_cosine":
+                            set_ttt_optimizer_scale(
+                                optimizer, ttt_schedule_scale(args, ttt_step / max(total_ttt_steps, 1))
+                            )
                         optimizer.zero_grad(set_to_none=True)
                         with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
                             loss = base_model(x, y)
@@ -1935,6 +2059,7 @@ def eval_val_sliding_ttt(
                         apply_ttt_grad_masks(bank_mask_items)
                         torch.nn.utils.clip_grad_norm_(ttt_params, args.ttt_grad_clip)
                         optimizer.step()
+                        ttt_step += 1
 
         if rank == 0 and (ci % 10 == 0 or ci == num_chunks - 1):
             elapsed = time.perf_counter() - t0
@@ -1995,6 +2120,7 @@ def eval_val_sliding_ttt_ngram(
         f"freeze_blocks={args.ttt_freeze_blocks} "
         f"last_n_blocks={args.ttt_last_n_blocks} "
         f"optimizer={args.ttt_optimizer} "
+        f"schedule={args.ttt_schedule} grouping={args.ttt_lr_grouping} "
         f"ngram_lambda={ngram_lambda} ngram_max_n={ngram_max_n} "
         f"confidence_threshold={confidence_threshold} packed={int(args.ngram_packed_cache)} "
         f"confidence_schedule={format_confidence_schedule(confidence_schedule)} "
@@ -2009,10 +2135,19 @@ def eval_val_sliding_ttt_ngram(
     ngram_attempts = 0
     ngram_skipped = 0
 
-    ttt_params, control_params, matrix_params, head_params, bank_mask_items = configure_ttt_params(
+    ttt_params, control_params, matrix_params, head_params, proj_params, fc_params, bank_mask_items = configure_ttt_params(
         args, base_model, log0=log0
     )
-    optimizer = build_ttt_optimizer(args, ttt_params, control_params, matrix_params, head_params)
+    optimizer = build_ttt_optimizer(args, ttt_params, control_params, matrix_params, head_params, proj_params, fc_params)
+    total_ttt_steps = estimate_ttt_total_steps(
+        total_tokens,
+        ttt_chunk,
+        seq_len,
+        args.ttt_epochs,
+        args.ttt_batch_seqs,
+        shard_by_rank=False,
+    )
+    ttt_step = 0
     t0 = time.perf_counter()
 
     for ci in range(num_chunks):
@@ -2117,9 +2252,10 @@ def eval_val_sliding_ttt_ngram(
             base_model.train()
             chunk_seqs = (chunk_end - chunk_start) // seq_len
             if chunk_seqs > 0:
-                cos_lr = args.ttt_lr * 0.5 * (1.0 + math.cos(math.pi * ci / max(num_chunks - 1, 1)))
-                for pg in optimizer.param_groups:
-                    pg["lr"] = cos_lr
+                if args.ttt_schedule.lower() == "chunk_cosine":
+                    set_ttt_optimizer_scale(optimizer, ttt_schedule_scale(args, ci / max(num_chunks - 1, 1)))
+                elif args.ttt_schedule.lower() in {"constant", "none"}:
+                    set_ttt_optimizer_scale(optimizer, 1.0)
                 for _ep in range(args.ttt_epochs):
                     for bs in range(0, chunk_seqs, args.ttt_batch_seqs):
                         be = min(bs + args.ttt_batch_seqs, chunk_seqs)
@@ -2130,6 +2266,10 @@ def eval_val_sliding_ttt_ngram(
                         local = val_tokens[start_tok:end_tok].to(device=device, dtype=torch.int64)
                         x = local[:-1].reshape(-1, seq_len)
                         y = local[1:].reshape(-1, seq_len)
+                        if args.ttt_schedule.lower() == "step_cosine":
+                            set_ttt_optimizer_scale(
+                                optimizer, ttt_schedule_scale(args, ttt_step / max(total_ttt_steps, 1))
+                            )
                         optimizer.zero_grad(set_to_none=True)
                         with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
                             loss = base_model(x, y)
@@ -2139,6 +2279,7 @@ def eval_val_sliding_ttt_ngram(
                         apply_ttt_grad_masks(bank_mask_items)
                         torch.nn.utils.clip_grad_norm_(ttt_params, args.ttt_grad_clip)
                         optimizer.step()
+                        ttt_step += 1
 
         if dist.is_available() and dist.is_initialized():
             dist.barrier()

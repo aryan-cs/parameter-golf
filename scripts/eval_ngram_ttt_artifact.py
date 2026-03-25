@@ -496,6 +496,11 @@ def main() -> None:
     parser.add_argument("--ttt-beta2", type=float, default=0.999)
     parser.add_argument("--ttt-momentum", type=float, default=0.9)
     parser.add_argument("--ttt-grad-clip", type=float, default=1.0)
+    parser.add_argument("--ttt-schedule", type=str, default="chunk_cosine")
+    parser.add_argument("--ttt-lr-grouping", type=str, default="role")
+    parser.add_argument("--ttt-proj-lr-mult", type=float, default=3.0)
+    parser.add_argument("--ttt-fc-lr-mult", type=float, default=0.5)
+    parser.add_argument("--ttt-other-lr-mult", type=float, default=1.0)
     parser.add_argument("--batch-seqs", type=int, default=32)
     parser.add_argument("--stride", type=int, default=64)
     parser.add_argument("--ngram-lambda", type=float, default=0.15)
@@ -539,6 +544,11 @@ def main() -> None:
     args.ttt_momentum = args_ns.ttt_momentum
     args.ttt_grad_clip = args_ns.ttt_grad_clip
     args.ttt_batch_seqs = args_ns.batch_seqs
+    args.ttt_schedule = args_ns.ttt_schedule
+    args.ttt_lr_grouping = args_ns.ttt_lr_grouping
+    args.ttt_proj_lr_mult = args_ns.ttt_proj_lr_mult
+    args.ttt_fc_lr_mult = args_ns.ttt_fc_lr_mult
+    args.ttt_other_lr_mult = args_ns.ttt_other_lr_mult
     args.ngram_packed_cache = args_ns.packed_cache
 
     device = torch.device(args_ns.device)
@@ -582,6 +592,11 @@ def main() -> None:
                 "ttt_momentum": args.ttt_momentum,
                 "ttt_batch_seqs": args.ttt_batch_seqs,
                 "ttt_grad_clip": args.ttt_grad_clip,
+                "ttt_schedule": args.ttt_schedule,
+                "ttt_lr_grouping": args.ttt_lr_grouping,
+                "ttt_proj_lr_mult": args.ttt_proj_lr_mult,
+                "ttt_fc_lr_mult": args.ttt_fc_lr_mult,
+                "ttt_other_lr_mult": args.ttt_other_lr_mult,
                 "stride": args_ns.stride,
                 "ngram_lambda": args_ns.ngram_lambda,
                 "ngram_max_n": args_ns.ngram_max_n,

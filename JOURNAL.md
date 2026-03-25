@@ -2379,6 +2379,54 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
     - `record659_lam20_conf08_smoke`
   - Only after that does the queue fall back to the adapt and hybrid branches.
 
+- Timestamp: 2026-03-25 03:30 UTC
+- Commit: `working tree`
+- Lane: New upstream frontier response after open PR `#672`
+- Result / live status:
+  - The full pure `record659_conf07` H200 run has continued to improve and is now around:
+    - `43.9% -> 1.079876`
+    - `44.2% -> 1.079686`
+    - `44.9% -> 1.079635`
+    - `45.6% -> 1.079850`
+  - That keeps it comfortably ahead of the finished pure `record659 = 1.08590477` at matched progress and now very close to the newly posted upstream record region.
+- Research pass:
+  - Open upstream PR `#672` now claims a new record:
+    - `3-seed mean val_bpb = 1.0781`
+    - `15.62 MB`
+    - single change from PR `#518`: `TTT_EPOCHS=30`
+    - `AdamW lr=5e-4`, cosine LR decay, per-layer LR groups (`3x` for `mlp.proj`, `0.5x` for `mlp.fc`)
+    - reported eval timing: `494s` TTT + `96s` sliding eval
+  - Key conclusion: the next serious hedge is no longer a small SGD/AdamW tweak; it is the PR-`#672` cosine-TTT recipe.
+- Code / ops:
+  - Confirmed the local record trainer already has the necessary hooks for the PR-`#672` TTT path in `records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/train_gpt.py`:
+    - `TTT_SCHEDULE`
+    - `TTT_LR_GROUPING`
+    - `TTT_PROJ_LR_MULT`
+    - `TTT_FC_LR_MULT`
+    - `TTT_OTHER_LR_MULT`
+  - Confirmed the standalone hybrid evaluator `scripts/eval_ngram_ttt_artifact.py` also accepts and threads those same controls through.
+  - Added / staged PR-`#672`-style hybrid candidates in the H200 queue:
+    - `record659_adamw30ep_cosine_smoke`
+    - `record659_adamw30ep_cosine_lr3e4_smoke`
+    - `record659_adamw12ep_cosine_smoke`
+    - `record659_adamw30ep_cosine`
+    - `record659_adamw30ep_cosine_lr3e4`
+  - Extended the future H100 fanout in `scripts/h100_parallel_candidate_portfolio.sh` with:
+    - `ngram659_adamw30ep_cosine`
+    - `ngram659_adamw30ep_cosine_lr3e4`
+    - `ngram659_adamw12ep_cosine`
+    - warmup-zero versions of all three
+  - Revalidated after the changes:
+    - `python -m py_compile scripts/eval_ngram_ttt_artifact.py scripts/record_push_status.py`
+    - `bash -n scripts/icrn_h200_artifact_ttt_ngram_candidate.sh scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh scripts/queue_h200_credit_prep.sh scripts/record_push_candidate_lib.sh scripts/h100_parallel_candidate_portfolio.sh`
+- Decision:
+  - The main line stays pure `record659_conf07` until it finishes.
+  - The next highest-signal hedge is now PR-`#672`-style cosine TTT on top of the pure `record659` cache, not more low-value hybrid microtuning.
+- Next step:
+  - Let full `record659_conf07` finish.
+  - Keep the pure `conf08` / `lam20` challengers immediately behind it.
+  - Then run the new PR-`#672` cosine-TTT smokes before spending more time on older AdamW/SGD hedge branches.
+
 - Timestamp: 2026-03-25 03:29 UTC
 - Commit: `working tree`
 - Lane: `conf07` runtime triage + smarter pure-cache gates
@@ -2424,3 +2472,69 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
     - `conf08`: more aggressive pure cache may keep improving if packed cache bought enough speed.
     - `min_count` up: similar quality with fewer low-support lookups may recover budget.
     - `target` gating: score the tokens where the model is actually wrong, not just uncertain, which may buy better BPB at similar or lower lookup volume.
+
+- Timestamp: 2026-03-25 04:05 UTC
+- Commit: `working tree`
+- Lane: `PR #672` frontier import + stronger legal-TTT controls
+- Objective: The public frontier moved from pure 5-gram eval (`1.0920`) to an open record claim at `1.0781`, so the target is no longer merely "beat `record659`" but "close the remaining ~0.008 BPB gap to a much stronger eval-side recipe."
+- Upstream research:
+  - Read the new public record claim README from `PR #672`:
+    - `30-Epoch Cosine TTT on LeakyReLU² Stack`
+    - `3-seed mean val_bpb = 1.0781`
+    - `15.62 MB` artifact
+    - timing on `8xH100`: `600s` train + `494s` TTT + `96s` eval
+  - The key claim is that this is a single change from `PR #518`: `TTT_EPOCHS=30`, with the already-existing cosine/AdamW/per-layer TTT recipe left on.
+  - Practical implication for us: our current legal-TTT lane was still too conservative. We had chunk-level cosine and mostly role-based grouping, while the new record claim leans on:
+    - longer `30`-epoch TTT
+    - AdamW
+    - per-step cosine decay
+    - per-group LR multipliers (`3x` for `mlp.proj`, `0.5x` for `mlp.fc`)
+  - Approximate first-place claim gate vs `1.0781` is now about `1.0751` BPB when mapped through the usual `0.005 nat` improvement rule.
+- Live result:
+  - Full packed-cache `record659_conf07` is still running and remains our strongest live candidate.
+  - Latest observed checkpoint: `45.2%` progress at `1.079750`.
+  - Interpretation: pure packed-cache `conf07` is now in the same regime as the new public claim, but still not clearly below it. That makes stronger hybrid/pure-TTT follow-ups worth the queue slots immediately after the pure-cache smokes.
+- Code / ops:
+  - Extended the recovered record-lane `train_gpt.py` with opt-in stronger legal-TTT controls while preserving old defaults:
+    - `TTT_SCHEDULE=chunk_cosine|step_cosine|constant`
+    - `TTT_LR_GROUPING=role|pr672`
+    - `TTT_PROJ_LR_MULT`
+    - `TTT_FC_LR_MULT`
+    - `TTT_OTHER_LR_MULT`
+  - Added bank-aware grouping so our banked tensors follow the same intent as upstream per-layer groups:
+    - `mlp_down_bank` / `mlp.proj` => projection bucket
+    - `mlp_up_bank` / `mlp.fc` => FC bucket
+    - everything else => other bucket
+  - Added shared helpers for:
+    - TTT optimizer LR scaling
+    - cosine-vs-constant schedule application
+    - total step estimation for per-step cosine
+  - Threaded the new knobs through `scripts/eval_ngram_ttt_artifact.py`.
+  - Added new H200 artifact `TTT+n-gram` candidates in `scripts/icrn_h200_artifact_ttt_ngram_candidate.sh`:
+    - `record659_adamw30ep_cosine_smoke`
+    - `record659_adamw30ep_cosine_lr3e4_smoke`
+    - `record659_adamw12ep_cosine_smoke`
+    - `record659_adamw30ep_cosine`
+    - `record659_adamw30ep_cosine_lr3e4`
+  - Updated:
+    - `scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh`
+    - `scripts/queue_h200_credit_prep.sh`
+    - `scripts/record_push_status.py`
+    - `scripts/record_push_candidate_lib.sh`
+    - `scripts/watch_after_conf07_queue.sh`
+  - Revalidated after the edits:
+    - `python -m py_compile scripts/eval_ngram_ttt_artifact.py scripts/record_push_status.py records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/train_gpt.py`
+    - `bash -n scripts/icrn_h200_artifact_ttt_ngram_candidate.sh scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh scripts/queue_h200_credit_prep.sh scripts/record_push_candidate_lib.sh scripts/watch_after_conf07_queue.sh`
+    - `git diff --check`
+  - Added and launched a reusable detached watcher script so the current live `conf07` run now hands off automatically into the refreshed pure-smoke + PR-672-style TTT-smoke queue.
+- Decision:
+  - Keep the live pure `conf07` run untouched.
+  - After it finishes, still run the smarter pure-cache smokes first.
+  - Immediately after those pure smokes, give queue priority to `PR #672`-style grouped-cosine AdamW TTT challengers rather than the older conservative hybrid settings.
+- Next step:
+  - Replace the current post-`conf07` watcher with a queue that runs:
+    - the pure `conf08` / `min_count` / `target`-gate probes
+    - then `record659_adamw30ep_cosine_smoke`
+    - then `record659_adamw30ep_cosine_lr3e4_smoke`
+    - then `record659_adamw12ep_cosine_smoke`
+  - If one of those smokes wins clearly, promote the matching full candidate ahead of the older late-2 hybrid lane.

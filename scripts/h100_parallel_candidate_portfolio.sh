@@ -99,7 +99,55 @@ run_candidate() {
     ngram659_tttlr25)
       exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_ngram659_tttlr25.sh"
       ;;
+    ngram659_adamw30ep_cosine)
+      export TTT_OPTIMIZER="${TTT_OPTIMIZER:-adamw}"
+      export TTT_LR="${TTT_LR:-0.0005}"
+      export TTT_EPOCHS="${TTT_EPOCHS:-30}"
+      export TTT_SCHEDULE="${TTT_SCHEDULE:-step_cosine}"
+      export TTT_LR_GROUPING="${TTT_LR_GROUPING:-pr672}"
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_ngram659_tttlr25.sh"
+      ;;
+    ngram659_adamw30ep_cosine_lr3e4)
+      export TTT_OPTIMIZER="${TTT_OPTIMIZER:-adamw}"
+      export TTT_LR="${TTT_LR:-0.0003}"
+      export TTT_EPOCHS="${TTT_EPOCHS:-30}"
+      export TTT_SCHEDULE="${TTT_SCHEDULE:-step_cosine}"
+      export TTT_LR_GROUPING="${TTT_LR_GROUPING:-pr672}"
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_ngram659_tttlr25.sh"
+      ;;
+    ngram659_adamw12ep_cosine)
+      export TTT_OPTIMIZER="${TTT_OPTIMIZER:-adamw}"
+      export TTT_LR="${TTT_LR:-0.0005}"
+      export TTT_EPOCHS="${TTT_EPOCHS:-12}"
+      export TTT_SCHEDULE="${TTT_SCHEDULE:-step_cosine}"
+      export TTT_LR_GROUPING="${TTT_LR_GROUPING:-pr672}"
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_ngram659_tttlr25.sh"
+      ;;
     warmup0_ngram659_tttlr25)
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_ngram659_tttlr25.sh"
+      ;;
+    warmup0_ngram659_adamw30ep_cosine)
+      export TTT_OPTIMIZER="${TTT_OPTIMIZER:-adamw}"
+      export TTT_LR="${TTT_LR:-0.0005}"
+      export TTT_EPOCHS="${TTT_EPOCHS:-30}"
+      export TTT_SCHEDULE="${TTT_SCHEDULE:-step_cosine}"
+      export TTT_LR_GROUPING="${TTT_LR_GROUPING:-pr672}"
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_ngram659_tttlr25.sh"
+      ;;
+    warmup0_ngram659_adamw30ep_cosine_lr3e4)
+      export TTT_OPTIMIZER="${TTT_OPTIMIZER:-adamw}"
+      export TTT_LR="${TTT_LR:-0.0003}"
+      export TTT_EPOCHS="${TTT_EPOCHS:-30}"
+      export TTT_SCHEDULE="${TTT_SCHEDULE:-step_cosine}"
+      export TTT_LR_GROUPING="${TTT_LR_GROUPING:-pr672}"
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_ngram659_tttlr25.sh"
+      ;;
+    warmup0_ngram659_adamw12ep_cosine)
+      export TTT_OPTIMIZER="${TTT_OPTIMIZER:-adamw}"
+      export TTT_LR="${TTT_LR:-0.0005}"
+      export TTT_EPOCHS="${TTT_EPOCHS:-12}"
+      export TTT_SCHEDULE="${TTT_SCHEDULE:-step_cosine}"
+      export TTT_LR_GROUPING="${TTT_LR_GROUPING:-pr672}"
       exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_ngram659_tttlr25.sh"
       ;;
     vr1_bg3072_ngram659_tttlr25)
@@ -151,7 +199,13 @@ Run one candidate on each 8xH100 node by setting CANDIDATE:
   CANDIDATE=vr1_bg3072_ngram659_adapt bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0_vr1_bg3072_ngram659_adapt bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=ngram659_tttlr25 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=ngram659_adamw30ep_cosine bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=ngram659_adamw30ep_cosine_lr3e4 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=ngram659_adamw12ep_cosine bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0_ngram659_tttlr25 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=warmup0_ngram659_adamw30ep_cosine bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=warmup0_ngram659_adamw30ep_cosine_lr3e4 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=warmup0_ngram659_adamw12ep_cosine bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=vr1_bg3072_ngram659_tttlr25 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0_vr1_bg3072_ngram659_tttlr25 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
 
@@ -194,8 +248,20 @@ Candidate meanings:
   warmup0_vr1_bg3072_ngram659_adapt
                        strongest pure ngram-adapt bet with extra timing headroom
   ngram659_tttlr25     PR #659 eval cache combined with legal score-first TTT
+  ngram659_adamw30ep_cosine
+                       PR #672-style AdamW 30-epoch step-cosine grouped TTT on top of PR #659 eval cache
+  ngram659_adamw30ep_cosine_lr3e4
+                       same as above but with a gentler 3e-4 TTT LR
+  ngram659_adamw12ep_cosine
+                       shorter 12-epoch cosine-TTT hedge if 30 epochs overfits our artifact
   warmup0_ngram659_tttlr25
                        ngram659_tttlr25 plus WARMUP_STEPS=0 for timing headroom
+  warmup0_ngram659_adamw30ep_cosine
+                       PR #672-style cosine TTT plus WARMUP_STEPS=0
+  warmup0_ngram659_adamw30ep_cosine_lr3e4
+                       gentler 30-epoch cosine TTT plus WARMUP_STEPS=0
+  warmup0_ngram659_adamw12ep_cosine
+                       12-epoch cosine TTT hedge plus WARMUP_STEPS=0
   vr1_bg3072_ngram659_tttlr25
                        architecture knobs plus combined PR #659 eval cache and TTT
   warmup0_vr1_bg3072_ngram659_tttlr25

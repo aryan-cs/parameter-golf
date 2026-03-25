@@ -308,6 +308,44 @@ record_push_apply_ttt_candidate() {
       export NGRAM_PACKED_CACHE="${NGRAM_PACKED_CACHE:-1}"
       export NGRAM_GLOBAL_CACHE="${NGRAM_GLOBAL_CACHE:-1}"
       ;;
+    ngram659_adamw30ep_cosine)
+      export TTT_ENABLED="${TTT_ENABLED:-0}"
+      export NGRAM_EVAL_ENABLED="${NGRAM_EVAL_ENABLED:-0}"
+      export NGRAM_TTT_ENABLED="${NGRAM_TTT_ENABLED:-1}"
+      export TTT_OPTIMIZER="${TTT_OPTIMIZER:-adamw}"
+      export TTT_LR="${TTT_LR:-0.0005}"
+      export TTT_EPOCHS="${TTT_EPOCHS:-30}"
+      export TTT_SCHEDULE="${TTT_SCHEDULE:-step_cosine}"
+      export TTT_LR_GROUPING="${TTT_LR_GROUPING:-pr672}"
+      export NGRAM_TTT_STRIDE="${NGRAM_TTT_STRIDE:-64}"
+      export NGRAM_STRIDE="${NGRAM_STRIDE:-128}"
+      export NGRAM_BATCH_SEQS="${NGRAM_BATCH_SEQS:-32}"
+      export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.15}"
+      export NGRAM_MAX_N="${NGRAM_MAX_N:-5}"
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.5}"
+      export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-3}"
+      export NGRAM_PACKED_CACHE="${NGRAM_PACKED_CACHE:-1}"
+      export NGRAM_GLOBAL_CACHE="${NGRAM_GLOBAL_CACHE:-1}"
+      ;;
+    ngram659_adamw30ep_cosine_lr3e4)
+      export TTT_ENABLED="${TTT_ENABLED:-0}"
+      export NGRAM_EVAL_ENABLED="${NGRAM_EVAL_ENABLED:-0}"
+      export NGRAM_TTT_ENABLED="${NGRAM_TTT_ENABLED:-1}"
+      export TTT_OPTIMIZER="${TTT_OPTIMIZER:-adamw}"
+      export TTT_LR="${TTT_LR:-0.0003}"
+      export TTT_EPOCHS="${TTT_EPOCHS:-30}"
+      export TTT_SCHEDULE="${TTT_SCHEDULE:-step_cosine}"
+      export TTT_LR_GROUPING="${TTT_LR_GROUPING:-pr672}"
+      export NGRAM_TTT_STRIDE="${NGRAM_TTT_STRIDE:-64}"
+      export NGRAM_STRIDE="${NGRAM_STRIDE:-128}"
+      export NGRAM_BATCH_SEQS="${NGRAM_BATCH_SEQS:-32}"
+      export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.15}"
+      export NGRAM_MAX_N="${NGRAM_MAX_N:-5}"
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.5}"
+      export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-3}"
+      export NGRAM_PACKED_CACHE="${NGRAM_PACKED_CACHE:-1}"
+      export NGRAM_GLOBAL_CACHE="${NGRAM_GLOBAL_CACHE:-1}"
+      ;;
     lowrisk_ngram_tttlr25)
       export TTT_ENABLED="${TTT_ENABLED:-0}"
       export NGRAM_EVAL_ENABLED="${NGRAM_EVAL_ENABLED:-0}"
@@ -434,6 +472,12 @@ record_push_artifact_log_path() {
       ;;
     ngram659_late2_adamw1e4)
       printf '%s\n' "$log_dir/h200_artifact_ttt_ngram_record659_adamw1e4_late2.txt"
+      ;;
+    ngram659_adamw30ep_cosine)
+      printf '%s\n' "$log_dir/h200_artifact_ttt_ngram_record659_adamw30ep_cosine.txt"
+      ;;
+    ngram659_adamw30ep_cosine_lr3e4)
+      printf '%s\n' "$log_dir/h200_artifact_ttt_ngram_record659_adamw30ep_cosine_lr3e4.txt"
       ;;
     lowrisk_ngram_tttlr25)
       printf '%s\n' "$log_dir/h200_artifact_ttt_ngram_lowrisk_tttlr25.txt"

@@ -73,19 +73,29 @@ CANDIDATE="${CANDIDATE_TTT_NGRAM_3:-record659_adamw5e4_late2_smoke}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh"
 CANDIDATE="${CANDIDATE_TTT_NGRAM_4:-record659_adamw1e4_late2_smoke}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh"
-CANDIDATE="${CANDIDATE_TTT_NGRAM_5:-record659_late2_tttlr25}" \
+CANDIDATE="${CANDIDATE_TTT_NGRAM_5:-record659_adamw30ep_cosine_smoke}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh"
-CANDIDATE="${CANDIDATE_TTT_NGRAM_6:-record659_tttlr25}" \
+CANDIDATE="${CANDIDATE_TTT_NGRAM_6:-record659_adamw30ep_cosine_lr3e4_smoke}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh"
-CANDIDATE="${CANDIDATE_TTT_NGRAM_7:-record659_adamw1e4_late2}" \
+CANDIDATE="${CANDIDATE_TTT_NGRAM_7:-record659_adamw12ep_cosine_smoke}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh"
-CANDIDATE="${CANDIDATE_TTT_NGRAM_8:-record659_adamw5e4_late2}" \
+CANDIDATE="${CANDIDATE_TTT_NGRAM_8:-record659_late2_tttlr25}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh"
-CANDIDATE="${CANDIDATE_TTT_NGRAM_9:-lowrisk_tttlr25_smoke}" \
+CANDIDATE="${CANDIDATE_TTT_NGRAM_9:-record659_tttlr25}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh"
-CANDIDATE="${CANDIDATE_TTT_NGRAM_10:-lowrisk_tttlr25}" \
+CANDIDATE="${CANDIDATE_TTT_NGRAM_10:-record659_adamw1e4_late2}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh"
-CANDIDATE="${CANDIDATE_TTT_NGRAM_11:-vr1_record659_tttlr25}" \
+CANDIDATE="${CANDIDATE_TTT_NGRAM_11:-record659_adamw5e4_late2}" \
+  bash "$ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh"
+CANDIDATE="${CANDIDATE_TTT_NGRAM_12:-record659_adamw30ep_cosine}" \
+  bash "$ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh"
+CANDIDATE="${CANDIDATE_TTT_NGRAM_13:-record659_adamw30ep_cosine_lr3e4}" \
+  bash "$ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh"
+CANDIDATE="${CANDIDATE_TTT_NGRAM_14:-lowrisk_tttlr25_smoke}" \
+  bash "$ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh"
+CANDIDATE="${CANDIDATE_TTT_NGRAM_15:-lowrisk_tttlr25}" \
+  bash "$ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh"
+CANDIDATE="${CANDIDATE_TTT_NGRAM_16:-vr1_record659_tttlr25}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh"
 
 # 1c. Remaining cheap eval-side TTT search on the same artifact.

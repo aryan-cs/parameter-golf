@@ -22,6 +22,11 @@ TTT_BETA1="${TTT_BETA1:-0.9}"
 TTT_BETA2="${TTT_BETA2:-0.999}"
 TTT_MOMENTUM="${TTT_MOMENTUM:-0.9}"
 TTT_GRAD_CLIP="${TTT_GRAD_CLIP:-1.0}"
+TTT_SCHEDULE="${TTT_SCHEDULE:-chunk_cosine}"
+TTT_LR_GROUPING="${TTT_LR_GROUPING:-role}"
+TTT_PROJ_LR_MULT="${TTT_PROJ_LR_MULT:-3.0}"
+TTT_FC_LR_MULT="${TTT_FC_LR_MULT:-0.5}"
+TTT_OTHER_LR_MULT="${TTT_OTHER_LR_MULT:-1.0}"
 BATCH_SEQS="${BATCH_SEQS:-32}"
 STRIDE="${STRIDE:-64}"
 NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.15}"
@@ -77,6 +82,49 @@ case "$CANDIDATE" in
     TTT_LR="0.0005"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ttt_ngram_record659_adamw5e4_late2.txt}"
     ;;
+  record659_adamw30ep_cosine_smoke)
+    TTT_OPTIMIZER="adamw"
+    TTT_LR="0.0005"
+    TTT_EPOCHS="30"
+    TTT_SCHEDULE="step_cosine"
+    TTT_LR_GROUPING="pr672"
+    MAX_CHUNKS="8"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ttt_ngram_record659_adamw30ep_cosine_smoke.txt}"
+    ;;
+  record659_adamw30ep_cosine_lr3e4_smoke)
+    TTT_OPTIMIZER="adamw"
+    TTT_LR="0.0003"
+    TTT_EPOCHS="30"
+    TTT_SCHEDULE="step_cosine"
+    TTT_LR_GROUPING="pr672"
+    MAX_CHUNKS="8"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ttt_ngram_record659_adamw30ep_cosine_lr3e4_smoke.txt}"
+    ;;
+  record659_adamw12ep_cosine_smoke)
+    TTT_OPTIMIZER="adamw"
+    TTT_LR="0.0005"
+    TTT_EPOCHS="12"
+    TTT_SCHEDULE="step_cosine"
+    TTT_LR_GROUPING="pr672"
+    MAX_CHUNKS="8"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ttt_ngram_record659_adamw12ep_cosine_smoke.txt}"
+    ;;
+  record659_adamw30ep_cosine)
+    TTT_OPTIMIZER="adamw"
+    TTT_LR="0.0005"
+    TTT_EPOCHS="30"
+    TTT_SCHEDULE="step_cosine"
+    TTT_LR_GROUPING="pr672"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ttt_ngram_record659_adamw30ep_cosine.txt}"
+    ;;
+  record659_adamw30ep_cosine_lr3e4)
+    TTT_OPTIMIZER="adamw"
+    TTT_LR="0.0003"
+    TTT_EPOCHS="30"
+    TTT_SCHEDULE="step_cosine"
+    TTT_LR_GROUPING="pr672"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ttt_ngram_record659_adamw30ep_cosine_lr3e4.txt}"
+    ;;
   lowrisk_tttlr25_smoke)
     NGRAM_LAMBDA="0.05"
     CONFIDENCE_THRESHOLD="0.7"
@@ -121,6 +169,11 @@ exec python scripts/eval_ngram_ttt_artifact.py \
   --ttt-beta2 "$TTT_BETA2" \
   --ttt-momentum "$TTT_MOMENTUM" \
   --ttt-grad-clip "$TTT_GRAD_CLIP" \
+  --ttt-schedule "$TTT_SCHEDULE" \
+  --ttt-lr-grouping "$TTT_LR_GROUPING" \
+  --ttt-proj-lr-mult "$TTT_PROJ_LR_MULT" \
+  --ttt-fc-lr-mult "$TTT_FC_LR_MULT" \
+  --ttt-other-lr-mult "$TTT_OTHER_LR_MULT" \
   --batch-seqs "$BATCH_SEQS" \
   --stride "$STRIDE" \
   --ngram-lambda "$NGRAM_LAMBDA" \

@@ -75,11 +75,16 @@ TTT_NGRAM_ORDER = [
     "record659_late2_tttlr25_smoke",
     "record659_adamw5e4_late2_smoke",
     "record659_adamw1e4_late2_smoke",
+    "record659_adamw30ep_cosine_smoke",
+    "record659_adamw30ep_cosine_lr3e4_smoke",
+    "record659_adamw12ep_cosine_smoke",
     "lowrisk_tttlr25_smoke",
     "record659_late2_tttlr25",
     "record659_tttlr25",
     "record659_adamw1e4_late2",
     "record659_adamw5e4_late2",
+    "record659_adamw30ep_cosine",
+    "record659_adamw30ep_cosine_lr3e4",
     "lowrisk_tttlr25",
     "vr1_record659_tttlr25",
 ]
@@ -137,10 +142,15 @@ TTT_NGRAM_LOG_NAMES = {
     "record659_late2_tttlr25_smoke": "h200_artifact_ttt_ngram_record659_late2_tttlr25_smoke.txt",
     "record659_adamw5e4_late2_smoke": "h200_artifact_ttt_ngram_record659_adamw5e4_late2_smoke.txt",
     "record659_adamw1e4_late2_smoke": "h200_artifact_ttt_ngram_record659_adamw1e4_late2_smoke.txt",
+    "record659_adamw30ep_cosine_smoke": "h200_artifact_ttt_ngram_record659_adamw30ep_cosine_smoke.txt",
+    "record659_adamw30ep_cosine_lr3e4_smoke": "h200_artifact_ttt_ngram_record659_adamw30ep_cosine_lr3e4_smoke.txt",
+    "record659_adamw12ep_cosine_smoke": "h200_artifact_ttt_ngram_record659_adamw12ep_cosine_smoke.txt",
     "record659_late2_tttlr25": "h200_artifact_ttt_ngram_record659_late2_tttlr25.txt",
     "record659_tttlr25": "h200_artifact_ttt_ngram_record659_tttlr25.txt",
     "record659_adamw1e4_late2": "h200_artifact_ttt_ngram_record659_adamw1e4_late2.txt",
     "record659_adamw5e4_late2": "h200_artifact_ttt_ngram_record659_adamw5e4_late2.txt",
+    "record659_adamw30ep_cosine": "h200_artifact_ttt_ngram_record659_adamw30ep_cosine.txt",
+    "record659_adamw30ep_cosine_lr3e4": "h200_artifact_ttt_ngram_record659_adamw30ep_cosine_lr3e4.txt",
     "lowrisk_tttlr25_smoke": "h200_artifact_ttt_ngram_lowrisk_tttlr25_smoke.txt",
     "lowrisk_tttlr25": "h200_artifact_ttt_ngram_lowrisk_tttlr25.txt",
     "vr1_record659_tttlr25": "h200_artifact_ttt_ngram_vr1_record659_tttlr25.txt",
@@ -395,6 +405,11 @@ def build_status(root_dir: Path, seed: int) -> dict[str, object]:
             source="ttt_ngram",
             arch_candidate="baseline" if candidate != "vr1_record659_tttlr25" else "vr1",
             ttt_candidate=(
+                "ngram659_adamw30ep_cosine_lr3e4"
+                if candidate in {"record659_adamw30ep_cosine_lr3e4", "record659_adamw30ep_cosine_lr3e4_smoke"}
+                else "ngram659_adamw30ep_cosine"
+                if candidate in {"record659_adamw30ep_cosine", "record659_adamw30ep_cosine_smoke", "record659_adamw12ep_cosine_smoke"}
+                else
                 "ngram659_late2_adamw5e4"
                 if candidate in {"record659_adamw5e4_late2", "record659_adamw5e4_late2_smoke"}
                 else "ngram659_late2_adamw1e4"
