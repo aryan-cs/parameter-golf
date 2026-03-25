@@ -15,6 +15,15 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 
 ## Entries
 
+- Timestamp: 2026-03-25 06:56 UTC
+- Commit: uncommitted
+- Lane: H200 exact-upstream / constraint fit
+- Objective: Shift the next-dev queue away from low-value duplicate proxy-artifact eval and toward stronger exact-upstream, budget-aware candidates while staging a new legal PR `#688`-inspired hedge.
+- Command or config: Compared the live exact upstream PR `#674` proxy against the earlier baseline proxy and found the compile-enabled timed lane only reached `step:0` after a long startup, while three duplicate `record674` artifact-eval workers were still burning the H200 on the same over-cap proxy artifact. Added a new PR674-side legal Hedge mix patch (`patch_pr674_hedgemix.py`) that adaptively combines neural and hashed 5-gram scores using an online 2-expert Hedge update. Added H200/H100 launchers for the new `upstream_pr674_hedgemix` family, inserted it into `record_push_status.py`, `h100_parallel_candidate_portfolio.sh`, and the exact-upstream rearm scripts, killed the duplicate artifact-eval workers, and relaunched the H200 onto `TIMED_MODE=1 COMPILE_ENABLED=0` exact upstream PR `#674`.
+- Result: The queue is now budget-first around exact-upstream PR `#674`, with `upstream_pr674_hedgemix_timed_nocompile_exact` staged as the next high-leverage hybrid. The H200 is back on a single exact-upstream lane instead of wasting time on three duplicate proxy-artifact eval jobs. The new live log is `logs/h200_upstream_pr674_proxy7185_timed_nocompile_seed1337.txt` and confirms `warmup_steps:0` and `compile:enabled=0`.
+- Decision: Keep exact-upstream PR `#674` as the main line, prioritize `timed + nocompile` systems variants for budget fit, and treat PR `#688`’s Hedge mixer as a portable eval-side overlay rather than a standalone weaker base family.
+- Next step: Watch the new `timed + nocompile` PR `#674` lane to the first meaningful training checkpoints, then launch the staged `upstream_pr674_hedgemix_timed_nocompile_exact` follow-up if it holds up.
+
 - Timestamp: 2026-03-25 09:05 UTC
 - Commit: uncommitted
 - Lane: H200 proxy / PR674 alignment
