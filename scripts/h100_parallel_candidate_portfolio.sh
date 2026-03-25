@@ -34,6 +34,8 @@ run_candidate() {
       exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_ngram659.sh"
       ;;
     ngram674)
+      export NGRAM_CACHE_KIND="${NGRAM_CACHE_KIND:-hashed}"
+      export NGRAM_HASHED_BUCKETS="${NGRAM_HASHED_BUCKETS:-4194304}"
       export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.20}"
       export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-1.0}"
       export NGRAM_APPLY_MODE="${NGRAM_APPLY_MODE:-always}"
@@ -116,6 +118,8 @@ run_candidate() {
       exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_ngram659.sh"
       ;;
     warmup0_ngram674)
+      export NGRAM_CACHE_KIND="${NGRAM_CACHE_KIND:-hashed}"
+      export NGRAM_HASHED_BUCKETS="${NGRAM_HASHED_BUCKETS:-4194304}"
       export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.20}"
       export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-1.0}"
       export NGRAM_APPLY_MODE="${NGRAM_APPLY_MODE:-always}"
@@ -193,6 +197,8 @@ run_candidate() {
       exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_vr1_bg3072_ngram659.sh"
       ;;
     vr1_bg3072_ngram674)
+      export NGRAM_CACHE_KIND="${NGRAM_CACHE_KIND:-hashed}"
+      export NGRAM_HASHED_BUCKETS="${NGRAM_HASHED_BUCKETS:-4194304}"
       export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.20}"
       export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-1.0}"
       export NGRAM_APPLY_MODE="${NGRAM_APPLY_MODE:-always}"
@@ -203,6 +209,8 @@ run_candidate() {
       exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_vr1_bg3072_ngram659.sh"
       ;;
     warmup0_vr1_bg3072_ngram674)
+      export NGRAM_CACHE_KIND="${NGRAM_CACHE_KIND:-hashed}"
+      export NGRAM_HASHED_BUCKETS="${NGRAM_HASHED_BUCKETS:-4194304}"
       export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.20}"
       export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-1.0}"
       export NGRAM_APPLY_MODE="${NGRAM_APPLY_MODE:-always}"
@@ -408,7 +416,7 @@ Candidate meanings:
   warmup0_vr1_bg3072_tttlr25
                        combo bet plus WARMUP_STEPS=0 for score and compliance
   ngram659             PR #659-style 5-gram eval cache with TTT disabled
-  ngram674             PR #674-style alpha=0.20, min_count=2, always-apply 5-gram mix
+  ngram674             PR #674-style hashed alpha=0.20, min_count=2, always-apply 5-gram mix
   ngram659_lamcool     PR #659 eval cache with lambda taper from 0.15 to 0.06 late
   ngram659_conf07      PR #659 eval cache with a stricter 0.7 confidence gate
   ngram659_latecool_conf07
@@ -450,7 +458,7 @@ Candidate meanings:
   warmup0_ngram659_tgate40_min4
                        ngram659_tgate40_min4 plus WARMUP_STEPS=0 for timing headroom
   vr1_bg3072_ngram659  stronger architecture knobs plus PR #659 eval cache
-  vr1_bg3072_ngram674  stronger architecture knobs plus PR #674 eval semantics
+  vr1_bg3072_ngram674  stronger architecture knobs plus PR #674 hashed eval semantics
   warmup0_vr1_bg3072_ngram659
                        architecture knobs plus PR #659 eval cache plus WARMUP_STEPS=0
   warmup0_vr1_bg3072_ngram674
