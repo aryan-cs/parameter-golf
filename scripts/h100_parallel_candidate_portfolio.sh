@@ -66,6 +66,12 @@ run_candidate() {
     upstream_pr688_timed_nocompile_qttt_light_skipsliding_exact)
       exec env TIMED_MODE=1 COMPILE_ENABLED=0 RUN_ID="${RUN_ID:-h100_upstream_pr688_timed_nocompile_qttt_light_skipsliding_seed${SEED:-2045}}" bash "$ROOT_DIR/scripts/h100_upstream_pr688_qttt_light_skipsliding_exact.sh"
       ;;
+    upstream_pr688_timed_nocompile_qttt_light_ep2_skipsliding_exact)
+      exec env TIMED_MODE=1 COMPILE_ENABLED=0 RUN_ID="${RUN_ID:-h100_upstream_pr688_timed_nocompile_qttt_light_ep2_skipsliding_seed${SEED:-2045}}" bash "$ROOT_DIR/scripts/h100_upstream_pr688_qttt_light_ep2_skipsliding_exact.sh"
+      ;;
+    upstream_pr688_timed_nocompile_qttt_light_ep1_skipsliding_exact)
+      exec env TIMED_MODE=1 COMPILE_ENABLED=0 RUN_ID="${RUN_ID:-h100_upstream_pr688_timed_nocompile_qttt_light_ep1_skipsliding_seed${SEED:-2045}}" bash "$ROOT_DIR/scripts/h100_upstream_pr688_qttt_light_ep1_skipsliding_exact.sh"
+      ;;
     upstream_pr688_timed_nocompile_qttt_light_chunk256_exact)
       exec env TIMED_MODE=1 COMPILE_ENABLED=0 RUN_ID="${RUN_ID:-h100_upstream_pr688_timed_nocompile_qttt_light_chunk256_seed${SEED:-2045}}" bash "$ROOT_DIR/scripts/h100_upstream_pr688_qttt_light_chunk256_exact.sh"
       ;;

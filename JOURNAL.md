@@ -24,6 +24,18 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Decision: Keep PR688 as the first exact-upstream family to pressure-test for constraint fit, and use the new `chunk256 + stride64 + skipsliding` lane as the harshest legal budget probe.
 - Next step: Validate the new wrappers and queue, rearm the watcher chain, then let the live PR674 head run continue untouched while the PR688 ladder waits behind it.
 
+- Timestamp: 2026-03-25 19:43 UTC
+- Commit: uncommitted
+- Lane: exact-upstream PR688 / budget fit
+- Objective: Cut the expensive final TTT phase itself, not just the pre-TTT sliding pass.
+- Command or config: Re-read the actual PR688 trainer around `eval_val_sliding_ttt(...)` and confirmed `TTT_EPOCHS` directly scales the final `final_int6_ttt_exact` path. Added two new exact-upstream PR688 light `skipsliding` candidates:
+  - `upstream_pr688_timed_nocompile_qttt_light_ep2_skipsliding_exact`
+  - `upstream_pr688_timed_nocompile_qttt_light_ep1_skipsliding_exact`
+  Both keep `QTTT=1`, `TTT_FREEZE_BLOCKS=3`, `USE_POLYAK=0`, `ADAPTIVE_LR=0`, and set `TTT_EPOCHS` to `2` or `1`.
+- Result: The PR688 budget ladder now attacks the dominant final-TTT cost directly before escalating to the harsher chunk/stride cuts.
+- Decision: Queue `epochs=2` and `epochs=1` light `skipsliding` ahead of `chunk256` and `stride64`, because they are the cleanest budget cuts on the exact scored path itself.
+- Next step: Validate the new wrappers and queue, rearm the watcher chain, and let the live PR674 head run continue uninterrupted while the tighter PR688 ladder waits behind it.
+
 - Timestamp: 2026-03-25 06:56 UTC
 - Commit: uncommitted
 - Lane: H200 exact-upstream / constraint fit
