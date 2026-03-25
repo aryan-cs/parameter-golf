@@ -3542,3 +3542,41 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
   - Do not spend more H200 time on proxy-artifact `record674`.
   - Use exact-upstream `pr674` as the new main dev lane.
   - Keep `pr676`, `pr685_phase1`, and `pr684` chained behind it as the best current legalizable queue.
+
+- Timestamp: 2026-03-25 06:11 UTC
+- Commit: uncommitted
+- Lane: Exact-upstream frontier / legal PR685 hedge
+- Objective: Capture some of PR `#685`'s multi-pass upside without inheriting the legality risk from per-token `min(NLL)` selection.
+- Command or config:
+  - Re-read exact upstream PR pages and code:
+    - `#674` `1.0461`
+    - `#676` SwiGLU hedge
+    - `#685` chained TTT with tokenwise `min(NLL)`
+  - Read the exact phase-2 block in PR `#685` and isolated the risky line:
+    - `best_nll[idx] = torch.minimum(best_nll[idx], nll)`
+  - Added a reusable patcher and launchers:
+    - [patch_pr685_meanprob.py](/home/aryang9/parameter-golf/scripts/patch_pr685_meanprob.py)
+    - [icrn_h200_upstream_pr685_meanprob_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr685_meanprob_proxy.sh)
+    - [h100_upstream_pr685_meanprob_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr685_meanprob_exact.sh)
+    - [h100_upstream_pr685_meanprob_exact_3seed.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr685_meanprob_exact_3seed.sh)
+  - The new patch keeps PR `#685` phase-1 and multi-pass score-first structure intact, but replaces tokenwise best-of aggregation with legal probability ensembling:
+    - accumulate `sum(exp(-nll_pass))`
+    - divide by pass count
+    - score with `-log(mean_prob)`
+  - Wired the candidate into:
+    - [h100_parallel_candidate_portfolio.sh](/home/aryang9/parameter-golf/scripts/h100_parallel_candidate_portfolio.sh)
+    - [record_push_status.py](/home/aryang9/parameter-golf/scripts/record_push_status.py)
+    - [rearm_proxy_record674_queue.sh](/home/aryang9/parameter-golf/scripts/rearm_proxy_record674_queue.sh)
+  - Smoke-tested the patch on a temp copy of the exact upstream PR `#685` trainer:
+    - patched file compiles with `python -m py_compile`
+    - launcher scripts pass `bash -n`
+    - queue rearmed successfully
+- Result:
+  - We now have a submission-safe PR `#685` hedge staged as a first-class candidate: `upstream_pr685_meanprob_exact`.
+  - The exact-upstream watcher chain is now:
+    - `pr674 -> pr676 -> pr685_meanprob -> pr685_phase1 -> pr684`
+  - Live exact upstream `pr674` is progressing normally and has reached `step:500/7185 val_bpb:1.3810`.
+- Decision:
+  - Treat `pr685_meanprob` as a stronger legal hedge than `pr685_phase1` alone.
+  - Keep full PR `#685` tokenwise `min(NLL)` out of the submission path unless the rules are clarified in its favor.
+  - Leave the GPU on exact upstream `pr674` and let the new exact-upstream chain fire automatically after it.
