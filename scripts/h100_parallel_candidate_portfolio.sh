@@ -36,6 +36,15 @@ run_candidate() {
     rope24_ngram659_conf07)
       exec bash "$ROOT_DIR/scripts/h100_record_push_candidate.sh" rope24 ngram659_conf07
       ;;
+    xsa11_ngram674)
+      exec bash "$ROOT_DIR/scripts/h100_record_push_candidate.sh" xsa11 ngram674
+      ;;
+    xsa11_ngram659_conf07)
+      exec bash "$ROOT_DIR/scripts/h100_record_push_candidate.sh" xsa11 ngram659_conf07
+      ;;
+    podracing674_ngram674)
+      exec bash "$ROOT_DIR/scripts/h100_record_push_candidate.sh" podracing674 ngram674
+      ;;
     warmup0)
       exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0.sh"
       ;;
@@ -49,6 +58,18 @@ run_candidate() {
     warmup0_rope24_ngram659_conf07)
       export WARMUP_STEPS="${WARMUP_STEPS:-0}"
       exec bash "$ROOT_DIR/scripts/h100_record_push_candidate.sh" rope24 ngram659_conf07
+      ;;
+    warmup0_xsa11_ngram674)
+      export WARMUP_STEPS="${WARMUP_STEPS:-0}"
+      exec bash "$ROOT_DIR/scripts/h100_record_push_candidate.sh" xsa11 ngram674
+      ;;
+    warmup0_xsa11_ngram659_conf07)
+      export WARMUP_STEPS="${WARMUP_STEPS:-0}"
+      exec bash "$ROOT_DIR/scripts/h100_record_push_candidate.sh" xsa11 ngram659_conf07
+      ;;
+    warmup0_podracing674_ngram674)
+      export WARMUP_STEPS="${WARMUP_STEPS:-0}"
+      exec bash "$ROOT_DIR/scripts/h100_record_push_candidate.sh" podracing674 ngram674
       ;;
     ngram659)
       exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_ngram659.sh"
@@ -371,10 +392,16 @@ Run one candidate on each 8xH100 node by setting CANDIDATE:
   CANDIDATE=swiglu_ngram659_conf07 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=rope24_ngram674 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=rope24_ngram659_conf07 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=xsa11_ngram674 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=xsa11_ngram659_conf07 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=podracing674_ngram674 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0_vr1_bg3072_tttlr25 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0_rope24_ngram674 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0_rope24_ngram659_conf07 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=warmup0_xsa11_ngram674 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=warmup0_xsa11_ngram659_conf07 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=warmup0_podracing674_ngram674 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=ngram659 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=ngram674 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=ngram659_lamcool bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
@@ -444,6 +471,11 @@ Candidate meanings:
   rope24_ngram674      deeper partial-RoPE hedge plus PR #674 hashed eval semantics
   rope24_ngram659_conf07
                        deeper partial-RoPE hedge plus the best completed PR #659-style conf07 lane
+  xsa11_ngram674       all-layer XSA hedge plus PR #674 hashed eval semantics
+  xsa11_ngram659_conf07
+                       all-layer XSA hedge plus the best completed PR #659-style conf07 lane
+  podracing674_ngram674
+                       current best PR-#674-surrogate arch hedge plus hashed eval semantics
   warmup0              baseline + WARMUP_STEPS=0 to claw back timed-run headroom
   warmup0_vr1_bg3072_tttlr25
                        combo bet plus WARMUP_STEPS=0 for score and compliance
@@ -451,6 +483,12 @@ Candidate meanings:
                        rope24_ngram674 plus WARMUP_STEPS=0 for more timing headroom
   warmup0_rope24_ngram659_conf07
                        rope24_ngram659_conf07 plus WARMUP_STEPS=0 for more timing headroom
+  warmup0_xsa11_ngram674
+                       xsa11_ngram674 plus WARMUP_STEPS=0 for more timing headroom
+  warmup0_xsa11_ngram659_conf07
+                       xsa11_ngram659_conf07 plus WARMUP_STEPS=0 for more timing headroom
+  warmup0_podracing674_ngram674
+                       podracing674_ngram674 plus WARMUP_STEPS=0 for more timing headroom
   ngram659             PR #659-style 5-gram eval cache with TTT disabled
   ngram674             PR #674-style hashed alpha=0.20, min_count=2, always-apply 5-gram mix
   ngram659_lamcool     PR #659 eval cache with lambda taper from 0.15 to 0.06 late

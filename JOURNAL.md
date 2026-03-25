@@ -3141,3 +3141,35 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Decision:
   - Promote `xsa11` to a first-class H100/H200 hedge immediately.
   - Treat it as the most directly PR-`#674`-aligned architecture follow-up behind the active baseline proxy retrain.
+
+- Timestamp: 2026-03-25 04:56 UTC
+- Commit: `working tree`
+- Lane: H200 queue ops, PR-`#674`-driven architecture ladder
+- Objective: Stop blocking the next architecture retrain on slow proxy-tail evals and move the queue onto the fastest signal that still preserves legality.
+- Research / findings:
+  - A latent `podracing674` arch candidate was already present in `scripts/record_push_candidate_lib.sh`.
+    - current surrogate settings:
+      - `BIGRAM_VOCAB_SIZE=1536`
+      - `ROPE_DIMS=24`
+  - This is closer to the current PR-`#674` frontier than waiting on `conf07` tails from the old exact-cache branch.
+  - The more useful trigger for queue progression is `record674` exact completion, not the slower nearby smokes or `conf07` tail.
+- Code / ops:
+  - Exposed `podracing674` in `scripts/h100_parallel_candidate_portfolio.sh`:
+    - `podracing674_ngram674`
+    - `warmup0_podracing674_ngram674`
+  - Validated and kept the generalized queue helper files:
+    - `scripts/after_record674_launch_arch.sh`
+    - `scripts/icrn_h200_ttt_h100_proxy_podracing674.sh`
+  - Reworked the active H200 waiters so they now advance on `record674` exact completion with:
+    - `RUN_NEARBY_SMOKES=0`
+    - `RUN_CONF07_TAIL=0`
+  - Current queued ladder is now:
+    - baseline proxy train
+    - baseline proxy `record674`
+    - `podracing674` proxy
+    - `swiglu` proxy
+    - `rope24` proxy
+    - `xsa11` proxy
+- Decision:
+  - Prioritize architecture throughput over extra proxy-tail eval work.
+  - Keep exact `conf07` as a completed reference score, but stop letting it gate the next retrain launch.
