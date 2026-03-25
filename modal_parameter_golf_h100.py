@@ -14,12 +14,14 @@ ROOT = Path(__file__).resolve().parent
 TRAINER_SRC = ROOT / "records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/train_gpt.py"
 
 APP_NAME = "parameter-golf-h100"
-DATA_VOLUME_NAME = "parameter-golf-data"
-RUNS_VOLUME_NAME = "parameter-golf-runs"
+DATA_VOLUME_NAME = "parameter-golf-data-v2"
+RUNS_VOLUME_NAME = "parameter-golf-runs-v2"
 
 REMOTE_TRAINER_DIR = Path("/root/parameter-golf")
 REMOTE_TRAINER_PATH = REMOTE_TRAINER_DIR / "train_gpt.py"
 REMOTE_DATA_ROOT = Path("/data")
+VOLUME_DATASET_DIR = Path("/datasets/fineweb10B_sp1024")
+VOLUME_TOKENIZER_PATH = Path("/tokenizers/fineweb_1024_bpe.model")
 REMOTE_DATASET_DIR = REMOTE_DATA_ROOT / "datasets" / "fineweb10B_sp1024"
 REMOTE_TOKENIZER_PATH = REMOTE_DATA_ROOT / "tokenizers" / "fineweb_1024_bpe.model"
 REMOTE_RUNS_ROOT = Path("/runs")
@@ -102,6 +104,32 @@ def _build_env(candidate: str, seed: int, run_id: str) -> dict[str, str]:
     return env
 
 
+def _inspect_data_mount() -> dict[str, object]:
+    train_shards = sorted(REMOTE_DATASET_DIR.glob("fineweb_train_*.bin"))
+    val_shards = sorted(REMOTE_DATASET_DIR.glob("fineweb_val_*.bin"))
+    return {
+        "dataset_dir": str(REMOTE_DATASET_DIR),
+        "tokenizer_path": str(REMOTE_TOKENIZER_PATH),
+        "tokenizer_exists": REMOTE_TOKENIZER_PATH.exists(),
+        "train_shards": len(train_shards),
+        "val_shards": len(val_shards),
+        "first_train_shard": str(train_shards[0]) if train_shards else None,
+        "first_val_shard": str(val_shards[0]) if val_shards else None,
+    }
+
+
+@app.function(
+    image=image,
+    volumes={
+        str(REMOTE_DATA_ROOT): data_volume,
+    },
+)
+def verify_data_mount() -> dict[str, object]:
+    inspection = _inspect_data_mount()
+    print(json.dumps(inspection, indent=2))
+    return inspection
+
+
 @app.function(
     image=image,
     gpu="H100!:8",
@@ -136,7 +164,17 @@ def train(candidate: str = "baseline", seed: int = 1337) -> dict[str, str | floa
         + "\n",
         encoding="utf-8",
     )
+    preflight = _inspect_data_mount()
+    (workdir / "preflight.json").write_text(json.dumps(preflight, indent=2) + "\n", encoding="utf-8")
     runs_volume.commit()
+    if not preflight["tokenizer_exists"]:
+        raise FileNotFoundError(
+            f"Tokenizer missing at {REMOTE_TOKENIZER_PATH}. Preflight: {json.dumps(preflight, sort_keys=True)}"
+        )
+    if preflight["train_shards"] <= 0:
+        raise FileNotFoundError(
+            f"No training shards found in {REMOTE_DATASET_DIR}. Preflight: {json.dumps(preflight, sort_keys=True)}"
+        )
 
     t0 = time.perf_counter()
     subprocess.run(
@@ -177,11 +215,17 @@ def upload_data(
         raise FileNotFoundError(f"tokenizer not found: {tokenizer_path}")
 
     with data_volume.batch_upload(force=True) as batch:
-        batch.put_directory(str(dataset_dir), str(REMOTE_DATASET_DIR))
-        batch.put_file(str(tokenizer_path), str(REMOTE_TOKENIZER_PATH))
+        batch.put_directory(str(dataset_dir), str(VOLUME_DATASET_DIR))
+        batch.put_file(str(tokenizer_path), str(VOLUME_TOKENIZER_PATH))
 
-    print(f"Uploaded dataset to volume '{DATA_VOLUME_NAME}' at {REMOTE_DATASET_DIR}")
-    print(f"Uploaded tokenizer to volume '{DATA_VOLUME_NAME}' at {REMOTE_TOKENIZER_PATH}")
+    print(f"Uploaded dataset to volume '{DATA_VOLUME_NAME}' at {VOLUME_DATASET_DIR}")
+    print(f"Uploaded tokenizer to volume '{DATA_VOLUME_NAME}' at {VOLUME_TOKENIZER_PATH}")
+
+
+@app.local_entrypoint()
+def verify_data() -> None:
+    inspection = verify_data_mount.remote()
+    print(json.dumps(inspection, indent=2))
 
 
 @app.local_entrypoint()
