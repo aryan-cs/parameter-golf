@@ -3322,3 +3322,27 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Decision:
   - Keep the active H200 queue untouched.
   - Once the live baseline proxy finishes, prefer exact upstream `pr674` testing over adding more low-confidence surrogate tweaks.
+
+- Timestamp: 2026-03-25 06:07 UTC
+- Commit: uncommitted
+- Lane: exact upstream PR676 path
+- Objective: Stage exact `pr676` launchers so the first 8×H100 window can compare both frontier families directly: exact `pr674` and exact `pr676`.
+- Research / findings:
+  - `pr676` does not use the root trainer; its real competitive code lives in `records/track_10min_16mb/2026-03-25_SwiGLU_LeakyReLU2_LegalTTT_ParallelMuon/train_gpt.py`.
+  - That record-folder trainer preserves the older PR549-style family and applies the single SwiGLU change with:
+    - `BIGRAM_VOCAB_SIZE=1536`
+    - `XSA_LAST_N=4`
+    - `ROPE_DIMS=16`
+    - `LATE_QAT_THRESHOLD=0.15`
+    - `USE_SWIGLU=1`
+    - `SWIGLU_HALF_DIM=1024`
+- Code / ops:
+  - Added [icrn_h200_upstream_pr676_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr676_proxy.sh) for a fixed-step 1×H200 proxy on the exact record-folder code.
+  - Added [h100_upstream_pr676_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr676_exact.sh) for a future exact 8×H100 run on the same upstream record folder.
+  - Added `upstream_pr674_exact` and `upstream_pr676_exact` entries to [h100_parallel_candidate_portfolio.sh](/home/aryang9/parameter-golf/scripts/h100_parallel_candidate_portfolio.sh).
+- Result:
+  - The repo can now launch both exact upstream frontier families directly from fetched worktrees.
+  - That gives us a much cleaner A/B than surrogate-vs-surrogate once the current H200 lane frees up or the 8×H100 window opens.
+- Decision:
+  - Keep the current proxy alive.
+  - After the live baseline proxy and exact `record674` eval complete, favor exact upstream `pr674` and `pr676` tests over adding another low-signal surrogate tweak.
