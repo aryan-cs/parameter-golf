@@ -36,6 +36,42 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Decision: Queue `epochs=2` and `epochs=1` light `skipsliding` ahead of `chunk256` and `stride64`, because they are the cleanest budget cuts on the exact scored path itself.
 - Next step: Validate the new wrappers and queue, rearm the watcher chain, and let the live PR674 head run continue uninterrupted while the tighter PR688 ladder waits behind it.
 
+## 2026-03-25 20:59 UTC — Correct PR688 qTTT block-count interpretation
+
+- Commit: uncommitted
+- Lane: exact-upstream PR `#688` / budget fit
+- Objective: Stage truly smaller qTTT branches after discovering that our previous `qttt_light` naming was misleading.
+- Finding:
+  - In the actual PR688 code, `TTT_FREEZE_BLOCKS` is passed into:
+    - `for i in range(max(0, num_blocks - ttt_freeze_blocks), num_blocks):`
+  - So it is the count of last blocks adapted, not “freeze the first N blocks”.
+  - That means our prior `TTT_FREEZE_BLOCKS=3` “light” lane was actually adapting more blocks than the default `2`.
+- Command or config:
+  - Added exact-upstream PR688 wrappers:
+    - [icrn_h200_upstream_pr688_qttt_last2_skipsliding_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr688_qttt_last2_skipsliding_proxy.sh)
+    - [h100_upstream_pr688_qttt_last2_skipsliding_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr688_qttt_last2_skipsliding_exact.sh)
+    - [icrn_h200_upstream_pr688_qttt_last1_skipsliding_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr688_qttt_last1_skipsliding_proxy.sh)
+    - [h100_upstream_pr688_qttt_last1_skipsliding_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr688_qttt_last1_skipsliding_exact.sh)
+  - Both keep:
+    - `QTTT=1`
+    - `USE_POLYAK=0`
+    - `ADAPTIVE_LR=0`
+    - `SKIP_SLIDING=1`
+  - And set:
+    - `TTT_FREEZE_BLOCKS=2` for `last2`
+    - `TTT_FREEZE_BLOCKS=1` for `last1`
+- Result:
+  - The PR688 budget ladder now tries:
+    - `ep2`
+    - `ep1`
+    - then true smaller `last2`
+    - then true smaller `last1`
+    - before escalating to chunk/stride extremes.
+- Decision:
+  - Treat `last2` and `last1` as higher-value clean fit probes than pushing immediately to harsher chunk/stride degradation.
+- Next step:
+  - Let the live PR674 head run continue, then observe whether the smaller PR688 qTTT write sets are enough to preserve score while cutting eval cost more cleanly than chunk/stride alone.
+
 - Timestamp: 2026-03-25 06:56 UTC
 - Commit: uncommitted
 - Lane: H200 exact-upstream / constraint fit
