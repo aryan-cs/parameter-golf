@@ -2289,3 +2289,47 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Next step:
   - Let the queue continue into `record659_adamw5e4_late2_smoke`.
   - Only promote a full hybrid run if the smoke keeps pace with the current late-2 SGD result.
+
+- Timestamp: 2026-03-25 03:16 UTC
+- Commit: `working tree`
+- Lane: Pure `record659` lock-in + packed-cache challenger sweep
+- Objective: Bank the first fully completed H200 result that is clearly record-track, then spend only cheap eval cycles on the most plausible ways to beat it before the eventual `8xH100` handoff.
+- Result:
+  - Pure `record659` completed at:
+    - `final_ngram_eval_exact = 1.08590477`
+    - `val_loss = 1.83350239`
+    - `eval_time = 2676354ms`
+    - artifact bytes `= 15,860,692`
+  - This is now the best completed local lane and sits well below the practical `~1.0890` claim threshold against upstream `1.0920`.
+  - Packed-cache pure-smoke sweep on the first `128` windows:
+    - `record659_conf07_smoke = 1.18485308`
+    - `record659_warm_conf07_smoke = 1.18517406`
+    - `record659_conf06_smoke = 1.18589766`
+    - `record659_warm_conf07_orderlam_smoke = 1.18853851`
+    - `record659_orderlam_smoke = 1.19006976`
+  - Packed-cache hybrid-smoke sweep on the first `8` TTT chunks:
+    - `record659_late2_tttlr25_smoke = 1.08872199`
+    - `record659_tttlr25_smoke = 1.08878022`
+    - `record659_adamw1e4_late2_smoke = 1.08892644`
+    - `record659_adamw5e4_late2_smoke = 1.09290292`
+- Findings:
+  - The simplest pure tweak still looks strongest: raising the confidence gate to `0.7` is the best of the new pure smokes, matching the public PR `#659` ablation story.
+  - My first staged-confidence schedule (`0.50 -> 0.60 -> 0.70`) did **not** beat plain `conf=0.7` on the smoke slice.
+  - My first order-aware lambda ramp (`2:0.08, 3:0.12, 4:0.17, 5:0.22`) was actively worse; the idea is not ruled out, but this particular schedule is not competitive.
+  - On the hybrid side, restricting legal `TTT` to the last `2` blocks remains the best hedge, but none of the `TTT+ngram` smokes have beaten the completed pure `record659` full run.
+  - AdamW at `5e-4` is clearly too aggressive in the hybrid lane. AdamW at `1e-4` recovers most of the loss, but still trails late-2 SGD.
+- Code / ops:
+  - Added confidence-schedule / order-lambda support to the standalone hybrid evaluator path in `scripts/eval_ngram_ttt_artifact.py`.
+  - Threaded those arguments through `scripts/icrn_h200_artifact_ttt_ngram_candidate.sh` so future hybrid challengers can reuse the same evaluator controls as the pure n-gram path.
+  - Re-ran validation after the changes:
+    - `python -m py_compile scripts/eval_ngram_ttt_artifact.py`
+    - `bash -n scripts/icrn_h200_artifact_ttt_ngram_candidate.sh`
+    - `git diff --check`
+- Decision:
+  - Keep pure `record659` as the primary `8xH100` handoff candidate.
+  - Keep `record659_late2_tttlr25` as the only serious hybrid hedge.
+  - Promote `record659_conf07` to the next full H200 challenger because it has the strongest public prior and the best pure-smoke readout.
+- Next step:
+  - Commit the hybrid-evaluator plumbing and this journal entry.
+  - Launch a full packed-cache `record659_conf07` H200 artifact eval.
+  - If full `conf07` improves on `1.08590477`, it becomes the new exact-run frontrunner; otherwise, return to a full late-2 hybrid only if we still want one hedge before `8xH100`.

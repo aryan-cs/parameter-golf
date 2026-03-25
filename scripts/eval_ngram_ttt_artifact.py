@@ -82,7 +82,7 @@ class OnlineNgramCache:
                     self.counts[n][ctx] = d
                 d[token] = d.get(token, 0) + 1
 
-    def logprob_target(self, context: list[int], target: int, min_count: int = 3) -> float | None:
+    def lookup_target(self, context: list[int], target: int, min_count: int = 3) -> tuple[float, int, int] | None:
         for n in range(min(self.max_n, len(context) + 1), 1, -1):
             ctx = tuple(context[-(n - 1) :]) if n > 1 else ()
             d = self.counts[n].get(ctx)
@@ -93,8 +93,122 @@ class OnlineNgramCache:
                 continue
             cnt = d.get(target, 0)
             if cnt > 0:
-                return math.log(cnt / total)
+                return math.log(cnt / total), n, total
         return None
+
+    def logprob_target(self, context: list[int], target: int, min_count: int = 3) -> float | None:
+        lookup = self.lookup_target(context, target, min_count=min_count)
+        return None if lookup is None else lookup[0]
+
+
+class PackedOnlineNgramCache:
+    def __init__(self, vocab_size: int, max_n: int = 5) -> None:
+        self.vocab_size = vocab_size
+        self.max_n = max_n
+        self.token_bits = max(1, int(vocab_size - 1).bit_length())
+        self.use_bitpack = (1 << self.token_bits) == vocab_size
+        self.totals: list[dict[int, int]] = [{} for _ in range(max_n + 1)]
+        self.counts: list[dict[int, int]] = [{} for _ in range(max_n + 1)]
+
+    def _append_token(self, code: int, token: int) -> int:
+        if self.use_bitpack:
+            return (code << self.token_bits) | int(token)
+        return code * self.vocab_size + int(token)
+
+    def _encode_context(self, token_ids: list[int], start: int, end: int) -> int:
+        code = 0
+        for i in range(start, end):
+            code = self._append_token(code, token_ids[i])
+        return code
+
+    def update_from_list(self, token_ids: list[int]) -> None:
+        for i, token in enumerate(token_ids):
+            for n in range(2, min(self.max_n + 1, i + 2)):
+                ctx_code = self._encode_context(token_ids, i - n + 1, i)
+                totals_n = self.totals[n]
+                counts_n = self.counts[n]
+                totals_n[ctx_code] = totals_n.get(ctx_code, 0) + 1
+                joint = self._append_token(ctx_code, token)
+                counts_n[joint] = counts_n.get(joint, 0) + 1
+
+    def lookup_target(self, context: list[int], target: int, min_count: int = 3) -> tuple[float, int, int] | None:
+        for n in range(min(self.max_n, len(context) + 1), 1, -1):
+            ctx_code = self._encode_context(context, len(context) - (n - 1), len(context))
+            total = self.totals[n].get(ctx_code, 0)
+            if total < min_count:
+                continue
+            cnt = self.counts[n].get(self._append_token(ctx_code, target), 0)
+            if cnt > 0:
+                return math.log(cnt / total), n, total
+        return None
+
+    def logprob_target(self, context: list[int], target: int, min_count: int = 3) -> float | None:
+        lookup = self.lookup_target(context, target, min_count=min_count)
+        return None if lookup is None else lookup[0]
+
+
+def build_ngram_cache(vocab_size: int, max_n: int, *, packed: bool) -> OnlineNgramCache | PackedOnlineNgramCache:
+    if packed:
+        return PackedOnlineNgramCache(vocab_size, max_n=max_n)
+    return OnlineNgramCache(vocab_size, max_n=max_n)
+
+
+def parse_confidence_schedule(spec: str, default_threshold: float) -> list[tuple[float, float]]:
+    schedule = [(0.0, default_threshold)]
+    if not spec.strip():
+        return schedule
+    parsed: list[tuple[float, float]] = []
+    for item in spec.split(","):
+        frac_s, value_s = item.strip().split(":", 1)
+        frac = min(max(float(frac_s), 0.0), 1.0)
+        value = min(max(float(value_s), 0.0), 1.0)
+        parsed.append((frac, value))
+    parsed.sort()
+    if parsed[0][0] > 0.0:
+        parsed.insert(0, (0.0, default_threshold))
+    return parsed
+
+
+def confidence_for_progress(schedule: list[tuple[float, float]], progress: float) -> float:
+    current = schedule[0][1]
+    for frac, value in schedule:
+        if progress + 1e-12 >= frac:
+            current = value
+        else:
+            break
+    return current
+
+
+def confidence_to_log_threshold(confidence_threshold: float) -> float:
+    if confidence_threshold <= 0.0:
+        return float("-inf")
+    if confidence_threshold >= 1.0:
+        return 0.0
+    return math.log(confidence_threshold)
+
+
+def parse_order_lambdas(spec: str, max_n: int, default_lambda: float) -> dict[int, float]:
+    order_lambdas = {n: default_lambda for n in range(2, max_n + 1)}
+    if not spec.strip():
+        return order_lambdas
+    for item in spec.split(","):
+        order_s, value_s = item.strip().split(":", 1)
+        order = int(order_s)
+        value = float(value_s)
+        if order < 2 or order > max_n:
+            continue
+        if not (0.0 < value < 1.0):
+            raise ValueError(f"order lambda must lie in (0, 1), got {value} for n={order}")
+        order_lambdas[order] = value
+    return order_lambdas
+
+
+def format_confidence_schedule(schedule: list[tuple[float, float]]) -> str:
+    return ",".join(f"{frac:.2f}:{value:.2f}" for frac, value in schedule)
+
+
+def format_order_lambdas(order_lambdas: dict[int, float]) -> str:
+    return ",".join(f"{order}:{order_lambdas[order]:.3f}" for order in sorted(order_lambdas))
 
 
 def eval_val_sliding_ttt_ngram(
@@ -114,15 +228,19 @@ def eval_val_sliding_ttt_ngram(
     confidence_threshold: float = 0.5,
     min_count: int = 3,
     max_chunks: int = 0,
+    ttt_passes: int = 1,
+    include_base_pass: bool = False,
+    packed_cache: bool = False,
+    confidence_schedule_spec: str = "",
+    order_lambdas_spec: str = "",
     log=print,
 ) -> tuple[float, float]:
     seq_len = args.train_seq_len
     total_tokens = val_tokens.numel() - 1
     ttt_chunk = args.ttt_chunk_tokens
-    log_conf_thresh = math.log(confidence_threshold) if confidence_threshold < 1.0 else 0.0
-    lam = ngram_lambda
-    log_1_minus_lam = math.log(1.0 - lam)
-    log_lam = math.log(lam)
+    confidence_schedule = parse_confidence_schedule(confidence_schedule_spec, confidence_threshold)
+    order_lambdas = parse_order_lambdas(order_lambdas_spec, ngram_max_n, ngram_lambda)
+    order_log_lambdas = {n: (math.log(1.0 - lam), math.log(lam)) for n, lam in order_lambdas.items()}
 
     window_starts = [ws for ws in range(0, total_tokens, stride) if min(ws + seq_len, total_tokens) - ws >= stride or ws == 0]
     num_chunks = (total_tokens + ttt_chunk - 1) // ttt_chunk
@@ -144,146 +262,205 @@ def eval_val_sliding_ttt_ngram(
         f"chunks={num_chunks} chunk_tokens={ttt_chunk} total_windows={len(window_starts)} "
         f"stride={stride} ttt_lr={args.ttt_lr} ttt_epochs={args.ttt_epochs} "
         f"freeze_blocks={args.ttt_freeze_blocks} last_n_blocks={args.ttt_last_n_blocks} "
-        f"optimizer={args.ttt_optimizer} ngram_lambda={ngram_lambda} "
-        f"ngram_max_n={ngram_max_n} confidence_threshold={confidence_threshold}"
+        f"optimizer={args.ttt_optimizer} ttt_passes={ttt_passes} "
+        f"include_base_pass={int(include_base_pass)} ngram_lambda={ngram_lambda} "
+        f"ngram_max_n={ngram_max_n} confidence_threshold={confidence_threshold} "
+        f"packed={int(packed_cache)} "
+        f"confidence_schedule={format_confidence_schedule(confidence_schedule)} "
+        f"order_lambdas={format_order_lambdas(order_lambdas)}"
     )
 
-    loss_sum = torch.zeros((), device=device, dtype=torch.float64)
-    token_count = torch.zeros((), device=device, dtype=torch.float64)
-    byte_count = torch.zeros((), device=device, dtype=torch.float64)
-    ngram = OnlineNgramCache(args.vocab_size, max_n=ngram_max_n)
+    best_nll = torch.full((total_tokens,), float("inf"), device=device, dtype=torch.float32)
+    best_pass = torch.full((total_tokens,), -1, device=device, dtype=torch.int16)
+    base_state = {k: v.detach().clone() for k, v in base_model.state_dict().items()}
+    t0 = time.perf_counter()
+    total_passes = ttt_passes + (1 if include_base_pass else 0)
     ngram_improvements = 0
     ngram_attempts = 0
     ngram_skipped = 0
 
-    ttt_params, control_params, matrix_params, head_params, bank_mask_items = mod.configure_ttt_params(
-        args, base_model, log0=log
-    )
-    optimizer = mod.build_ttt_optimizer(args, ttt_params, control_params, matrix_params, head_params)
-    t0 = time.perf_counter()
-
-    for ci in range(num_chunks):
-        windows = chunk_windows[ci]
-        if not windows:
-            continue
+    def chunk_token_span(ci: int) -> tuple[int, int]:
         chunk_start = ci * ttt_chunk
         chunk_end = min((ci + 1) * ttt_chunk, total_tokens)
+        return chunk_start, chunk_end
 
-        base_model.eval()
-        with torch.inference_mode():
-            for bi in range(0, len(windows), batch_seqs):
-                batch_ws = windows[bi : bi + batch_seqs]
-                bsz = len(batch_ws)
-                x_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
-                y_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
-                wlens: list[int] = []
-                for i, ws in enumerate(batch_ws):
-                    end = min(ws + seq_len, total_tokens)
-                    wlen = end - ws
-                    wlens.append(wlen)
-                    chunk_tok = val_tokens[ws : end + 1].to(dtype=torch.int64, device=device)
-                    x_batch[i, :wlen] = chunk_tok[:-1]
-                    y_batch[i, :wlen] = chunk_tok[1:]
+    for pass_idx in range(total_passes):
+        do_adapt = pass_idx >= (1 if include_base_pass else 0)
+        shift_idx = pass_idx - (1 if include_base_pass else 0)
+        base_model.load_state_dict(base_state, strict=True)
+        ngram = build_ngram_cache(args.vocab_size, ngram_max_n, packed=packed_cache)
+        pass_attempts = 0
+        pass_improvements = 0
+        pass_skipped = 0
 
-                with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-                    logits = base_model.forward_logits(x_batch)
-                logits_f = logits.float()
-                nll = F.cross_entropy(
-                    logits_f.reshape(-1, logits_f.size(-1)),
-                    y_batch.reshape(-1),
-                    reduction="none",
-                ).reshape(bsz, seq_len)
+        ttt_params = control_params = matrix_params = head_params = bank_mask_items = None
+        optimizer = None
+        if do_adapt:
+            ttt_params, control_params, matrix_params, head_params, bank_mask_items = mod.configure_ttt_params(
+                args, base_model, log0=log
+            )
+            optimizer = mod.build_ttt_optimizer(args, ttt_params, control_params, matrix_params, head_params)
 
-                for i, ws in enumerate(batch_ws):
-                    wlen = wlens[i]
-                    s = 0 if ws == 0 else max(wlen - stride, 0)
-                    scored_nll = nll[i, s:wlen].to(torch.float64).clone()
-                    if ws > 0:
-                        log_sm = F.log_softmax(logits_f[i, s:wlen], dim=-1)
-                        max_logp_cpu = log_sm.max(dim=-1).values.cpu().tolist()
-                        x_cpu = x_batch[i, :wlen].cpu().tolist()
-                        y_cpu = y_batch[i, s:wlen].cpu().tolist()
-                        uncertain_indices: list[int] = []
-                        prev_contexts: list[list[int]] = []
-                        targets: list[int] = []
-                        n_scored = wlen - s
-                        for t_off in range(n_scored):
-                            if max_logp_cpu[t_off] > log_conf_thresh:
-                                ngram_skipped += 1
-                                continue
-                            t_idx = s + t_off
-                            uncertain_indices.append(t_off)
-                            ctx_start = max(0, t_idx - ngram_max_n + 1)
-                            prev_contexts.append(x_cpu[ctx_start : t_idx + 1])
-                            targets.append(y_cpu[t_off])
-                        if uncertain_indices:
-                            ng_logps = [ngram.logprob_target(ctx, tgt, min_count=min_count) for ctx, tgt in zip(prev_contexts, targets)]
-                            unc_idx_t = torch.tensor(uncertain_indices, dtype=torch.long, device=log_sm.device)
-                            tgt_t = torch.tensor(targets, dtype=torch.long, device=log_sm.device)
-                            model_logps = log_sm[unc_idx_t, tgt_t].cpu().tolist()
-                            for j, t_off in enumerate(uncertain_indices):
-                                ng_lp = ng_logps[j]
-                                if ng_lp is None:
+        chunk_indices = list(range(num_chunks))
+        if do_adapt and total_passes > 1 and num_chunks > 0:
+            shift = ((shift_idx + 1) * len(chunk_indices)) // max(total_passes - (1 if include_base_pass else 0), 1)
+            if shift > 0:
+                chunk_indices = chunk_indices[shift:] + chunk_indices[:shift]
+
+        for pos_idx, ci in enumerate(chunk_indices):
+            windows = chunk_windows[ci]
+            if not windows:
+                continue
+            chunk_start, chunk_end = chunk_token_span(ci)
+            progress = ci / max(num_chunks, 1)
+            chunk_confidence_threshold = confidence_for_progress(confidence_schedule, progress)
+            log_conf_thresh = confidence_to_log_threshold(chunk_confidence_threshold)
+
+            base_model.eval()
+            with torch.inference_mode():
+                for bi in range(0, len(windows), batch_seqs):
+                    batch_ws = windows[bi : bi + batch_seqs]
+                    bsz = len(batch_ws)
+                    x_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
+                    y_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
+                    wlens: list[int] = []
+                    for i, ws in enumerate(batch_ws):
+                        end = min(ws + seq_len, total_tokens)
+                        wlen = end - ws
+                        wlens.append(wlen)
+                        chunk_tok = val_tokens[ws : end + 1].to(dtype=torch.int64, device=device)
+                        x_batch[i, :wlen] = chunk_tok[:-1]
+                        y_batch[i, :wlen] = chunk_tok[1:]
+
+                    with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                        logits = base_model.forward_logits(x_batch)
+                    logits_f = logits.float()
+                    nll = F.cross_entropy(
+                        logits_f.reshape(-1, logits_f.size(-1)),
+                        y_batch.reshape(-1),
+                        reduction="none",
+                    ).reshape(bsz, seq_len)
+
+                    for i, ws in enumerate(batch_ws):
+                        wlen = wlens[i]
+                        s = 0 if ws == 0 else max(wlen - stride, 0)
+                        scored_nll = nll[i, s:wlen].to(torch.float32).clone()
+                        if ws > 0:
+                            log_sm = F.log_softmax(logits_f[i, s:wlen], dim=-1)
+                            max_logp_cpu = log_sm.max(dim=-1).values.cpu().tolist()
+                            x_cpu = x_batch[i, :wlen].cpu().tolist()
+                            y_cpu = y_batch[i, s:wlen].cpu().tolist()
+                            uncertain_indices: list[int] = []
+                            prev_contexts: list[list[int]] = []
+                            targets: list[int] = []
+                            n_scored = wlen - s
+                            for t_off in range(n_scored):
+                                if max_logp_cpu[t_off] > log_conf_thresh:
+                                    pass_skipped += 1
                                     continue
-                                ngram_attempts += 1
-                                model_lp = model_logps[j]
-                                a = log_1_minus_lam + model_lp
-                                b = log_lam + ng_lp
-                                mixed_lp = max(a, b) + math.log1p(math.exp(-abs(a - b)))
-                                new_nll = -mixed_lp
-                                old_nll = scored_nll[t_off].item()
-                                if new_nll < old_nll:
-                                    scored_nll[t_off] = new_nll
-                                    ngram_improvements += 1
+                                t_idx = s + t_off
+                                uncertain_indices.append(t_off)
+                                ctx_start = max(0, t_idx - ngram_max_n + 1)
+                                prev_contexts.append(x_cpu[ctx_start : t_idx + 1])
+                                targets.append(y_cpu[t_off])
+                            if uncertain_indices:
+                                ng_lookups = [ngram.lookup_target(ctx, tgt, min_count=min_count) for ctx, tgt in zip(prev_contexts, targets)]
+                                unc_idx_t = torch.tensor(uncertain_indices, dtype=torch.long, device=log_sm.device)
+                                tgt_t = torch.tensor(targets, dtype=torch.long, device=log_sm.device)
+                                model_logps = log_sm[unc_idx_t, tgt_t].cpu().tolist()
+                                for j, t_off in enumerate(uncertain_indices):
+                                    ng_lookup = ng_lookups[j]
+                                    if ng_lookup is None:
+                                        continue
+                                    ng_lp, ng_order, _ = ng_lookup
+                                    pass_attempts += 1
+                                    model_lp = model_logps[j]
+                                    log_1_minus_lam, log_lam = order_log_lambdas[ng_order]
+                                    a = log_1_minus_lam + model_lp
+                                    b = log_lam + ng_lp
+                                    mixed_lp = max(a, b) + math.log1p(math.exp(-abs(a - b)))
+                                    new_nll = -mixed_lp
+                                    old_nll = float(scored_nll[t_off].item())
+                                    if new_nll < old_nll:
+                                        scored_nll[t_off] = new_nll
+                                        pass_improvements += 1
 
-                    loss_sum += scored_nll.sum()
-                    token_count += float(wlen - s)
-                    tgt = y_batch[i, s:wlen]
-                    prev = x_batch[i, s:wlen]
-                    tb = base_bytes_lut[tgt].to(torch.float64)
-                    tb += (has_leading_space_lut[tgt] & ~is_boundary_token_lut[prev]).to(torch.float64)
-                    byte_count += tb.sum()
+                        token_positions = torch.arange(s, wlen, device=device, dtype=torch.long) + ws
+                        prev_best = best_nll[token_positions]
+                        improved_mask = scored_nll < prev_best
+                        best_nll[token_positions] = torch.minimum(prev_best, scored_nll)
+                        best_pass[token_positions[improved_mask]] = pass_idx
 
-                for i in range(bsz):
-                    wlen = wlens[i]
-                    toks = x_batch[i, :wlen].cpu().tolist()
-                    toks.append(y_batch[i, wlen - 1].item())
-                    ngram.update_from_list(toks)
+                    for i in range(bsz):
+                        wlen = wlens[i]
+                        toks = x_batch[i, :wlen].cpu().tolist()
+                        toks.append(y_batch[i, wlen - 1].item())
+                        ngram.update_from_list(toks)
 
-        is_last_chunk = ci == num_chunks - 1
-        if not is_last_chunk and args.ttt_epochs > 0:
-            base_model.train()
-            chunk_seqs = (chunk_end - chunk_start) // seq_len
-            if chunk_seqs > 0:
-                cos_lr = args.ttt_lr * 0.5 * (1.0 + math.cos(math.pi * ci / max(num_chunks - 1, 1)))
-                for pg in optimizer.param_groups:
-                    pg["lr"] = cos_lr
-                for _ep in range(args.ttt_epochs):
-                    for bs in range(0, chunk_seqs, args.ttt_batch_seqs):
-                        be = min(bs + args.ttt_batch_seqs, chunk_seqs)
-                        start_tok = chunk_start + bs * seq_len
-                        end_tok = chunk_start + be * seq_len + 1
-                        if end_tok > val_tokens.numel():
-                            continue
-                        local = val_tokens[start_tok:end_tok].to(device=device, dtype=torch.int64)
-                        x = local[:-1].reshape(-1, seq_len)
-                        y = local[1:].reshape(-1, seq_len)
-                        optimizer.zero_grad(set_to_none=True)
-                        with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-                            loss = base_model(x, y)
-                        loss.backward()
-                        mod.apply_ttt_grad_masks(bank_mask_items)
-                        torch.nn.utils.clip_grad_norm_(ttt_params, args.ttt_grad_clip)
-                        optimizer.step()
+            is_last_chunk = pos_idx == len(chunk_indices) - 1
+            if do_adapt and not is_last_chunk and args.ttt_epochs > 0 and optimizer is not None:
+                base_model.train()
+                chunk_seqs = (chunk_end - chunk_start) // seq_len
+                if chunk_seqs > 0:
+                    cos_lr = args.ttt_lr * 0.5 * (1.0 + math.cos(math.pi * pos_idx / max(len(chunk_indices) - 1, 1)))
+                    for pg in optimizer.param_groups:
+                        pg["lr"] = cos_lr
+                    for _ep in range(args.ttt_epochs):
+                        for bs in range(0, chunk_seqs, args.ttt_batch_seqs):
+                            be = min(bs + args.ttt_batch_seqs, chunk_seqs)
+                            start_tok = chunk_start + bs * seq_len
+                            end_tok = chunk_start + be * seq_len + 1
+                            if end_tok > val_tokens.numel():
+                                continue
+                            local = val_tokens[start_tok:end_tok].to(device=device, dtype=torch.int64)
+                            x = local[:-1].reshape(-1, seq_len)
+                            y = local[1:].reshape(-1, seq_len)
+                            optimizer.zero_grad(set_to_none=True)
+                            with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                                loss = base_model(x, y)
+                            loss.backward()
+                            if bank_mask_items is not None:
+                                mod.apply_ttt_grad_masks(bank_mask_items)
+                            torch.nn.utils.clip_grad_norm_(ttt_params, args.ttt_grad_clip)
+                            optimizer.step()
 
-        if ci % 10 == 0 or ci == num_chunks - 1:
-            elapsed = time.perf_counter() - t0
-            rl = loss_sum.item() / max(token_count.item(), 1)
-            rbpb = rl / math.log(2.0) * (token_count.item() / max(byte_count.item(), 1)) if token_count.item() > 0 else 0.0
-            hit = ngram_improvements / max(ngram_attempts, 1) * 100
-            skip = ngram_skipped / max(ngram_skipped + ngram_attempts + 1, 1) * 100
-            log(f"  ttt_ngram_chunk [{ci+1}/{num_chunks}] bpb={rbpb:.6f} hit={hit:.1f}% skip={skip:.0f}% time={elapsed:.1f}s")
+            if pos_idx % 10 == 0 or pos_idx == len(chunk_indices) - 1:
+                improved_mask = best_nll < float("inf")
+                if improved_mask.any():
+                    loss_sum = best_nll[improved_mask].to(torch.float64).sum()
+                    token_count = torch.tensor(float(improved_mask.sum().item()), device=device, dtype=torch.float64)
+                    tgt_ids = val_tokens[1 : total_tokens + 1].to(device=device, dtype=torch.int64)
+                    prev_ids = val_tokens[:total_tokens].to(device=device, dtype=torch.int64)
+                    tb = base_bytes_lut[tgt_ids[improved_mask]].to(torch.float64)
+                    tb += (has_leading_space_lut[tgt_ids[improved_mask]] & ~is_boundary_token_lut[prev_ids[improved_mask]]).to(torch.float64)
+                    byte_count = tb.sum()
+                    rl = loss_sum.item() / max(token_count.item(), 1)
+                    rbpb = rl / math.log(2.0) * (token_count.item() / max(byte_count.item(), 1))
+                else:
+                    rbpb = float("inf")
+                elapsed = time.perf_counter() - t0
+                pass_name = "base" if (include_base_pass and pass_idx == 0) else f"stream{pass_idx - (1 if include_base_pass else 0) + 1}"
+                hit = pass_improvements / max(pass_attempts, 1) * 100
+                skip = pass_skipped / max(pass_skipped + pass_attempts + 1, 1) * 100
+                log(
+                    f"  ttt_ngram_pass {pass_name} [{pos_idx+1}/{len(chunk_indices)}] "
+                    f"best_bpb={rbpb:.6f} hit={hit:.1f}% skip={skip:.0f}% "
+                    f"conf={chunk_confidence_threshold:.2f} time={elapsed:.1f}s"
+                )
 
+        ngram_improvements += pass_improvements
+        ngram_attempts += pass_attempts
+        ngram_skipped += pass_skipped
+        log(f"  ttt_ngram_pass_done idx={pass_idx} improved={pass_improvements}/{pass_attempts} skipped={pass_skipped}")
+
+    valid_mask = best_nll < float("inf")
+    loss_sum = best_nll[valid_mask].to(torch.float64).sum()
+    token_count = torch.tensor(float(valid_mask.sum().item()), device=device, dtype=torch.float64)
+    tgt_ids = val_tokens[1 : total_tokens + 1].to(device=device, dtype=torch.int64)
+    prev_ids = val_tokens[:total_tokens].to(device=device, dtype=torch.int64)
+    tb = base_bytes_lut[tgt_ids[valid_mask]].to(torch.float64)
+    tb += (has_leading_space_lut[tgt_ids[valid_mask]] & ~is_boundary_token_lut[prev_ids[valid_mask]]).to(torch.float64)
+    byte_count = tb.sum()
     val_loss = (loss_sum / token_count).item()
     val_bpb = val_loss / math.log(2.0) * (token_count.item() / byte_count.item())
     for p in base_model.parameters():
@@ -325,7 +502,12 @@ def main() -> None:
     parser.add_argument("--ngram-max-n", type=int, default=5)
     parser.add_argument("--confidence-threshold", type=float, default=0.5)
     parser.add_argument("--min-count", type=int, default=3)
+    parser.add_argument("--packed-cache", action="store_true")
+    parser.add_argument("--confidence-schedule", type=str, default="")
+    parser.add_argument("--order-lambdas", type=str, default="")
     parser.add_argument("--max-chunks", type=int, default=0)
+    parser.add_argument("--ttt-passes", type=int, default=1)
+    parser.add_argument("--include-base-pass", action="store_true")
     args_ns = parser.parse_args()
 
     run_dir = args_ns.run_dir.resolve()
@@ -357,6 +539,7 @@ def main() -> None:
     args.ttt_momentum = args_ns.ttt_momentum
     args.ttt_grad_clip = args_ns.ttt_grad_clip
     args.ttt_batch_seqs = args_ns.batch_seqs
+    args.ngram_packed_cache = args_ns.packed_cache
 
     device = torch.device(args_ns.device)
     if not torch.cuda.is_available():
@@ -404,7 +587,12 @@ def main() -> None:
                 "ngram_max_n": args_ns.ngram_max_n,
                 "confidence_threshold": args_ns.confidence_threshold,
                 "min_count": args_ns.min_count,
+                "packed_cache": int(args_ns.packed_cache),
+                "confidence_schedule": args_ns.confidence_schedule,
+                "order_lambdas": args_ns.order_lambdas,
                 "max_chunks": args_ns.max_chunks,
+                "ttt_passes": args_ns.ttt_passes,
+                "include_base_pass": int(args_ns.include_base_pass),
             },
             sort_keys=True,
         )
@@ -443,6 +631,11 @@ def main() -> None:
         confidence_threshold=args_ns.confidence_threshold,
         min_count=args_ns.min_count,
         max_chunks=args_ns.max_chunks,
+        ttt_passes=args_ns.ttt_passes,
+        include_base_pass=args_ns.include_base_pass,
+        packed_cache=args_ns.packed_cache,
+        confidence_schedule_spec=args_ns.confidence_schedule,
+        order_lambdas_spec=args_ns.order_lambdas,
         log=log,
     )
     torch.cuda.synchronize()
