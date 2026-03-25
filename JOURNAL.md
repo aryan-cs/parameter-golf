@@ -4351,3 +4351,32 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Decision:
   - Keep PR688 as the strongest immediate exact-upstream family to probe.
   - Use chunk-256k as the lowest-overhead PR688 TTT hedge before returning to PR674 overlay compounds.
+
+## 2026-03-25 20:31 UTC — Add PR688 qTTT light stride-64 budget hedge
+
+- Commit: uncommitted
+- Lane: exact-upstream PR `#688` timed eval variants
+- Objective: stage the strongest clean eval-time reduction inside exact PR688 by reducing scored-window density directly.
+- Source:
+  - PR688 trainer defaults:
+    - `EVAL_STRIDE = 32`
+  - Exact code path where TTT eval uses `stride=args.eval_stride`
+- Finding:
+  - `EVAL_STRIDE=64` is the cleanest direct eval-time cut available inside exact PR688.
+  - It should reduce window count substantially without changing the legality model or introducing new patch complexity.
+- Command or config:
+  - Added wrappers:
+    - [icrn_h200_upstream_pr688_qttt_light_stride64_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr688_qttt_light_stride64_proxy.sh)
+    - [h100_upstream_pr688_qttt_light_stride64_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr688_qttt_light_stride64_exact.sh)
+    - [h100_upstream_pr688_qttt_light_stride64_exact_3seed.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr688_qttt_light_stride64_exact_3seed.sh)
+  - Defaults:
+    - `QTTT=1`
+    - `TTT_FREEZE_BLOCKS=3`
+    - `USE_POLYAK=0`
+    - `ADAPTIVE_LR=0`
+    - `EVAL_STRIDE=64`
+  - Wired through:
+    - [h100_parallel_candidate_portfolio.sh](/home/aryang9/parameter-golf/scripts/h100_parallel_candidate_portfolio.sh)
+    - [record_push_status.py](/home/aryang9/parameter-golf/scripts/record_push_status.py)
+  - Decision:
+    - Keep `stride64` behind `chunk256` in the exact-upstream PR688 queue so we progress from milder to harsher budget cuts.
