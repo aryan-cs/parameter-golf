@@ -3060,3 +3060,37 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Decision:
   - Keep the credit-window fanout explicit.
   - Treat `swiglu_ngram674` as the cleanest architecture hedge behind the baseline hashed family.
+
+- Timestamp: 2026-03-25 04:43 UTC
+- Commit: `working tree`
+- Lane: `8xH100` frontier staging, `rope24` architecture hedge
+- Objective: Keep the H200 busy walking a real architecture ladder while the baseline proxy retrain finishes, and expose the next high-signal partial-RoPE hedge as a first-class H100 launch candidate.
+- Research / findings:
+  - Refreshed open upstream PRs directly from GitHub API:
+    - `#678` Attention Warm-Start: bigram co-occurrence SVD for Q/K init
+    - `#676` SwiGLU MLP
+    - `#674` Podracing `1.0461`
+    - `#672` cosine TTT `1.0781`
+  - Re-read the finished local `record659_conf07` log carefully.
+    - The endgame did not keep degrading; it tightened again late and finished at `1.08035892`.
+    - That makes the next best use of H200 time a broader architecture hedge, not another tiny confidence-schedule tweak on the same exact-cache branch.
+- Code / ops:
+  - Added `rope24` to `scripts/record_push_candidate_lib.sh`.
+    - sets `ROPE_DIMS=24`
+  - Added `rope24` to `scripts/record_push_status.py` proxy ordering so it shows up in the handoff/status dashboard.
+  - Extended `scripts/h100_parallel_candidate_portfolio.sh` with:
+    - `rope24_ngram674`
+    - `rope24_ngram659_conf07`
+    - `warmup0_rope24_ngram674`
+    - `warmup0_rope24_ngram659_conf07`
+  - Added `scripts/after_swiglu_proxy_queue_launch_rope24.sh`.
+    - waits for the staged SwiGLU proxy `conf07` artifact eval to finish
+    - starts the same proxy→artifact `record674`/neighbor-smoke/`conf07` watcher chain for `rope24`
+    - launches `ARCH_CANDIDATE=rope24` proxy retrain
+  - Updated `scripts/after_baseline_proxy_queue_launch_swiglu.sh` so the architecture queue is now:
+    - baseline proxy
+    - SwiGLU proxy
+    - rope24 proxy
+- Decision:
+  - Promote `rope24` to a real H100/H200 hedge rather than leaving it as a manual experiment.
+  - Keep the score frontier anchored on hashed `record674` and completed `conf07`, but widen the architecture search behind the active baseline retrain.

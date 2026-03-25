@@ -32,6 +32,9 @@ PROXY_RECORD674_MIN3_SMOKE_LOG="$SWIGLU_RECORD674_MIN3_SMOKE_LOG" \
 PROXY_CONF07_LOG="$SWIGLU_PROXY_CONF07_LOG" \
 setsid bash "$ROOT_DIR/scripts/after_proxy_train_run_record674_then_conf07.sh" >/tmp/h200_after_swiglu_proxy_train_record674_then_conf07.log 2>&1 < /dev/null &
 
+SWIGLU_PROXY_CONF07_LOG="$SWIGLU_PROXY_CONF07_LOG" \
+setsid bash "$ROOT_DIR/scripts/after_swiglu_proxy_queue_launch_rope24.sh" >/tmp/h200_after_swiglu_proxy_queue_launch_rope24.log 2>&1 < /dev/null &
+
 ARCH_CANDIDATE="swiglu" \
 SEED="${SEED:-1337}" \
 bash "$ROOT_DIR/scripts/icrn_h200_ttt_h100_proxy_candidate.sh" >"$SWIGLU_PROXY_TRAIN_LOG" 2>&1

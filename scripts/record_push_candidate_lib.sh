@@ -15,6 +15,9 @@ record_push_apply_arch_candidate() {
       export USE_SWIGLU="${USE_SWIGLU:-1}"
       export SWIGLU_HALF_DIM="${SWIGLU_HALF_DIM:-1024}"
       ;;
+    rope24)
+      export ROPE_DIMS="${ROPE_DIMS:-24}"
+      ;;
     vr1_bg3072)
       export VALUE_RESIDUAL="${VALUE_RESIDUAL:-1}"
       export BIGRAM_VOCAB_SIZE="${BIGRAM_VOCAB_SIZE:-3072}"
