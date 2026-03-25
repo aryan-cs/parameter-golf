@@ -102,9 +102,9 @@ Candidate meanings:
   record659_tgate40_min4_smoke target-prob gate at 0.4 with min_count=4 on first 128 windows only
   record659_tgate40_min4 target-prob gate at 0.4 with min_count=4 full run
   record659_lam20_conf07 lambda=0.20 with conf=0.7 full run
-  record674_smoke PR #674-inspired fixed alpha=0.20, min_count=2, no gate, always-apply mix on first 128 windows
-  record674 PR #674-inspired fixed alpha=0.20, min_count=2, no gate, always-apply mix full run
-  record674_proxy7185 same PR #674-inspired mix, intended for the saved proxy artifact via ARTIFACT_PATH/TEMPLATE_PATH
+  record674_smoke PR #674-inspired hashed score-first eval: alpha=0.20, min_count=2, 5-gram, 4M buckets on first 128 windows
+  record674 PR #674-inspired hashed score-first eval: alpha=0.20, min_count=2, 5-gram, 4M buckets full run
+  record674_proxy7185 same hashed PR #674-inspired eval, intended for the saved proxy artifact via ARTIFACT_PATH/TEMPLATE_PATH
   record659_warm_conf07 staged confidence: 0.50 -> 0.60 -> 0.70 as cache warms up
   record659_warm_conf07_smoke staged-confidence variant on first 128 windows only
   record659_orderlam order-aware lambda ramp: 2:0.08, 3:0.12, 4:0.17, 5:0.22

@@ -2745,6 +2745,56 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
   - Immediately run `record674_proxy7185` on that same saved proxy artifact.
   - If the PR-`#674` semantics transfer, use that as the main `8xH100` candidate family.
 
+- Timestamp: 2026-03-25 04:27 UTC
+- Commit: `working tree`
+- Lane: heuristic-valid proxy path, evaluator audit
+- Objective: Make the single H200 spend time only on the in-budget proxy path, and tighten the local n-gram evaluator so it matches the newest public frontier more faithfully.
+- Research / observation:
+  - A stale `queue_h200_credit_prep.sh` chain woke up after the finished long-artifact `conf07` run and started a second full H200 eval (`record659_latecool_conf07`) in parallel with the in-budget proxy retrain.
+  - On a single H200 that is pure self-sabotage: it steals GPU time from the one artifact that can actually satisfy our dev-side heuristics.
+  - More importantly, the evaluator audit found a semantic mismatch:
+    - our older exact-cache artifact path updated the n-gram cache using entire sliding windows
+    - PR `#674`'s hashed score-first evaluator updates only the newly scored segment
+    - that means the public frontier is closer to “segment-only score-first hashed interpolation” than to our older exact-cache approximation
+  - `train_gpt.py` also writes `final_model.pt` and `final_model.int6.ptz` before it finishes its built-in evals, so we can begin our custom artifact evals earlier than we were previously waiting.
+- Code / ops:
+  - Killed the accidental side-search processes so the H200 is back to one job:
+    - the in-budget `7185`-step proxy retrain only
+  - Added a more faithful hashed score-first artifact evaluator path in `scripts/eval_ngram_cache_artifact.py`:
+    - new `--cache-kind hashed`
+    - new `--hashed-buckets`
+    - PR-`#674`-style segment-only hashed updates using `4,194,304` buckets and fixed alpha mixing
+  - Repointed `record674*` in `scripts/icrn_h200_artifact_ngram_candidate.sh` to the hashed path.
+  - Added `scripts/after_proxy_train_run_record674_then_conf07.sh` so the queue now becomes:
+    - finish in-budget proxy train
+    - as soon as the exported artifact is written, run `record674_proxy7185`
+    - then run proxy `record659_conf07`
+    - then refresh status
+  - Fixed an orchestration bug in that watcher:
+    - the first version matched literal source-code strings like `legal_ttt_exact` inside the train log and fired too early
+    - updated the watcher to wait for real export lines (`Serialized model int6+lzma` / `Total submission size int6+lzma` / `final_int6_roundtrip`)
+    - cleared stale saved proxy artifacts before relaunching the watcher
+- Validation:
+  - `python -m py_compile scripts/eval_ngram_cache_artifact.py scripts/record_push_status.py`
+  - `bash -n scripts/after_proxy_train_run_record674_then_conf07.sh scripts/icrn_h200_artifact_ngram_candidate.sh scripts/icrn_h200_artifact_ngram_portfolio.sh`
+  - `python scripts/record_push_status.py --seed 1337`
+- Current live state:
+  - the only active GPU job is the proxy retrain
+  - latest observed progress:
+    - `step:250/7185`
+    - `train_time:166078ms`
+    - `step_avg:664.31ms`
+  - the export-triggered watcher for `record674_proxy7185 -> record659_conf07_proxy7185` is staged behind that run
+- Decision:
+  - Stop letting the old queue spray full eval jobs onto the only H200.
+  - Prioritize the public hashed score-first lane over more local confidence-schedule variants.
+  - Use artifact-export time, not end-of-run eval time, as the handoff point for custom proxy evals.
+- Next step:
+  - Let the proxy retrain reach artifact export.
+  - Run `record674_proxy7185` first on the fresh saved proxy artifact.
+  - Compare it against proxy `record659_conf07`.
+  - If hashed score-first wins, make that the default first-place candidate family for the eventual `8xH100` handoff.
+
 - Timestamp: 2026-03-25 04:19 UTC
 - Commit: `working tree`
 - Lane: pure n-gram frontier, late-only cooling follow-up

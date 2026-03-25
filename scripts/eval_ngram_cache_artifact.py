@@ -154,6 +154,26 @@ def build_ngram_cache(vocab_size: int, max_n: int, *, packed: bool) -> OnlineNgr
     return OnlineNgramCache(vocab_size, max_n=max_n)
 
 
+def build_hashed_ngram_keys(
+    val_np: np.ndarray,
+    token_positions: np.ndarray,
+    *,
+    order: int,
+    buckets: int,
+    primes: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    ctx_width = order - 1
+    ctx_hash = np.zeros((len(token_positions),), dtype=np.uint64)
+    for k in range(ctx_width):
+        tok = val_np[token_positions - (ctx_width - 1 - k)].astype(np.uint64)
+        ctx_hash ^= tok * primes[k % len(primes)]
+    mask = np.uint64(buckets - 1)
+    ctx_key = (ctx_hash & mask).astype(np.int64)
+    tgt_np = val_np[token_positions + 1].astype(np.uint64)
+    full_key = ((ctx_hash ^ (tgt_np * primes[ctx_width % len(primes)])) & mask).astype(np.int64)
+    return ctx_key, full_key
+
+
 def parse_confidence_schedule(spec: str, default_threshold: float) -> list[tuple[float, float]]:
     schedule = [(0.0, default_threshold)]
     if not spec.strip():
@@ -462,6 +482,131 @@ def eval_val_ngram(
     return val_loss, bits_per_token * tokens_per_byte
 
 
+def eval_val_hashed_ngram(
+    mod,
+    args,
+    base_model: torch.nn.Module,
+    device: torch.device,
+    val_tokens: torch.Tensor,
+    base_bytes_lut: torch.Tensor,
+    has_leading_space_lut: torch.Tensor,
+    is_boundary_token_lut: torch.Tensor,
+    *,
+    stride: int,
+    batch_seqs: int = 32,
+    eval_seq_len: int | None = None,
+    ngram_lambda: float = 0.20,
+    ngram_max_n: int = 5,
+    min_count: int = 2,
+    hashed_buckets: int = 4_194_304,
+    log=print,
+) -> tuple[float, float]:
+    if ngram_max_n < 2:
+        raise ValueError(f"hashed ngram requires max_n >= 2, got {ngram_max_n}")
+    if hashed_buckets < 1024 or (hashed_buckets & (hashed_buckets - 1)) != 0:
+        raise ValueError(f"hashed_buckets must be a power of two >=1024, got {hashed_buckets}")
+    if not (0.0 <= ngram_lambda <= 1.0):
+        raise ValueError(f"ngram_lambda must be in [0,1], got {ngram_lambda}")
+
+    seq_len = eval_seq_len or args.train_seq_len
+    total_tokens = val_tokens.numel() - 1
+    window_starts = [ws for ws in range(0, total_tokens, stride) if min(ws + seq_len, total_tokens) - ws >= 1]
+    loss_sum = torch.zeros((), device=device, dtype=torch.float64)
+    token_count = torch.zeros((), device=device, dtype=torch.float64)
+    byte_count = torch.zeros((), device=device, dtype=torch.float64)
+    val_np = val_tokens.cpu().numpy()
+    ctx_table = np.zeros((hashed_buckets,), dtype=np.uint32)
+    full_table = np.zeros((hashed_buckets,), dtype=np.uint32)
+    primes = np.array(
+        [np.uint64(36313), np.uint64(27191), np.uint64(51647), np.uint64(81929), np.uint64(131071)],
+        dtype=np.uint64,
+    )
+
+    base_model.eval()
+    compiled_logits = torch.compile(base_model.forward_logits, dynamic=False, fullgraph=True)
+    log(
+        "hashed_ngram_eval:start "
+        f"stride={stride} alpha={ngram_lambda} order={ngram_max_n} "
+        f"min_count={min_count} buckets={hashed_buckets}"
+    )
+    for bi in range(0, len(window_starts), batch_seqs):
+        batch_ws = window_starts[bi : bi + batch_seqs]
+        bsz = len(batch_ws)
+        x_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
+        y_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
+        wlens: list[int] = []
+        for i, ws in enumerate(batch_ws):
+            end = min(ws + seq_len, total_tokens)
+            wlen = end - ws
+            wlens.append(wlen)
+            chunk = val_tokens[ws : end + 1].to(dtype=torch.int64, device=device)
+            x_batch[i, :wlen] = chunk[:-1]
+            y_batch[i, :wlen] = chunk[1:]
+
+        with torch.no_grad():
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                logits = compiled_logits(x_batch)
+        logits_f = logits.float()
+        nll = F.cross_entropy(
+            logits_f.reshape(-1, logits_f.size(-1)),
+            y_batch.reshape(-1),
+            reduction="none",
+        ).reshape(bsz, seq_len)
+
+        for i, ws in enumerate(batch_ws):
+            wlen = wlens[i]
+            s = 0 if ws == 0 else max(wlen - stride, 0)
+            seg_len = wlen - s
+            if seg_len <= 0:
+                continue
+
+            seg_nll = nll[i, s:wlen].to(torch.float64).cpu().numpy()
+            seg_model_p = np.exp(-seg_nll)
+            token_positions = np.arange(ws + s, ws + wlen, dtype=np.int64)
+            valid = token_positions >= (ngram_max_n - 1)
+            if valid.any():
+                valid_positions = token_positions[valid]
+                ctx_key, full_key = build_hashed_ngram_keys(
+                    val_np,
+                    valid_positions,
+                    order=ngram_max_n,
+                    buckets=hashed_buckets,
+                    primes=primes,
+                )
+                ctx_counts = ctx_table[ctx_key].astype(np.float64)
+                full_counts = full_table[full_key].astype(np.float64)
+                can_mix = ctx_counts >= float(min_count)
+                if can_mix.any():
+                    p_ng = np.minimum(full_counts, ctx_counts) / np.maximum(ctx_counts, 1.0)
+                    p_ng = np.clip(p_ng, 0.0, 1.0)
+                    v_idx = np.nonzero(valid)[0]
+                    mixed = (1.0 - ngram_lambda) * seg_model_p[v_idx] + ngram_lambda * p_ng
+                    seg_model_p[v_idx[can_mix]] = mixed[can_mix]
+                seg_nll = -np.log(np.clip(seg_model_p, 1e-12, 1.0))
+                np.add.at(ctx_table, ctx_key, 1)
+                np.add.at(full_table, full_key, 1)
+
+            scored_nll = torch.from_numpy(seg_nll).to(device=device, dtype=torch.float64)
+            loss_sum += scored_nll.sum()
+            token_count += float(seg_len)
+            tgt = y_batch[i, s:wlen]
+            prev = x_batch[i, s:wlen]
+            tb = base_bytes_lut[tgt].to(torch.float64)
+            tb += (has_leading_space_lut[tgt] & ~is_boundary_token_lut[prev]).to(torch.float64)
+            byte_count += tb.sum()
+
+        if bi % (batch_seqs * 200) == 0 and bi > 0 and token_count.item() > 0:
+            rl = loss_sum.item() / token_count.item()
+            rb = (rl / math.log(2.0)) * (token_count.item() / max(byte_count.item(), 1))
+            pct = 100.0 * (bi + bsz) / max(len(window_starts), 1)
+            log(f"  hashed_ngram [{pct:5.1f}%] bpb={rb:.6f} alpha={ngram_lambda:.3f} min_count={min_count}")
+
+    val_loss = (loss_sum / token_count).item()
+    bits_per_token = val_loss / math.log(2.0)
+    tokens_per_byte = token_count.item() / byte_count.item()
+    return val_loss, bits_per_token * tokens_per_byte
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Evaluate a saved artifact with backward-looking n-gram cache mixing.")
     parser.add_argument("--run-dir", type=Path, required=True)
@@ -487,6 +632,8 @@ def main() -> None:
     parser.add_argument("--ngram-adapt-decay", type=float, default=0.001)
     parser.add_argument("--ngram-adapt-last-n-blocks", type=int, default=3)
     parser.add_argument("--packed-cache", action="store_true")
+    parser.add_argument("--cache-kind", choices=["exact", "hashed"], default="exact")
+    parser.add_argument("--hashed-buckets", type=int, default=4_194_304)
     parser.add_argument("--lambda-schedule", type=str, default="")
     parser.add_argument("--confidence-schedule", type=str, default="")
     parser.add_argument("--order-lambdas", type=str, default="")
@@ -549,6 +696,8 @@ def main() -> None:
                 "ngram_adapt_decay": args_ns.ngram_adapt_decay,
                 "ngram_adapt_last_n_blocks": args_ns.ngram_adapt_last_n_blocks,
                 "packed_cache": int(args_ns.packed_cache),
+                "cache_kind": args_ns.cache_kind,
+                "hashed_buckets": args_ns.hashed_buckets,
                 "confidence_schedule": args_ns.confidence_schedule,
                 "order_lambdas": args_ns.order_lambdas,
                 "batch_seqs": args_ns.batch_seqs,
@@ -576,35 +725,55 @@ def main() -> None:
 
     torch.cuda.synchronize()
     t0 = time.perf_counter()
-    val_loss, val_bpb = eval_val_ngram(
-        mod,
-        args,
-        eval_model,
-        device,
-        val_tokens,
-        base_bytes_lut,
-        has_leading_space_lut,
-        is_boundary_token_lut,
-        stride=args_ns.stride,
-        batch_seqs=args_ns.batch_seqs,
-        eval_seq_len=effective_eval_seq_len,
-        ngram_lambda=args_ns.ngram_lambda,
-        ngram_max_n=args_ns.ngram_max_n,
-        confidence_threshold=args_ns.confidence_threshold,
-        gate_mode=args_ns.gate_mode,
-        min_count=args_ns.min_count,
-        apply_mode=args_ns.apply_mode,
-        ngram_adapt_enabled=args_ns.ngram_adapt_enabled,
-        ngram_adapt_lr=args_ns.ngram_adapt_lr,
-        ngram_adapt_decay=args_ns.ngram_adapt_decay,
-        ngram_adapt_last_n_blocks=args_ns.ngram_adapt_last_n_blocks,
-        packed_cache=args_ns.packed_cache,
-        lambda_schedule_spec=args_ns.lambda_schedule,
-        confidence_schedule_spec=args_ns.confidence_schedule,
-        order_lambdas_spec=args_ns.order_lambdas,
-        max_windows=args_ns.max_windows,
-        log=log,
-    )
+    if args_ns.cache_kind == "hashed":
+        val_loss, val_bpb = eval_val_hashed_ngram(
+            mod,
+            args,
+            eval_model,
+            device,
+            val_tokens,
+            base_bytes_lut,
+            has_leading_space_lut,
+            is_boundary_token_lut,
+            stride=args_ns.stride,
+            batch_seqs=args_ns.batch_seqs,
+            eval_seq_len=effective_eval_seq_len,
+            ngram_lambda=args_ns.ngram_lambda,
+            ngram_max_n=args_ns.ngram_max_n,
+            min_count=args_ns.min_count,
+            hashed_buckets=args_ns.hashed_buckets,
+            log=log,
+        )
+    else:
+        val_loss, val_bpb = eval_val_ngram(
+            mod,
+            args,
+            eval_model,
+            device,
+            val_tokens,
+            base_bytes_lut,
+            has_leading_space_lut,
+            is_boundary_token_lut,
+            stride=args_ns.stride,
+            batch_seqs=args_ns.batch_seqs,
+            eval_seq_len=effective_eval_seq_len,
+            ngram_lambda=args_ns.ngram_lambda,
+            ngram_max_n=args_ns.ngram_max_n,
+            confidence_threshold=args_ns.confidence_threshold,
+            gate_mode=args_ns.gate_mode,
+            min_count=args_ns.min_count,
+            apply_mode=args_ns.apply_mode,
+            ngram_adapt_enabled=args_ns.ngram_adapt_enabled,
+            ngram_adapt_lr=args_ns.ngram_adapt_lr,
+            ngram_adapt_decay=args_ns.ngram_adapt_decay,
+            ngram_adapt_last_n_blocks=args_ns.ngram_adapt_last_n_blocks,
+            packed_cache=args_ns.packed_cache,
+            lambda_schedule_spec=args_ns.lambda_schedule,
+            confidence_schedule_spec=args_ns.confidence_schedule,
+            order_lambdas_spec=args_ns.order_lambdas,
+            max_windows=args_ns.max_windows,
+            log=log,
+        )
     torch.cuda.synchronize()
     elapsed_ms = 1000.0 * (time.perf_counter() - t0)
     log(f"final_ngram_eval val_loss:{val_loss:.4f} val_bpb:{val_bpb:.4f} stride:{args_ns.stride} eval_time:{elapsed_ms:.0f}ms")

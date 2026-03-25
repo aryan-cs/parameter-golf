@@ -32,6 +32,8 @@ SKIP_COMPLETED="${SKIP_COMPLETED:-1}"
 ARTIFACT_PATH="${ARTIFACT_PATH:-}"
 TEMPLATE_PATH="${TEMPLATE_PATH:-}"
 TRAIN_GPT_PATH="${TRAIN_GPT_PATH:-}"
+CACHE_KIND="${CACHE_KIND:-exact}"
+HASHED_BUCKETS="${HASHED_BUCKETS:-4194304}"
 
 case "$CANDIDATE" in
   record659)
@@ -236,6 +238,7 @@ case "$CANDIDATE" in
     CONFIDENCE_THRESHOLD="1.0"
     MIN_COUNT="2"
     APPLY_MODE="always"
+    CACHE_KIND="hashed"
     MAX_WINDOWS="128"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record674_smoke.txt}"
     ;;
@@ -244,6 +247,7 @@ case "$CANDIDATE" in
     CONFIDENCE_THRESHOLD="1.0"
     MIN_COUNT="2"
     APPLY_MODE="always"
+    CACHE_KIND="hashed"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record674.txt}"
     ;;
   record674_proxy7185)
@@ -251,6 +255,7 @@ case "$CANDIDATE" in
     CONFIDENCE_THRESHOLD="1.0"
     MIN_COUNT="2"
     APPLY_MODE="always"
+    CACHE_KIND="hashed"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record674_h100proxy7185_seed1337.txt}"
     ;;
   record659_warm_conf07)
@@ -366,6 +371,8 @@ args=(
   --gate-mode "$GATE_MODE"
   --min-count "$MIN_COUNT"
   --apply-mode "$APPLY_MODE"
+  --cache-kind "$CACHE_KIND"
+  --hashed-buckets "$HASHED_BUCKETS"
   --lambda-schedule "$LAMBDA_SCHEDULE"
   --confidence-schedule "$CONFIDENCE_SCHEDULE"
   --order-lambdas "$ORDER_LAMBDAS"
