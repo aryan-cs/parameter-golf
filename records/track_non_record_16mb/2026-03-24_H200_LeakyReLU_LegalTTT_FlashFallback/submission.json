@@ -1,6 +1,6 @@
 {
   "name": "H200 LeakyReLU\u00b2 + Legal Score-First TTT + Parallel Muon",
-  "author": "aryang9",
+  "author": "aryan-cs",
   "github_id": "aryan-cs",
   "date": "2026-03-25",
   "blurb": "Recovered H200 exact lane: LeakyReLU(0.5)^2 + legal score-first TTT + BigramHash(1536) + Parallel Muon on the PR #414 stack. Exact under-cap artifact recovered to legal_ttt_exact=1.11382777 at 15,860,692 bytes. Not yet an official accepted record pending 8xH100 reproduction and significance evidence.",
