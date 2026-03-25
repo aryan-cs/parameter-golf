@@ -56,6 +56,8 @@ PROXY_ORDER = [
     "upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_exact",
     "upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_batch64_exact",
     "upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_exact",
+    "upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_nocache_exact",
+    "upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_lean_exact",
     "upstream_pr688_timed_nocompile_qttt_light_ep2_skipsliding_exact",
     "upstream_pr688_timed_nocompile_qttt_light_ep1_skipsliding_exact",
     "upstream_pr688_timed_nocompile_qttt_last2_skipsliding_exact",
@@ -815,6 +817,16 @@ def h100_three_seed_command(root_dir: Path, arch_candidate: str, ttt_candidate: 
         return (
             f"TIMED_MODE=1 COMPILE_ENABLED=0 "
             f"bash {root_dir / 'scripts/h100_upstream_pr688_qttt_light_skipsliding_sgd_nomom_batch64_exact_3seed.sh'}"
+        )
+    if arch_candidate == "upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_nocache_exact":
+        return (
+            f"TIMED_MODE=1 COMPILE_ENABLED=0 "
+            f"bash {root_dir / 'scripts/h100_upstream_pr688_qttt_light_skipsliding_sgd_nomom_batch64_nocache_exact_3seed.sh'}"
+        )
+    if arch_candidate == "upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_lean_exact":
+        return (
+            f"TIMED_MODE=1 COMPILE_ENABLED=0 "
+            f"bash {root_dir / 'scripts/h100_upstream_pr688_qttt_light_skipsliding_sgd_nomom_batch64_lean_exact_3seed.sh'}"
         )
     if arch_candidate == "upstream_pr688_timed_nocompile_qttt_light_ep2_skipsliding_exact":
         return (

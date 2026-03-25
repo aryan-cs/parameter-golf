@@ -84,6 +84,12 @@ run_candidate() {
     upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_exact)
       exec env TIMED_MODE=1 COMPILE_ENABLED=0 RUN_ID="${RUN_ID:-h100_upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_seed${SEED:-2045}}" bash "$ROOT_DIR/scripts/h100_upstream_pr688_qttt_light_skipsliding_sgd_nomom_batch64_exact.sh"
       ;;
+    upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_nocache_exact)
+      exec env TIMED_MODE=1 COMPILE_ENABLED=0 RUN_ID="${RUN_ID:-h100_upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_nocache_seed${SEED:-2045}}" bash "$ROOT_DIR/scripts/h100_upstream_pr688_qttt_light_skipsliding_sgd_nomom_batch64_nocache_exact.sh"
+      ;;
+    upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_lean_exact)
+      exec env TIMED_MODE=1 COMPILE_ENABLED=0 RUN_ID="${RUN_ID:-h100_upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_lean_seed${SEED:-2045}}" bash "$ROOT_DIR/scripts/h100_upstream_pr688_qttt_light_skipsliding_sgd_nomom_batch64_lean_exact.sh"
+      ;;
     upstream_pr688_timed_nocompile_qttt_light_ep2_skipsliding_exact)
       exec env TIMED_MODE=1 COMPILE_ENABLED=0 RUN_ID="${RUN_ID:-h100_upstream_pr688_timed_nocompile_qttt_light_ep2_skipsliding_seed${SEED:-2045}}" bash "$ROOT_DIR/scripts/h100_upstream_pr688_qttt_light_ep2_skipsliding_exact.sh"
       ;;
@@ -548,6 +554,8 @@ Run one candidate on each 8xH100 node by setting CANDIDATE:
   CANDIDATE=upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_batch64_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_nocache_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_lean_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr688_timed_nocompile_qttt_light_chunk256_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr688_timed_nocompile_qttt_light_stride64_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr688_timed_nocompile_qttt_light_chunk256_stride64_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
@@ -696,6 +704,10 @@ Candidate meanings:
                        timed PR #688 qTTT light + `SKIP_SLIDING=1` lane with `TTT_OPTIMIZER=sgd` and `TTT_BATCH_SEQS=64`, combining the cleanest optimizer and microbatching cuts before harsher score-risky reductions
   upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_exact
                        timed PR #688 qTTT light + `SKIP_SLIDING=1` lane with pure SGD and `TTT_BATCH_SEQS=64`, giving the lowest-overhead optimizer+microbatch probe inside the exact upstream family
+  upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_nocache_exact
+                       timed PR #688 qTTT light + `SKIP_SLIDING=1` lane with pure SGD, `TTT_BATCH_SEQS=64`, and `USE_CACHE=0`, testing whether dropping cache is a cleaner budget cut than immediately reducing epochs
+  upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_lean_exact
+                       timed PR #688 qTTT light + `SKIP_SLIDING=1` lane with pure SGD, `TTT_BATCH_SEQS=64`, `USE_CACHE=0`, `USE_MIXER=0`, and `BYTE_WEIGHTED_TTT=0`, as the harshest clean score-path simplification before epoch and chunk/stride cuts
   upstream_pr688_timed_nocompile_qttt_light_chunk256_exact
                        timed PR #688 qTTT light lane with `TTT_CHUNK_TOKENS=262144`, reducing legal adaptation phases to probe the lowest-overhead exact-upstream PR688 path
   upstream_pr688_timed_nocompile_qttt_light_stride64_exact

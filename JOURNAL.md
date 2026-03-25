@@ -15,6 +15,22 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 
 ## Entries
 
+- Timestamp: 2026-03-25 09:20 UTC
+- Commit: uncommitted
+- Lane: exact-upstream PR688 / budget fit
+- Objective: Add lean score-path PR688 probes after the pure-SGD momentum-zero ladder and before reducing TTT epochs.
+- Command or config: Re-read the real PR688 TTT loop and confirmed three remaining exact-path levers after optimizer and microbatching:
+  - `USE_CACHE`
+  - `USE_MIXER`
+  - `BYTE_WEIGHTED_TTT`
+  Added two new exact-upstream lanes on top of the current cleanest optimizer recipe (`TIMED_MODE=1`, `COMPILE_ENABLED=0`, `QTTT=1`, `TTT_FREEZE_BLOCKS=3`, `USE_POLYAK=0`, `ADAPTIVE_LR=0`, `SKIP_SLIDING=1`, `TTT_OPTIMIZER=sgd`, `TTT_MOMENTUM=0.0`, `TTT_BATCH_SEQS=64`):
+  - `upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_nocache_exact`
+  - `upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_lean_exact`
+  The first sets `USE_CACHE=0`. The second sets `USE_CACHE=0`, `USE_MIXER=0`, and `BYTE_WEIGHTED_TTT=0`. Wired both through the H100 portfolio, status tool, and the downstream H200 watcher chain ahead of `ep2` / `ep1`.
+- Result: The PR688 queue now tests lighter exact score-paths before paying the accuracy cost of cutting TTT epochs or pushing chunk/stride harder.
+- Decision: Prefer removing auxiliary exact-path work before reducing the number of legal TTT update passes.
+- Next step: Validate the new wrappers and rearmed queue, then let the live PR674 head run continue untouched while the lean PR688 lanes wait behind the optimizer ladder.
+
 - Timestamp: 2026-03-25 09:10 UTC
 - Commit: uncommitted
 - Lane: exact-upstream PR688 / budget fit
