@@ -4199,3 +4199,30 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Decision:
   - Keep exact PR688 itself as a first-class lane.
   - For the PR674 overlay family, trust the actual PR688 code over the PR README summary.
+
+## 2026-03-25 19:35 UTC — Move exact PR688 earlier in the downstream slate
+
+- Commit: uncommitted
+- Lane: queue / status prioritization
+- Objective: run a true frontier-family comparison sooner instead of spending multiple slots on patched PR674 overlays first.
+- Command or config:
+  - Reordered [rearm_after_current_timed_nocompile_with_hedge.sh](/home/aryang9/parameter-golf/scripts/rearm_after_current_timed_nocompile_with_hedge.sh) so the post-`record688_mixer5` order is now:
+    - `upstream_pr688_timed_nocompile_exact`
+    - `upstream_pr674_mixer5_timed_nocompile_exact`
+    - `upstream_pr674_enhattn_mixer5_timed_nocompile_exact`
+    - `upstream_pr674_enhattn_crownq_mixer5_timed_nocompile_exact`
+    - `upstream_pr674_hedgemix_timed_nocompile_exact`
+    - `upstream_pr674_crownq_timed_nocompile_exact`
+    - `upstream_pr674_crownq_mixer5_timed_nocompile_exact`
+  - Reordered [record_push_status.py](/home/aryang9/parameter-golf/scripts/record_push_status.py) `PROXY_ORDER` to surface:
+    - `upstream_pr688_exact`
+    - `upstream_pr688_timed_exact`
+    - `upstream_pr688_timed_nocompile_exact`
+    immediately after the base PR674 timed lanes.
+- Result:
+  - Verified `bash -n` on the updated queue helper.
+  - The live head lane remains unchanged:
+    - [h200_upstream_pr674_proxy7185_timed_nocompile_seed1337.txt](/home/aryang9/parameter-golf/records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs/h200_upstream_pr674_proxy7185_timed_nocompile_seed1337.txt)
+    - latest checked point: `step:2500/7185`
+- Decision:
+  - Use exact PR688 timed `nocompile` as the first non-artifact downstream read after the current head lane and the artifact-side hedge checks.
