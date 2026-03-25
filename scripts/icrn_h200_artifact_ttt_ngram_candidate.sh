@@ -71,12 +71,6 @@ case "$CANDIDATE" in
     TTT_LR="0.0001"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ttt_ngram_record659_adamw1e4_late2.txt}"
     ;;
-  record659_adamw1e4_late2)
-    TTT_LAST_N_BLOCKS="2"
-    TTT_OPTIMIZER="adamw"
-    TTT_LR="0.0001"
-    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ttt_ngram_record659_adamw1e4_late2.txt}"
-    ;;
   record659_adamw5e4_late2)
     TTT_LAST_N_BLOCKS="2"
     TTT_OPTIMIZER="adamw"
