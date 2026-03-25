@@ -186,14 +186,13 @@ def main() -> None:
         "                            tri_totals = mixer5_tri_row_totals[tri_ctx_i].astype(np.float64)\n"
         "                            tri_counts = mixer5_tri_counts[tri_ctx_i, target_ids].astype(np.float64)\n"
         "                            tri_probs = (tri_counts + 0.01) / (tri_totals + 0.01 * args.vocab_size)\n"
-        "                            hash_probs = np.where(can_mix, p_ng, model_probs)\n"
         "                            entropy_nll = -(np.exp(seg_log_sm[mix_idx]) * seg_log_sm[mix_idx]).sum(axis=-1)\n"
         "                            expert_nll = np.stack([\n"
         "                                -np.log(model_probs),\n"
         "                                -np.log(np.clip(uni_probs, 1e-12, 1.0)),\n"
         "                                -np.log(np.clip(bi_probs, 1e-12, 1.0)),\n"
         "                                -np.log(np.clip(tri_probs, 1e-12, 1.0)),\n"
-        "                                -np.log(np.clip(hash_probs, 1e-12, 1.0)),\n"
+        "                                entropy_nll,\n"
         "                            ], axis=-1)\n"
         "                            norm_log_w = mixer5_log_weights - np.logaddexp.reduce(mixer5_log_weights)\n"
         "                            mixed_lp = _logsumexp_np(norm_log_w[None, :] - expert_nll, axis=-1)\n"
@@ -242,7 +241,7 @@ def main() -> None:
         "        )\n"
         "    if mixer5_enabled:\n"
         "        final_log_w = mixer5_log_weights - np.logaddexp.reduce(mixer5_log_weights)\n"
-        '        print(f"ngram_eval:mixer5_final neural={np.exp(final_log_w[0]):.6f} unigram={np.exp(final_log_w[1]):.6f} bigram={np.exp(final_log_w[2]):.6f} trigram={np.exp(final_log_w[3]):.6f} hash5={np.exp(final_log_w[4]):.6f}", flush=True)\n'
+        '        print(f"ngram_eval:mixer5_final neural={np.exp(final_log_w[0]):.6f} unigram={np.exp(final_log_w[1]):.6f} bigram={np.exp(final_log_w[2]):.6f} trigram={np.exp(final_log_w[3]):.6f} entropy={np.exp(final_log_w[4]):.6f}", flush=True)\n'
         "\n"
         "    val_loss = loss_sum / max(token_count, 1.0)\n",
     )

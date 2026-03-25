@@ -4161,3 +4161,41 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Decision:
   - Keep the current PR674 timed `nocompile` run as the live background comparator.
   - Use `pr688_timed_nocompile` as the first exact-upstream non-PR674 branch in the queue, because it is closer to the real 10-minute constraint than the earlier full-fat exact PR688 staging.
+
+## 2026-03-25 19:20 UTC — Align PR674 mixer overlay to actual PR688 code
+
+- Commit: uncommitted
+- Lane: PR674 + mixer5 patch hygiene
+- Objective: make the queued PR674 mixer branches match the actual PR688 trainer code more closely, rather than the README summary.
+- Sources:
+  - PR `#688` code:
+    - https://github.com/openai/parameter-golf/pull/688
+  - Local PR688 worktree trainer:
+    - `records/track_10min_16mb/2026-03-24_HedgeMixer_TTT/train_gpt.py`
+- Finding:
+  - The checked-in PR688 trainer does **not** use the README’s `FastPPM + ExactMatchCache` expert stack.
+  - The actual codepath in `LogisticContextMixer` uses:
+    - neural
+    - unigram
+    - bigram
+    - trigram
+    - entropy
+- Command or config:
+  - Updated [patch_pr674_mixer5.py](/home/aryang9/parameter-golf/scripts/patch_pr674_mixer5.py) so the fifth expert is now entropy, not our previous hash-prob fallback.
+  - Final mixer weight logging now reports:
+    - `neural`
+    - `unigram`
+    - `bigram`
+    - `trigram`
+    - `entropy`
+- Result:
+  - Verified:
+    - `python -m py_compile` on the patch script
+    - temp-copy application of [patch_pr674_mixer5.py](/home/aryang9/parameter-golf/scripts/patch_pr674_mixer5.py) to the PR674 worktree `train_gpt.py`, then `python -m py_compile`
+  - Checked the queued PR674 mixer logs and confirmed they do not exist yet, so this correction changes only future queued runs:
+    - `h200_upstream_pr674_mixer5_proxy7185_seed1337.txt`
+    - `h200_upstream_pr674_mixer5_proxy7185_timed_nocompile_seed1337.txt`
+    - `h200_upstream_pr674_enhattn_mixer5_proxy7185_timed_nocompile_seed1337.txt`
+- Decision:
+  - Keep exact PR688 itself as a first-class lane.
+  - For the PR674 overlay family, trust the actual PR688 code over the PR README summary.
