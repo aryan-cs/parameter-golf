@@ -4267,3 +4267,46 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Decision:
   - Test exact PR688 plain timed `nocompile` first.
   - Then immediately test qTTT as the lighter, more conservative quantized-TTT hedge before returning to heavier PR674 compounds.
+
+## 2026-03-25 20:05 UTC — Add lighter exact PR688 qTTT budget sweeps
+
+- Commit: uncommitted
+- Lane: exact-upstream PR `#688` timed eval variants
+- Objective: widen the budget-first PR688 sweep with lower-overhead qTTT variants before spending more H200 slots on heavier PR674 compounds.
+- Sources:
+  - PR `#688`:
+    - https://github.com/openai/parameter-golf/pull/688
+  - Exact PR688 trainer code in the fetched `pr688` worktree, which exposes:
+    - `QTTT`
+    - `TTT_FREEZE_BLOCKS`
+    - `USE_POLYAK`
+    - `ADAPTIVE_LR`
+- Finding:
+  - The real PR688 code already contains clean toggles for lighter legal TTT sweeps, so the best next budget probes are exact-upstream variants instead of more guessed PR674 overlays.
+  - Two especially useful budget hedges are:
+    - `qTTT + no Polyak`
+    - `qTTT + freeze last 3 blocks + no Polyak + no adaptive LR`
+- Command or config:
+  - Added exact-upstream wrapper launchers:
+    - [icrn_h200_upstream_pr688_qttt_nopolyak_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr688_qttt_nopolyak_proxy.sh)
+    - [h100_upstream_pr688_qttt_nopolyak_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr688_qttt_nopolyak_exact.sh)
+    - [h100_upstream_pr688_qttt_nopolyak_exact_3seed.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr688_qttt_nopolyak_exact_3seed.sh)
+    - [icrn_h200_upstream_pr688_qttt_light_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr688_qttt_light_proxy.sh)
+    - [h100_upstream_pr688_qttt_light_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr688_qttt_light_exact.sh)
+    - [h100_upstream_pr688_qttt_light_exact_3seed.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr688_qttt_light_exact_3seed.sh)
+  - Candidate wiring updated in:
+    - [h100_parallel_candidate_portfolio.sh](/home/aryang9/parameter-golf/scripts/h100_parallel_candidate_portfolio.sh)
+    - [record_push_status.py](/home/aryang9/parameter-golf/scripts/record_push_status.py)
+    - [rearm_after_current_timed_nocompile_with_hedge.sh](/home/aryang9/parameter-golf/scripts/rearm_after_current_timed_nocompile_with_hedge.sh)
+  - New downstream exact-upstream PR688 order after the current qTTT lane:
+    - `upstream_pr688_timed_nocompile_qttt_nopolyak_exact`
+    - `upstream_pr688_timed_nocompile_qttt_light_exact`
+    - then PR674 timed `nocompile` overlay compounds
+- Result:
+  - Verified:
+    - `bash -n` on all new wrapper scripts and the rearmed queue helper
+    - `python -m py_compile` on [record_push_status.py](/home/aryang9/parameter-golf/scripts/record_push_status.py)
+  - No source conflicts with the live PR674 timed `nocompile` head lane.
+- Decision:
+  - Keep exact PR688 itself as the main next exact-upstream comparison.
+  - Use the new qTTT-light variants as the immediate budget-oriented follow-ups before returning to more speculative PR674 compounds.
