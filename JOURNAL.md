@@ -3418,3 +3418,18 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
     - refreshed `submission.json` carried the current `val_bpb=1.08035892`
 - Decision:
   - Use the new snapshot builder on the first successful `8xH100` record candidate before opening a PR, rather than submitting directly from the dev folder.
+
+- Timestamp: 2026-03-25 06:58 UTC
+- Commit: uncommitted
+- Lane: exact-upstream H100 handoff hardening
+- Objective: Make the exact upstream `pr674` / `pr676` launchers preserve their own logs by default, so a future `8xH100` window cannot finish without leaving behind the evidence needed for packaging and validation.
+- Research:
+  - Re-checked open PRs [#674](https://github.com/openai/parameter-golf/pull/674), [#676](https://github.com/openai/parameter-golf/pull/676), [#678](https://github.com/openai/parameter-golf/pull/678), [#679](https://github.com/openai/parameter-golf/pull/679), [#680](https://github.com/openai/parameter-golf/pull/680), [#681](https://github.com/openai/parameter-golf/pull/681), [#682](https://github.com/openai/parameter-golf/pull/682), [#683](https://github.com/openai/parameter-golf/pull/683).
+  - Nothing newer displaced the `#674` / `#676` frontier. The best actionable ops improvement remained automatic log capture for exact upstream runs.
+- Code / ops:
+  - Updated [h100_upstream_pr674_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr674_exact.sh) to default `LOG_DIR` / `LOG_PATH` and `tee` into a saved log.
+  - Updated [h100_upstream_pr676_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr676_exact.sh) the same way.
+- Result:
+  - Exact upstream H100 runs now leave behind deterministic log files under the shared record log directory without needing manual shell redirection.
+- Decision:
+  - Keep exact upstream `pr674` and `pr676` as the top H100 bets once the H200 queue ranks their proxy versions.

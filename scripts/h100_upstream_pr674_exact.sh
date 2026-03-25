@@ -7,6 +7,10 @@ SEED="${SEED:-2045}"
 RUN_ID="${RUN_ID:-h100_upstream_pr674_seed${SEED}}"
 DATA_PATH="${DATA_PATH:-$ROOT_DIR/data/datasets/fineweb10B_sp1024}"
 TOKENIZER_PATH="${TOKENIZER_PATH:-$ROOT_DIR/data/tokenizers/fineweb_1024_bpe.model}"
+LOG_DIR="${LOG_DIR:-$ROOT_DIR/records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs}"
+LOG_PATH="${LOG_PATH:-$LOG_DIR/${RUN_ID}.txt}"
+
+mkdir -p "$LOG_DIR"
 
 if [[ ! -d "$WORKTREE_DIR/.git" && ! -f "$WORKTREE_DIR/.git" ]]; then
   git -C "$ROOT_DIR" worktree add "$WORKTREE_DIR" pr674
@@ -34,4 +38,4 @@ env \
   NGRAM_EVAL_BUCKETS="${NGRAM_EVAL_BUCKETS:-4194304}" \
   NGRAM_EVAL_MAX_SECONDS="${NGRAM_EVAL_MAX_SECONDS:-0.0}" \
   /usr/bin/time -f 'elapsed=%E' \
-  torchrun --standalone --nproc_per_node=8 train_gpt.py
+  torchrun --standalone --nproc_per_node=8 train_gpt.py | tee "$LOG_PATH"
