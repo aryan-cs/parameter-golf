@@ -2141,3 +2141,27 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
   This is now substantially ahead of the upstream public PR `#659` mean `1.0920`, at least on our single-H200 global-cache artifact evaluator. The pure 5-gram branch is clearly the best active lane. The new counted-trainer `NGRAM_GLOBAL_CACHE` path is important because it gives us a plausible way to carry more of this H200-side gain into the eventual exact `8xH100` submission run, instead of settling for the weaker rank-sharded cache behavior.
 - Decision: Treat pure `record659` as the primary push lane, `record659_adapt` as the highest-upside immediate follow-up, and the late-2-block masked `TTT+ngram` family as the next hedge if pure n-gram saturates before the final H100 window. Keep the exact-run H100 launchers pointed at pure `ngram659` first.
 - Next step: Let the current full `record659` run continue to completion, then compare it against `record659_adapt` and the new late-2-block hybrid smokes. If the completed pure run stays near the current `1.085x` curve, promote the pure `ngram659` family to the front of the first `8xH100` slate and treat `ngram659_adapt` as the immediate challenger.
+
+- Timestamp: 2026-03-25 02:36 UTC
+- Commit: `19b6cfe`
+- Lane: Pure 5-gram breakthrough + bank-aware hybrid TTT follow-ups
+- Objective: Confirm whether the live full `record659` pass is actually first-place quality, tighten the practical win target to the current public frontier, and make the next hybrid H200 follow-ups attack the real weak point in our TTT implementation instead of just sweeping more SGD knobs.
+- Command or config: Monitored the live full `record659` artifact run and rechecked the public frontier via GitHub API:
+  - PR `#659` is the current public record at `1.0920` mean `val_bpb`
+  - using our current `tokens_per_byte` ratio (`~0.4105`), the challenge's `0.005 nat` record threshold maps to an approximate `bpb` gate of `~1.0890`
+  I also confirmed a crucial local modeling detail: in this banked architecture, `TTT_FREEZE_BLOCKS` barely touches the dominant matrix weights because `qo_bank`, `kv_bank`, `mlp_up_bank`, and `mlp_down_bank` are top-level bank tensors. The follow-up branch therefore moved from naive "freeze early blocks" to bank-slice-aware hybrid TTT:
+  - masked late-2-block selection for bank tensors
+  - AdamW-ready hybrid evaluators (`record659_adamw5e4_late2*`, `record659_adamw1e4_late2*`)
+  - a queued post-run smoke sequence:
+    - `record659_tttlr25_smoke`
+    - `record659_late2_tttlr25_smoke`
+    - `record659_adamw5e4_late2_smoke`
+    - `record659_adamw1e4_late2_smoke`
+- Result: The live full `record659` run is now far stronger than the original public `1.0920` reference and, importantly, below the approximate `1.0890` record-claim gate for a large fraction of the pass. Recent checkpoints:
+  - `45.9% -> 1.085304`
+  - `47.2% -> 1.085145`
+  - `47.5% -> 1.085049`
+  - `47.9% -> 1.084799`
+  If this trajectory holds, pure `5`-gram on the recovered artifact is no longer just competitive; it is a plausible first-place exact `8xH100` candidate. The new bank-aware hybrid queue is now positioned as a win-more / hedge path rather than the main bet.
+- Decision: Do not disturb the live pure `record659` run. Treat it as the primary exact-run candidate unless it degrades badly in the back half. Keep the new late-2-block masked hybrid queue armed behind it so the H200 can immediately test whether legal TTT still stacks on top of an already record-level pure n-gram score.
+- Next step: Let the full pure `record659` H200 pass finish, record the exact final `final_ngram_eval_exact`, and compare it against the `~1.0890` practical win gate. If it holds, prepare `ngram659` for the first `8xH100` slot and use the late-2-block hybrid smokes only as challenger lanes, not as the default.
