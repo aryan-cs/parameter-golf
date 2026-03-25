@@ -20,6 +20,10 @@ Run one candidate at a time on the saved winning artifact by setting CANDIDATE:
   CANDIDATE=record659_conf06_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_conf07 bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_conf07_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
+  CANDIDATE=record659_latecool_conf07 bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
+  CANDIDATE=record659_latecool_conf07_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
+  CANDIDATE=record659_latecool_conf07_lamtail bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
+  CANDIDATE=record659_latecool_conf07_lamtail_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_conf07_lamcool bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_conf07_lamcool_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_cool_conf07 bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
@@ -68,6 +72,10 @@ Candidate meanings:
   record659_conf06_smoke conf=0.6 on first 128 windows only
   record659_conf07 PR #659 lambda with confidence threshold raised to 0.7
   record659_conf07_smoke conf=0.7 on first 128 windows only
+  record659_latecool_conf07 hold conf=0.7 through the strong early/mid regime, then cool to 0.55 in the final third
+  record659_latecool_conf07_smoke late-only cooldown variant on first 128 windows only
+  record659_latecool_conf07_lamtail late-only confidence cooldown plus late lambda taper
+  record659_latecool_conf07_lamtail_smoke late-only cooldown + lambda taper on first 128 windows only
   record659_conf07_lamcool conf=0.7 plus lambda taper from 0.15 to 0.06 late
   record659_conf07_lamcool_smoke conf=0.7 plus lambda taper on first 128 windows only
   record659_cool_conf07 conf=0.7 early, then cool to 0.65/0.60/0.55 late

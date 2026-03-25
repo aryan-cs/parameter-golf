@@ -46,13 +46,23 @@ PROXY_ORDER = [
 NGRAM_ORDER = [
     "record659_smoke",
     "record659",
+    "record659_lamcool_smoke",
+    "record659_lamcool",
     "record659_conf06_smoke",
     "record659_conf06",
     "record659_conf07_smoke",
     "record659_conf07",
+    "record659_latecool_conf07_smoke",
+    "record659_latecool_conf07",
+    "record659_latecool_conf07_lamtail_smoke",
+    "record659_latecool_conf07_lamtail",
+    "record659_conf07_lamcool_smoke",
+    "record659_conf07_lamcool",
     "record659_conf07_proxy7185",
     "record659_cool_conf07_smoke",
     "record659_cool_conf07",
+    "record659_cool_conf07_lamcool_smoke",
+    "record659_cool_conf07_lamcool",
     "record659_cool_conf07_min4_smoke",
     "record659_cool_conf07_min4",
     "record659_conf08_smoke",
@@ -94,6 +104,7 @@ TTT_NGRAM_ORDER = [
     "record659_adamw5e4_late2_smoke",
     "record659_adamw1e4_late2_smoke",
     "record659_adamw30ep_cosine_smoke",
+    "record659_adamw30ep_cosine_lamcool_smoke",
     "record659_adamw30ep_cosine_lr3e4_smoke",
     "record659_adamw12ep_cosine_smoke",
     "lowrisk_tttlr25_smoke",
@@ -102,6 +113,7 @@ TTT_NGRAM_ORDER = [
     "record659_adamw1e4_late2",
     "record659_adamw5e4_late2",
     "record659_adamw30ep_cosine",
+    "record659_adamw30ep_cosine_lamcool",
     "record659_adamw30ep_cosine_lr3e4",
     "lowrisk_tttlr25",
     "vr1_record659_tttlr25",
@@ -123,13 +135,23 @@ ARTIFACT_LOG_NAMES = {
 NGRAM_LOG_NAMES = {
     "record659": "h200_artifact_ngram_record659.txt",
     "record659_smoke": "h200_artifact_ngram_record659_smoke.txt",
+    "record659_lamcool": "h200_artifact_ngram_record659_lamcool.txt",
+    "record659_lamcool_smoke": "h200_artifact_ngram_record659_lamcool_smoke.txt",
     "record659_conf06": "h200_artifact_ngram_record659_conf06.txt",
     "record659_conf06_smoke": "h200_artifact_ngram_record659_conf06_smoke.txt",
     "record659_conf07": "h200_artifact_ngram_record659_conf07.txt",
     "record659_conf07_smoke": "h200_artifact_ngram_record659_conf07_smoke.txt",
+    "record659_latecool_conf07": "h200_artifact_ngram_record659_latecool_conf07.txt",
+    "record659_latecool_conf07_smoke": "h200_artifact_ngram_record659_latecool_conf07_smoke.txt",
+    "record659_latecool_conf07_lamtail": "h200_artifact_ngram_record659_latecool_conf07_lamtail.txt",
+    "record659_latecool_conf07_lamtail_smoke": "h200_artifact_ngram_record659_latecool_conf07_lamtail_smoke.txt",
+    "record659_conf07_lamcool": "h200_artifact_ngram_record659_conf07_lamcool.txt",
+    "record659_conf07_lamcool_smoke": "h200_artifact_ngram_record659_conf07_lamcool_smoke.txt",
     "record659_conf07_proxy7185": "h200_artifact_ngram_record659_conf07_h100proxy7185_seed1337.txt",
     "record659_cool_conf07": "h200_artifact_ngram_record659_cool_conf07.txt",
     "record659_cool_conf07_smoke": "h200_artifact_ngram_record659_cool_conf07_smoke.txt",
+    "record659_cool_conf07_lamcool": "h200_artifact_ngram_record659_cool_conf07_lamcool.txt",
+    "record659_cool_conf07_lamcool_smoke": "h200_artifact_ngram_record659_cool_conf07_lamcool_smoke.txt",
     "record659_cool_conf07_min4": "h200_artifact_ngram_record659_cool_conf07_min4.txt",
     "record659_cool_conf07_min4_smoke": "h200_artifact_ngram_record659_cool_conf07_min4_smoke.txt",
     "record659_conf08": "h200_artifact_ngram_record659_conf08.txt",
@@ -171,6 +193,7 @@ TTT_NGRAM_LOG_NAMES = {
     "record659_adamw5e4_late2_smoke": "h200_artifact_ttt_ngram_record659_adamw5e4_late2_smoke.txt",
     "record659_adamw1e4_late2_smoke": "h200_artifact_ttt_ngram_record659_adamw1e4_late2_smoke.txt",
     "record659_adamw30ep_cosine_smoke": "h200_artifact_ttt_ngram_record659_adamw30ep_cosine_smoke.txt",
+    "record659_adamw30ep_cosine_lamcool_smoke": "h200_artifact_ttt_ngram_record659_adamw30ep_cosine_lamcool_smoke.txt",
     "record659_adamw30ep_cosine_lr3e4_smoke": "h200_artifact_ttt_ngram_record659_adamw30ep_cosine_lr3e4_smoke.txt",
     "record659_adamw12ep_cosine_smoke": "h200_artifact_ttt_ngram_record659_adamw12ep_cosine_smoke.txt",
     "record659_late2_tttlr25": "h200_artifact_ttt_ngram_record659_late2_tttlr25.txt",
@@ -178,6 +201,7 @@ TTT_NGRAM_LOG_NAMES = {
     "record659_adamw1e4_late2": "h200_artifact_ttt_ngram_record659_adamw1e4_late2.txt",
     "record659_adamw5e4_late2": "h200_artifact_ttt_ngram_record659_adamw5e4_late2.txt",
     "record659_adamw30ep_cosine": "h200_artifact_ttt_ngram_record659_adamw30ep_cosine.txt",
+    "record659_adamw30ep_cosine_lamcool": "h200_artifact_ttt_ngram_record659_adamw30ep_cosine_lamcool.txt",
     "record659_adamw30ep_cosine_lr3e4": "h200_artifact_ttt_ngram_record659_adamw30ep_cosine_lr3e4.txt",
     "lowrisk_tttlr25_smoke": "h200_artifact_ttt_ngram_lowrisk_tttlr25_smoke.txt",
     "lowrisk_tttlr25": "h200_artifact_ttt_ngram_lowrisk_tttlr25.txt",
@@ -264,7 +288,8 @@ def parse_result(
     existing_log_paths = [log_path, *[path for path in extra_log_paths if path.exists()]]
 
     summaries = [parse_log(path) for path in existing_log_paths]
-    summary = merge_summaries(summaries) if len(summaries) > 1 else summaries[0]
+    current_summary = summaries[0]
+    summary = merge_summaries(summaries) if len(summaries) > 1 else current_summary
     text = "\n".join(path.read_text(encoding="utf-8") for path in existing_log_paths)
     result["bytes_total"] = summary.get("bytes_total")
     result["submission_metric"] = summary.get("submission_metric")
@@ -298,6 +323,13 @@ def parse_result(
         if match := STOP_RE.search(line):
             result["last_step"] = int(match.group("step"))
             result["last_train_time_ms"] = int(match.group("train_time_ms"))
+
+    if source == "ngram" and current_summary.get("submission_metric") != "final_ngram_eval_exact":
+        result["submission_metric"] = None
+        result["submission_val_bpb"] = None
+    elif source == "ttt_ngram" and current_summary.get("submission_metric") != "legal_ttt_ngram_exact":
+        result["submission_metric"] = None
+        result["submission_val_bpb"] = None
 
     submission_metric = result.get("submission_metric")
     if isinstance(submission_metric, str):

@@ -33,6 +33,7 @@ NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.15}"
 NGRAM_MAX_N="${NGRAM_MAX_N:-5}"
 CONFIDENCE_THRESHOLD="${CONFIDENCE_THRESHOLD:-0.5}"
 MIN_COUNT="${MIN_COUNT:-3}"
+LAMBDA_SCHEDULE="${LAMBDA_SCHEDULE:-}"
 CONFIDENCE_SCHEDULE="${CONFIDENCE_SCHEDULE:-}"
 ORDER_LAMBDAS="${ORDER_LAMBDAS:-}"
 PACKED_CACHE="${PACKED_CACHE:-1}"
@@ -117,6 +118,25 @@ case "$CANDIDATE" in
     TTT_LR_GROUPING="pr672"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ttt_ngram_record659_adamw30ep_cosine.txt}"
     ;;
+  record659_adamw30ep_cosine_lamcool_smoke)
+    TTT_OPTIMIZER="adamw"
+    TTT_LR="0.0005"
+    TTT_EPOCHS="30"
+    TTT_SCHEDULE="step_cosine"
+    TTT_LR_GROUPING="pr672"
+    LAMBDA_SCHEDULE="0.00:0.15,0.50:0.12,0.65:0.09,0.80:0.06"
+    MAX_CHUNKS="8"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ttt_ngram_record659_adamw30ep_cosine_lamcool_smoke.txt}"
+    ;;
+  record659_adamw30ep_cosine_lamcool)
+    TTT_OPTIMIZER="adamw"
+    TTT_LR="0.0005"
+    TTT_EPOCHS="30"
+    TTT_SCHEDULE="step_cosine"
+    TTT_LR_GROUPING="pr672"
+    LAMBDA_SCHEDULE="0.00:0.15,0.50:0.12,0.65:0.09,0.80:0.06"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ttt_ngram_record659_adamw30ep_cosine_lamcool.txt}"
+    ;;
   record659_adamw30ep_cosine_lr3e4)
     TTT_OPTIMIZER="adamw"
     TTT_LR="0.0003"
@@ -180,6 +200,7 @@ exec python scripts/eval_ngram_ttt_artifact.py \
   --ngram-max-n "$NGRAM_MAX_N" \
   --confidence-threshold "$CONFIDENCE_THRESHOLD" \
   --min-count "$MIN_COUNT" \
+  --lambda-schedule "$LAMBDA_SCHEDULE" \
   --confidence-schedule "$CONFIDENCE_SCHEDULE" \
   --order-lambdas "$ORDER_LAMBDAS" \
   $( [[ "$PACKED_CACHE" == "1" ]] && printf '%s ' --packed-cache ) \

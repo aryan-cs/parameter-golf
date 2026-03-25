@@ -64,6 +64,30 @@ case "$CANDIDATE" in
     MAX_WINDOWS="128"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_conf07_smoke.txt}"
     ;;
+  record659_latecool_conf07_smoke)
+    CONFIDENCE_THRESHOLD="0.7"
+    CONFIDENCE_SCHEDULE="0.00:0.70,0.72:0.65,0.80:0.60,0.90:0.55"
+    MAX_WINDOWS="128"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_latecool_conf07_smoke.txt}"
+    ;;
+  record659_latecool_conf07)
+    CONFIDENCE_THRESHOLD="0.7"
+    CONFIDENCE_SCHEDULE="0.00:0.70,0.72:0.65,0.80:0.60,0.90:0.55"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_latecool_conf07.txt}"
+    ;;
+  record659_latecool_conf07_lamtail_smoke)
+    CONFIDENCE_THRESHOLD="0.7"
+    CONFIDENCE_SCHEDULE="0.00:0.70,0.72:0.65,0.80:0.60,0.90:0.55"
+    LAMBDA_SCHEDULE="0.00:0.15,0.72:0.12,0.80:0.09,0.90:0.06"
+    MAX_WINDOWS="128"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_latecool_conf07_lamtail_smoke.txt}"
+    ;;
+  record659_latecool_conf07_lamtail)
+    CONFIDENCE_THRESHOLD="0.7"
+    CONFIDENCE_SCHEDULE="0.00:0.70,0.72:0.65,0.80:0.60,0.90:0.55"
+    LAMBDA_SCHEDULE="0.00:0.15,0.72:0.12,0.80:0.09,0.90:0.06"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_latecool_conf07_lamtail.txt}"
+    ;;
   record659_conf07_lamcool_smoke)
     CONFIDENCE_THRESHOLD="0.7"
     LAMBDA_SCHEDULE="0.00:0.15,0.50:0.12,0.65:0.09,0.80:0.06"

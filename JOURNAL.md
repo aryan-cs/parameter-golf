@@ -2646,3 +2646,47 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
     - `record659_cool_conf07_min4_smoke`
     - `record659_cool_conf07_min4`
   - If cooldown beats the current pure winner, promote the matching `warmup0` H100 candidate to the front of the eventual `8xH100` slate.
+
+- Timestamp: 2026-03-25 06:08 UTC
+- Commit: `working tree`
+- Lane: pure n-gram frontier
+- Objective: React to the stronger new `conf07` evidence without over-cooling the early/mid regime that is already winning.
+- Research / observation:
+  - The live full `record659_conf07` run recovered after its mid-run wobble and pushed materially lower than the finished plain `record659` curve at every matched progress point I checked.
+  - Current matched-progress comparison:
+    - `10%`: `record659=1.090201`, `conf07=1.084862`
+    - `40%`: `record659=1.085844`, `conf07=1.080378`
+    - `70%`: `record659=1.084530`, `conf07=1.079019`
+    - `80%`: `record659=1.085606`, `conf07=1.080071`
+  - The shape problem is late, not early:
+    - best so far: `71.3% -> 1.078684`
+    - latest when this entry was written: `84.5% -> 1.081286`
+  - That means the earlier cooldown schedule likely started backing off too soon at `50%`; the gain we most want to preserve is the strong `0.7` gate through roughly the first `70%` of eval.
+- Code / ops:
+  - Added new late-only pure-cache challengers in `scripts/icrn_h200_artifact_ngram_candidate.sh`:
+    - `record659_latecool_conf07`
+    - `record659_latecool_conf07_smoke`
+    - `record659_latecool_conf07_lamtail`
+    - `record659_latecool_conf07_lamtail_smoke`
+  - These use:
+    - confidence schedule: `0.00:0.70,0.72:0.65,0.80:0.60,0.90:0.55`
+    - paired lambda taper for the `lamtail` variant: `0.00:0.15,0.72:0.12,0.80:0.09,0.90:0.06`
+  - Promoted them through the tooling:
+    - `scripts/icrn_h200_artifact_ngram_portfolio.sh`
+    - `scripts/queue_h200_credit_prep.sh`
+    - `scripts/h100_parallel_candidate_portfolio.sh`
+    - `scripts/record_push_candidate_lib.sh`
+    - `scripts/record_push_status.py`
+  - Also fixed tracking for the already-staged `record659_adamw30ep_cosine_lamcool` hybrid candidate so it now appears in the status tooling instead of being queue-only.
+- Decision:
+  - Keep the current full `record659_conf07` run alive.
+  - Shift the next pure-cache bet from broad early cooldown toward late-only backoff.
+  - Preserve the PR-`#672` cosine-TTT hedge, but keep it behind the new late-only pure variants.
+- Next step:
+  - Let `record659_conf07` finish.
+  - Immediately run:
+    - `record659_latecool_conf07_smoke`
+    - `record659_latecool_conf07`
+    - `record659_latecool_conf07_lamtail_smoke`
+    - `record659_latecool_conf07_lamtail`
+  - If the late-only branch beats the current pure winner, promote the matching `warmup0` H100 candidates ahead of the older early-cooldown slate.
