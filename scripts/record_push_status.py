@@ -41,6 +41,7 @@ PROXY_ORDER = [
     "baseline",
     "podracing674",
     "podracing674_swiglu",
+    "swiglu676",
     "swiglu",
     "xsa11",
     "podracing674_xsa11",

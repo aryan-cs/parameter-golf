@@ -27,6 +27,9 @@ run_candidate() {
     swiglu_ngram674)
       exec bash "$ROOT_DIR/scripts/h100_record_push_candidate.sh" swiglu ngram674
       ;;
+    swiglu676_ngram674)
+      exec bash "$ROOT_DIR/scripts/h100_record_push_candidate.sh" swiglu676 ngram674
+      ;;
     swiglu_ngram659_conf07)
       exec bash "$ROOT_DIR/scripts/h100_record_push_candidate.sh" swiglu ngram659_conf07
       ;;
@@ -80,6 +83,10 @@ run_candidate() {
     warmup0_podracing674_swiglu_ngram674)
       export WARMUP_STEPS="${WARMUP_STEPS:-0}"
       exec bash "$ROOT_DIR/scripts/h100_record_push_candidate.sh" podracing674_swiglu ngram674
+      ;;
+    warmup0_swiglu676_ngram674)
+      export WARMUP_STEPS="${WARMUP_STEPS:-0}"
+      exec bash "$ROOT_DIR/scripts/h100_record_push_candidate.sh" swiglu676 ngram674
       ;;
     warmup0_podracing674_xsa11_ngram674)
       export WARMUP_STEPS="${WARMUP_STEPS:-0}"
@@ -381,6 +388,7 @@ Run one candidate on each 8xH100 node by setting CANDIDATE:
   CANDIDATE=tttlr25 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=vr1_bg3072_tttlr25 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=swiglu_ngram674 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=swiglu676_ngram674 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=swiglu_ngram659_conf07 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=rope24_ngram674 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=rope24_ngram659_conf07 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
@@ -397,6 +405,7 @@ Run one candidate on each 8xH100 node by setting CANDIDATE:
   CANDIDATE=warmup0_xsa11_ngram659_conf07 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0_podracing674_ngram674 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0_podracing674_swiglu_ngram674 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=warmup0_swiglu676_ngram674 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0_podracing674_xsa11_ngram674 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=ngram659 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=ngram674 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
@@ -462,6 +471,7 @@ Candidate meanings:
   tttlr25              baseline + TTT_LR=0.0025
   vr1_bg3072_tttlr25   combo bet on all three high-signal knobs
   swiglu_ngram674      SwiGLU architecture hedge plus PR #674 hashed eval semantics
+  swiglu676_ngram674   exact PR #676 SwiGLU hedge plus PR #674 hashed eval semantics
   swiglu_ngram659_conf07
                        SwiGLU hedge plus the best completed PR #659-style conf07 exact-cache lane
   rope24_ngram674      deeper partial-RoPE hedge plus PR #674 hashed eval semantics
@@ -491,6 +501,8 @@ Candidate meanings:
                        podracing674_ngram674 plus WARMUP_STEPS=0 for more timing headroom
   warmup0_podracing674_swiglu_ngram674
                        podracing674_swiglu_ngram674 plus WARMUP_STEPS=0 for more timing headroom
+  warmup0_swiglu676_ngram674
+                       swiglu676_ngram674 plus WARMUP_STEPS=0 for more timing headroom
   warmup0_podracing674_xsa11_ngram674
                        podracing674_xsa11_ngram674 plus WARMUP_STEPS=0 for more timing headroom
   ngram659             PR #659-style 5-gram eval cache with TTT disabled

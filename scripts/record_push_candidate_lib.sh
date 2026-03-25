@@ -41,6 +41,16 @@ record_push_apply_arch_candidate() {
       export USE_SWIGLU="${USE_SWIGLU:-1}"
       export SWIGLU_HALF_DIM="${SWIGLU_HALF_DIM:-1024}"
       ;;
+    swiglu676)
+      export MLP_ACT="${MLP_ACT:-leaky_relu_sq}"
+      export MLP_LEAKY_SLOPE="${MLP_LEAKY_SLOPE:-0.5}"
+      export BIGRAM_VOCAB_SIZE="${BIGRAM_VOCAB_SIZE:-1536}"
+      export XSA_LAST_N="${XSA_LAST_N:-4}"
+      export ROPE_DIMS="${ROPE_DIMS:-16}"
+      export LATE_QAT_THRESHOLD="${LATE_QAT_THRESHOLD:-0.15}"
+      export USE_SWIGLU="${USE_SWIGLU:-1}"
+      export SWIGLU_HALF_DIM="${SWIGLU_HALF_DIM:-1024}"
+      ;;
     rope24)
       export ROPE_DIMS="${ROPE_DIMS:-24}"
       ;;

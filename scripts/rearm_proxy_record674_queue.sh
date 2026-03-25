@@ -65,9 +65,11 @@ setsid bash "$ROOT_DIR/scripts/after_proxy_train_run_record674_then_conf07.sh" >
 
 POD_RECORD674_LOG="$LOG_DIR/h200_artifact_ngram_record674_h100proxy7185_podracing674_seed${SEED}.txt"
 POD_SWIGLU_RECORD674_LOG="$LOG_DIR/h200_artifact_ngram_record674_h100proxy7185_podracing674_swiglu_seed${SEED}.txt"
+SWIGLU676_RECORD674_LOG="$LOG_DIR/h200_artifact_ngram_record674_h100proxy7185_swiglu676_seed${SEED}.txt"
 XSA11_RECORD674_LOG="$LOG_DIR/h200_artifact_ngram_record674_h100proxy7185_xsa11_seed${SEED}.txt"
 
 launch_after_record674_arch "$BASE_RECORD674_LOG" "podracing674"
 launch_after_record674_arch "$POD_RECORD674_LOG" "podracing674_swiglu"
-launch_after_record674_arch "$POD_SWIGLU_RECORD674_LOG" "xsa11"
+launch_after_record674_arch "$POD_SWIGLU_RECORD674_LOG" "swiglu676"
+launch_after_record674_arch "$SWIGLU676_RECORD674_LOG" "xsa11"
 launch_after_record674_arch "$XSA11_RECORD674_LOG" "podracing674_xsa11"

@@ -3269,3 +3269,34 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Decision:
   - Treat this as the main remaining PR-`#674` parity fix after activation and stride parity.
   - Keep the live H200 proxy running untouched while the exact hashed handoff path is tightened around it.
+
+- Timestamp: 2026-03-25 05:44 UTC
+- Commit: uncommitted
+- Lane: PR676 exact hedge staging
+- Objective: Promote the exact PR `#676` SwiGLU hedge into the future proxy / H100 handoff slate instead of relying only on the looser generic `swiglu` branch.
+- Research / findings:
+  - Re-checked PR `#676` directly and confirmed its reproduce knobs are narrower than our generic SwiGLU hedge:
+    - `BIGRAM_VOCAB_SIZE=1536`
+    - `XSA_LAST_N=4`
+    - `ROPE_DIMS=16`
+    - `LATE_QAT_THRESHOLD=0.15`
+    - `USE_SWIGLU=1`
+    - `SWIGLU_HALF_DIM=1024`
+  - PR `#676` is explicitly built on the LeakyReLU² stack, so the hedge should keep `MLP_ACT=leaky_relu_sq` / `MLP_LEAKY_SLOPE=0.5` semantics intact.
+- Code / ops:
+  - Tightened `swiglu676` in `scripts/record_push_candidate_lib.sh` to set the full exact hedge, including `MLP_ACT=leaky_relu_sq` and `MLP_LEAKY_SLOPE=0.5`.
+  - Added `swiglu676_ngram674` and `warmup0_swiglu676_ngram674` to `scripts/h100_parallel_candidate_portfolio.sh`.
+  - Added `swiglu676` to `scripts/record_push_status.py` proxy ordering so future proxy logs rank it separately from the older generic `swiglu` hedge.
+  - Updated `scripts/rearm_proxy_record674_queue.sh` so the next manual queue rearm prefers:
+    - `baseline`
+    - `podracing674`
+    - `podracing674_swiglu`
+    - `swiglu676`
+    - `xsa11`
+    - `podracing674_xsa11`
+- Result:
+  - The repo now has an exact PR-`#676` hedge ready for the first `8xH100` window and the next manual H200 proxy rearm.
+  - The currently running H200 queue is left untouched, but the next rearm no longer has to choose between an exact PR-`#674` surrogate and a fuzzy SwiGLU branch.
+- Decision:
+  - Keep `swiglu676` as a real first-class hedge, but do not disrupt the live watcher chain to insert it mid-flight.
+  - Use the active baseline proxy result to decide whether `swiglu676` or `podracing674_swiglu` gets earlier `8xH100` slots when credits return.
