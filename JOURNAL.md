@@ -4310,3 +4310,44 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Decision:
   - Keep exact PR688 itself as the main next exact-upstream comparison.
   - Use the new qTTT-light variants as the immediate budget-oriented follow-ups before returning to more speculative PR674 compounds.
+
+## 2026-03-25 20:18 UTC — Add PR688 qTTT light chunk-256k budget hedge
+
+- Commit: uncommitted
+- Lane: exact-upstream PR `#688` timed eval variants
+- Objective: add an even lower-overhead exact-upstream PR688 hedge by reducing the number of legal score-train chunks directly.
+- Source:
+  - PR688 trainer code in the fetched `pr688` worktree, where:
+    - `num_chunks = (total_tokens + ttt_chunk_tokens - 1) // ttt_chunk_tokens`
+- Finding:
+  - Larger `TTT_CHUNK_TOKENS` directly reduces the number of legal adaptation phases.
+  - That makes `TTT_CHUNK_TOKENS=262144` a clean budget-first hedge on top of the already-staged `qTTT + freeze3 + no Polyak + no adaptive LR` lane.
+- Command or config:
+  - Added wrappers:
+    - [icrn_h200_upstream_pr688_qttt_light_chunk256_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr688_qttt_light_chunk256_proxy.sh)
+    - [h100_upstream_pr688_qttt_light_chunk256_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr688_qttt_light_chunk256_exact.sh)
+    - [h100_upstream_pr688_qttt_light_chunk256_exact_3seed.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr688_qttt_light_chunk256_exact_3seed.sh)
+  - Defaults:
+    - `QTTT=1`
+    - `TTT_FREEZE_BLOCKS=3`
+    - `USE_POLYAK=0`
+    - `ADAPTIVE_LR=0`
+    - `TTT_CHUNK_TOKENS=262144`
+  - Wired through:
+    - [h100_parallel_candidate_portfolio.sh](/home/aryang9/parameter-golf/scripts/h100_parallel_candidate_portfolio.sh)
+    - [record_push_status.py](/home/aryang9/parameter-golf/scripts/record_push_status.py)
+    - [rearm_after_current_timed_nocompile_with_hedge.sh](/home/aryang9/parameter-golf/scripts/rearm_after_current_timed_nocompile_with_hedge.sh)
+  - New PR688 downstream order now becomes:
+    - `upstream_pr688_timed_nocompile_exact`
+    - `upstream_pr688_timed_nocompile_qttt_exact`
+    - `upstream_pr688_timed_nocompile_qttt_nopolyak_exact`
+    - `upstream_pr688_timed_nocompile_qttt_light_exact`
+    - `upstream_pr688_timed_nocompile_qttt_light_chunk256_exact`
+    - then PR674 timed `nocompile` overlays
+- Result:
+  - Verified:
+    - `bash -n` on the new wrappers and updated queue helper
+    - `python -m py_compile` on [record_push_status.py](/home/aryang9/parameter-golf/scripts/record_push_status.py)
+- Decision:
+  - Keep PR688 as the strongest immediate exact-upstream family to probe.
+  - Use chunk-256k as the lowest-overhead PR688 TTT hedge before returning to PR674 overlay compounds.
