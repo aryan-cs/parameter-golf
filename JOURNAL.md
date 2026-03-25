@@ -1931,3 +1931,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The corrected proxy run is live in `records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs/h200_ttt_h100proxy7185_seed1337.txt` and has already reached `step:4500/7185 val_bpb:1.2072`. The GPU remains occupied automatically, and the queue shell is still active to continue into later follow-up variants if needed.
 - Decision: Keep the corrected proxy running. The recovered score is already strong, but this lane gives us another higher-fidelity H200 reproduction path while we wait for qualifying `8xH100` access.
 - Next step: Let the corrected proxy finish and compare its final exact metrics against the recovered `1.11382777` lane before deciding whether to continue with queued variants or pivot toward more seed-based evidence gathering.
+
+- Timestamp: 2026-03-25 00:36 UTC
+- Commit: `2fc258a`
+- Lane: Submission packaging readiness
+- Objective: Remove the last bit of manual bookkeeping from the recovered winning lane by making the metadata helper understand the two-log structure of the exact H200 run plus resumed TTT completion.
+- Command or config: Updated `scripts/prepare_submission_metadata.py` to accept multiple log paths and merge metrics across them, then validated it on `h200_ttt_recordstack_80shard_seed1337.txt` plus `h200_ttt_recordstack_80shard_seed1337_resume_ttt.txt`.
+- Result: The merged summary now correctly reports `bytes_total: 15860692`, `final_int6_sliding_window_exact: 1.11623907`, and `legal_ttt_exact: 1.11382777`, with `submission_metric` automatically resolved to `legal_ttt_exact`. This gives us a clean one-command path to prepare submission metadata from the recovered winning lane instead of manually stitching values from separate logs.
+- Decision: Keep this merged-log path as the default packaging route for the recovered lane. It reduces human error and makes the eventual `8xH100` handoff cleaner.
+- Next step: Let the corrected H100-step proxy continue, and if it does not beat `1.11382777`, shift the H200 toward more evidence-gathering and handoff polish rather than another broad search.

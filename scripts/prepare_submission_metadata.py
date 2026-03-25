@@ -56,9 +56,46 @@ def parse_log(log_path: Path) -> dict:
     return summary
 
 
+def merge_summaries(summaries: list[dict]) -> dict:
+    if not summaries:
+        raise ValueError("at least one summary is required")
+
+    merged: dict[str, object] = {
+        "log_paths": [summary["log_path"] for summary in summaries],
+        "last_step": None,
+        "iterations": None,
+        "last_val_loss": None,
+        "last_val_bpb": None,
+        "bytes_total": None,
+    }
+    final_metrics: dict[str, dict[str, float]] = {}
+
+    for summary in summaries:
+        for key in ("last_step", "iterations", "last_val_loss", "last_val_bpb", "bytes_total"):
+            value = summary.get(key)
+            if value is not None:
+                merged[key] = value
+        for metric_name, metric_payload in summary.get("final_metrics", {}).items():
+            final_metrics[metric_name] = metric_payload
+
+    if final_metrics:
+        merged["final_metrics"] = final_metrics
+        if "legal_ttt_exact" in final_metrics:
+            merged["submission_metric"] = "legal_ttt_exact"
+            merged["submission_val_bpb"] = final_metrics["legal_ttt_exact"]["val_bpb"]
+        elif "final_int6_sliding_window_exact" in final_metrics:
+            merged["submission_metric"] = "final_int6_sliding_window_exact"
+            merged["submission_val_bpb"] = final_metrics["final_int6_sliding_window_exact"]["val_bpb"]
+        elif "final_int6_roundtrip_exact" in final_metrics:
+            merged["submission_metric"] = "final_int6_roundtrip_exact"
+            merged["submission_val_bpb"] = final_metrics["final_int6_roundtrip_exact"]["val_bpb"]
+
+    return merged
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Extract submission-ready metadata from a Parameter Golf run log.")
-    parser.add_argument("log_path", type=Path)
+    parser.add_argument("log_paths", type=Path, nargs="+")
     parser.add_argument("--name", default="TODO")
     parser.add_argument("--author", default="TODO")
     parser.add_argument("--github-id", default="TODO")
@@ -67,7 +104,8 @@ def main() -> None:
     parser.add_argument("--write-submission-json", action="store_true")
     args = parser.parse_args()
 
-    summary = parse_log(args.log_path)
+    summaries = [parse_log(log_path) for log_path in args.log_paths]
+    summary = merge_summaries(summaries) if len(summaries) > 1 else summaries[0]
     output = {
         "name": args.name,
         "author": args.author,
@@ -89,7 +127,7 @@ def main() -> None:
             "val_bpb": output.get("submission_val_bpb"),
             "bytes_total": output.get("bytes_total"),
         }
-        submission_path = args.log_path.parent.parent / "submission.json"
+        submission_path = args.log_paths[0].parent.parent / "submission.json"
         submission_path.write_text(json.dumps(submission, indent=2) + "\n", encoding="utf-8")
 
 
