@@ -3891,3 +3891,35 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
   - Keep the live timed `nocompile` PR-`#674` run undisturbed.
   - Use the next free H200 slots to test the cheaper artifact-side winners first, but now with a stronger exact-upstream PR-`#674` mixer5 branch armed right behind them.
   - If `record688_mixer5` is good, compare it directly against the new exact-upstream `pr674_mixer5` lane rather than only against artifact-side improvements.
+
+- Timestamp: 2026-03-25 07:40 UTC
+- Commit: uncommitted
+- Lane: exact-upstream PR `#674` + CROWN-Q bytes-first hedge
+- Objective: Pull the most portable zero-eval-cost idea out of PR `#692` and stage it on the stronger PR `#674` frontier family, because our score line is decent but byte headroom is still a real risk.
+- Sources:
+  - PR `#692` CROWN-Q + Full GPTQ:
+    - https://github.com/openai/parameter-golf/pull/692
+  - PR `#674` Podracing frontier:
+    - https://github.com/openai/parameter-golf/pull/674
+- Command or config:
+  - Added [patch_pr674_crownq.py](/home/aryang9/parameter-golf/scripts/patch_pr674_crownq.py), which injects:
+    - `CROWNQ_LAMBDA`
+    - `CROWNQ_WARMDOWN_ONLY`
+  - The penalty uses PR-`#674`'s actual QAT export quantizer assumptions:
+    - 99.95th percentile row clipping
+    - int6 step size `delta = row_clip / 31`
+    - penalty term `sum(mean(w^2, row) * delta^2 / 12)`
+  - Added new launchers:
+    - [icrn_h200_upstream_pr674_crownq_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr674_crownq_proxy.sh)
+    - [h100_upstream_pr674_crownq_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr674_crownq_exact.sh)
+    - [h100_upstream_pr674_crownq_exact_3seed.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr674_crownq_exact_3seed.sh)
+  - Added new portfolio/status entries:
+    - `upstream_pr674_crownq_exact`
+    - `upstream_pr674_crownq_timed_nocompile_exact`
+- Result:
+  - Live H200 head run is still [h200_upstream_pr674_proxy7185_timed_nocompile_seed1337.txt](/home/aryang9/parameter-golf/records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs/h200_upstream_pr674_proxy7185_timed_nocompile_seed1337.txt), now at:
+    - `step:1000/7185 val_bpb:1.3081`
+  - The new CROWN-Q branch is staged as a future exact-upstream candidate and is now armed behind the exact-upstream mixer/hedge chain for the next free H200 slot after those runs.
+- Decision:
+  - Keep current live PR-`#674` timed `nocompile` training uninterrupted.
+  - Treat PR-`#674` + CROWN-Q as the main bytes-first hedge once the current exact-upstream score-side branches have run.

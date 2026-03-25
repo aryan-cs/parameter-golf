@@ -30,6 +30,12 @@ run_candidate() {
     upstream_pr674_mixer5_timed_nocompile_exact)
       exec env TIMED_MODE=1 COMPILE_ENABLED=0 bash "$ROOT_DIR/scripts/h100_upstream_pr674_mixer5_exact.sh"
       ;;
+    upstream_pr674_crownq_exact)
+      exec bash "$ROOT_DIR/scripts/h100_upstream_pr674_crownq_exact.sh"
+      ;;
+    upstream_pr674_crownq_timed_nocompile_exact)
+      exec env TIMED_MODE=1 COMPILE_ENABLED=0 bash "$ROOT_DIR/scripts/h100_upstream_pr674_crownq_exact.sh"
+      ;;
     upstream_pr674_enhattn_exact)
       exec bash "$ROOT_DIR/scripts/h100_upstream_pr674_enhattn_exact.sh"
       ;;
@@ -440,6 +446,8 @@ Run one candidate on each 8xH100 node by setting CANDIDATE:
   CANDIDATE=upstream_pr674_hedgemix_timed_nocompile_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr674_mixer5_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr674_mixer5_timed_nocompile_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=upstream_pr674_crownq_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=upstream_pr674_crownq_timed_nocompile_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr674_enhattn_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr674_enhattn_timed_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr676_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
@@ -545,6 +553,10 @@ Candidate meanings:
                        exact upstream PR #674 plus a legal PR #688-style five-expert online mixer over neural and count-based experts
   upstream_pr674_mixer5_timed_nocompile_exact
                        timed PR #674 mixer5 lane with COMPILE_ENABLED=0 to protect the 10-minute budget
+  upstream_pr674_crownq_exact
+                       exact upstream PR #674 plus PR #692-style CROWN-Q warmdown penalty to reduce quantization damage
+  upstream_pr674_crownq_timed_nocompile_exact
+                       timed PR #674 CROWN-Q lane with COMPILE_ENABLED=0 as a bytes-first systems hedge
   upstream_pr674_enhattn_exact
                        exact upstream PR #674 plus PR #684-style k/v shift mixing, per-KV k_gain, and local value residual
   upstream_pr674_enhattn_timed_exact
