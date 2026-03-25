@@ -3300,3 +3300,25 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Decision:
   - Keep `swiglu676` as a real first-class hedge, but do not disrupt the live watcher chain to insert it mid-flight.
   - Use the active baseline proxy result to decide whether `swiglu676` or `podracing674_swiglu` gets earlier `8xH100` slots when credits return.
+
+- Timestamp: 2026-03-25 05:58 UTC
+- Commit: uncommitted
+- Lane: exact upstream frontier handoff
+- Objective: Stop relying only on local surrogates by staging exact upstream PR `#674` launchers inside this repo.
+- Research / findings:
+  - The fetched `pr674` branch already contains the real root `train_gpt.py` used by the current `1.0461` record claim, including the exact `NGRAM_EVAL_*` hashed metric path.
+  - That makes it cheap to test the actual upstream frontier code on H200 via a git worktree, instead of only estimating it through our older record-trainer family.
+- Code / ops:
+  - Added [icrn_h200_upstream_pr674_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr674_proxy.sh) to:
+    - create/reuse a `pr674` worktree
+    - launch a 1×H200 fixed-step `ITERATIONS=7185` proxy with the exact PR `#674` env surface
+    - log into the existing record folder
+  - Added [h100_upstream_pr674_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr674_exact.sh) so the first 8×H100 window can run the exact upstream frontier recipe directly from the worktree.
+- Result:
+  - We now have a clean path to test the actual `#674` trainer on H200 as soon as the current proxy lane frees up.
+  - The future 8×H100 handoff no longer has to choose between “our surrogate” and “copy-pasting a PR by hand.”
+- Follow-up:
+  - Added a `git safe.directory` registration in both launchers after a local worktree smoke hit Git's ownership guard on the new worktree path.
+- Decision:
+  - Keep the active H200 queue untouched.
+  - Once the live baseline proxy finishes, prefer exact upstream `pr674` testing over adding more low-confidence surrogate tweaks.
