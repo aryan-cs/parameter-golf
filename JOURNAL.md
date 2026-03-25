@@ -3346,3 +3346,51 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Decision:
   - Keep the current proxy alive.
   - After the live baseline proxy and exact `record674` eval complete, favor exact upstream `pr674` and `pr676` tests over adding another low-signal surrogate tweak.
+
+- Timestamp: 2026-03-25 06:20 UTC
+- Commit: uncommitted
+- Lane: post-baseline exact-upstream queue
+- Objective: Re-center the waiting H200 queue around exact upstream frontier runs instead of spending the whole post-baseline window on surrogate-only branches.
+- Code / ops:
+  - Added [after_log_launch_script.sh](/home/aryang9/parameter-golf/scripts/after_log_launch_script.sh), a small generic watcher that waits for a regex in a log and then launches a target script, with optional chaining.
+  - Updated [rearm_proxy_record674_queue.sh](/home/aryang9/parameter-golf/scripts/rearm_proxy_record674_queue.sh) so the next manual rearm will queue:
+    - baseline exact `record674`
+    - exact upstream `pr674`
+    - exact upstream `pr676`
+    - then the surrogate ladder `podracing674 -> podracing674_swiglu -> swiglu676 -> xsa11 -> podracing674_xsa11`
+  - Extended [record_push_status.py](/home/aryang9/parameter-golf/scripts/record_push_status.py) so exact upstream proxy logs have first-class paths and H100 handoff commands.
+  - Added three-seed helpers:
+    - [h100_upstream_pr674_exact_3seed.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr674_exact_3seed.sh)
+    - [h100_upstream_pr676_exact_3seed.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr676_exact_3seed.sh)
+- Result:
+  - The next queue rearm can safely favor exact upstream tests without interrupting the active baseline proxy.
+  - If an exact upstream proxy wins, status and handoff tooling can now point directly at the right H100 launch commands instead of falling back to surrogate candidate wrappers.
+- Decision:
+  - Re-arm the waiting queue onto the new exact-upstream order while leaving the live training PID untouched.
+
+- Timestamp: 2026-03-25 06:28 UTC
+- Commit: uncommitted
+- Lane: queue bugfix + upstream-first rearm
+- Objective: Fix the post-proxy watcher chain so it actually advances on the exact PR-`#674` metric names and then spend the next free H200 slots on exact upstream `pr674` / `pr676` before lower-confidence surrogate tails.
+- Problem found:
+  - The old watcher chain was still waiting on `^final_ngram_eval_exact`, but the exact PR-`#674` path now emits `final_int6_sliding_window_ngram5_exact`.
+  - The new generic watcher also needed explicit `LOG_PATH` / `RUN_ID` handoff so chained upstream launches would not inherit stale values from the previous run.
+- Code / ops:
+  - Patched [after_record674_launch_arch.sh](/home/aryang9/parameter-golf/scripts/after_record674_launch_arch.sh) to accept a configurable `WAIT_PATTERN`, defaulting to a regex that matches both the old generic and the exact PR-`#674` metric names.
+  - Patched [after_log_launch_script.sh](/home/aryang9/parameter-golf/scripts/after_log_launch_script.sh) to carry per-target `LOG_PATH`, `RUN_ID`, and `SEED` cleanly through chained launches.
+  - Updated [rearm_proxy_record674_queue.sh](/home/aryang9/parameter-golf/scripts/rearm_proxy_record674_queue.sh) so a fresh rearm now queues:
+    - baseline exact `record674`
+    - exact upstream `pr674`
+    - exact upstream `pr676`
+    - then `podracing674 -> podracing674_swiglu -> swiglu676 -> xsa11 -> podracing674_xsa11`
+  - Added three-seed exact-upstream helpers:
+    - [h100_upstream_pr674_exact_3seed.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr674_exact_3seed.sh)
+    - [h100_upstream_pr676_exact_3seed.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr676_exact_3seed.sh)
+  - Extended [record_push_status.py](/home/aryang9/parameter-golf/scripts/record_push_status.py) so exact upstream proxy logs have first-class H100 handoff commands.
+  - Re-armed the watcher queue successfully while the active baseline proxy kept running.
+- Result:
+  - The live baseline proxy remained healthy and improved to `step:6000/7185 val_bpb:1.1982`.
+  - The waiting chain now points at exact upstream `pr674` and `pr676` before the surrogate ladder, instead of silently deadlocking on stale metric names.
+- Decision:
+  - Keep the current baseline proxy untouched through completion.
+  - Use the re-armed queue to spend the next free H200 cycles on the exact upstream frontier families first.

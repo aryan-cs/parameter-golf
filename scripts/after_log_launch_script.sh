@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+WAIT_LOG="${WAIT_LOG:?set WAIT_LOG}"
+WAIT_PATTERN="${WAIT_PATTERN:?set WAIT_PATTERN}"
+TARGET_LABEL="${TARGET_LABEL:?set TARGET_LABEL}"
+TARGET_SCRIPT="${TARGET_SCRIPT:?set TARGET_SCRIPT}"
+NEXT_WAIT_LOG="${NEXT_WAIT_LOG:-}"
+NEXT_WAIT_PATTERN="${NEXT_WAIT_PATTERN:-}"
+NEXT_TARGET_LABEL="${NEXT_TARGET_LABEL:-}"
+NEXT_TARGET_SCRIPT="${NEXT_TARGET_SCRIPT:-}"
+TARGET_LOG_PATH="${TARGET_LOG_PATH:-}"
+TARGET_RUN_ID="${TARGET_RUN_ID:-}"
+TARGET_SEED="${TARGET_SEED:-}"
+NEXT_LOG_PATH="${NEXT_LOG_PATH:-}"
+NEXT_RUN_ID="${NEXT_RUN_ID:-}"
+NEXT_SEED="${NEXT_SEED:-}"
+
+cd "$ROOT_DIR"
+
+while ! rg -q "$WAIT_PATTERN" "$WAIT_LOG" 2>/dev/null; do
+  sleep 60
+done
+
+if [[ -n "$NEXT_TARGET_SCRIPT" ]]; then
+  WAIT_LOG="$NEXT_WAIT_LOG" \
+  WAIT_PATTERN="$NEXT_WAIT_PATTERN" \
+  TARGET_LABEL="$NEXT_TARGET_LABEL" \
+  TARGET_SCRIPT="$NEXT_TARGET_SCRIPT" \
+  TARGET_LOG_PATH="$NEXT_LOG_PATH" \
+  TARGET_RUN_ID="$NEXT_RUN_ID" \
+  TARGET_SEED="$NEXT_SEED" \
+  setsid bash "$ROOT_DIR/scripts/after_log_launch_script.sh" >/tmp/h200_after_${TARGET_LABEL}_launch_${NEXT_TARGET_LABEL}.log 2>&1 < /dev/null &
+fi
+
+if [[ -n "$TARGET_LOG_PATH" ]]; then
+  export LOG_PATH="$TARGET_LOG_PATH"
+fi
+if [[ -n "$TARGET_RUN_ID" ]]; then
+  export RUN_ID="$TARGET_RUN_ID"
+fi
+if [[ -n "$TARGET_SEED" ]]; then
+  export SEED="$TARGET_SEED"
+fi
+
+exec bash "$TARGET_SCRIPT"
