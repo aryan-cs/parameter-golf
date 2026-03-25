@@ -3221,3 +3221,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Decision:
   - Promote the combined PR-`#674` surrogate as the next architecture hedge after `xsa11`.
   - Keep this as the strongest queued architecture bet until the current proxy artifact tells us otherwise.
+
+- Timestamp: 2026-03-25 05:09 UTC
+- Commit: uncommitted
+- Lane: H100 handoff / PR674 eval parity
+- Objective: Fix the remaining hashed-eval mismatch in the H100 handoff candidates.
+- Command or config: Compared our local hashed call site against PR `#674`; local hashed eval uses `stride=args.ngram_stride`, while PR `#674` runs hashed eval at the normal sliding stride (`64`). Patched `ngram674` in `scripts/record_push_candidate_lib.sh` from `NGRAM_STRIDE=128` to `NGRAM_STRIDE=64`.
+- Result: Future `ngram674` / `podracing674_*_ngram674` H100 launches will now match the PR `#674` stride semantics much more closely.
+- Decision: Treat this as a required parity fix, not an optional tweak.
+- Next step: Validate, commit, and keep the H200 proxy running while the corrected H100 handoff waits for credits.

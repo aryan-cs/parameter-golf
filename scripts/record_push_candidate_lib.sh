@@ -111,7 +111,7 @@ record_push_apply_ttt_candidate() {
     ngram674)
       export TTT_ENABLED="${TTT_ENABLED:-0}"
       export NGRAM_EVAL_ENABLED="${NGRAM_EVAL_ENABLED:-1}"
-      export NGRAM_STRIDE="${NGRAM_STRIDE:-128}"
+      export NGRAM_STRIDE="${NGRAM_STRIDE:-64}"
       export NGRAM_BATCH_SEQS="${NGRAM_BATCH_SEQS:-32}"
       export NGRAM_CACHE_KIND="${NGRAM_CACHE_KIND:-hashed}"
       export NGRAM_HASHED_BUCKETS="${NGRAM_HASHED_BUCKETS:-4194304}"
