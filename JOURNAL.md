@@ -4501,3 +4501,17 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
     - then the chunk / stride / chunk+stride PR688 extremes
 - Decision:
   - Treat `SKIP_SLIDING` as the highest-priority exact PR688 budget cut because it should preserve the final TTT metric path while saving the most eval time cleanly.
+## 2026-03-25 08:51 UTC - PR688 TTT batch-seq budget hedges
+
+- Confirmed the exact upstream PR688 trainer hardcodes `batch_seqs=32` inside `eval_val_sliding_ttt(...)` for both scoring batches and score-first TTT train batches.
+- Patched [patch_pr688_compile_gate.py](/home/aryang9/parameter-golf/scripts/patch_pr688_compile_gate.py) so patched PR688 run dirs now honor:
+  - `TTT_BATCH_SEQS`
+  - fallback `EVAL_BATCH_SEQS`
+  - and print `batch_seqs=` in the TTT start log for verification.
+- Added new exact-upstream PR688 launchers:
+  - [icrn_h200_upstream_pr688_qttt_light_skipsliding_batch48_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr688_qttt_light_skipsliding_batch48_proxy.sh)
+  - [h100_upstream_pr688_qttt_light_skipsliding_batch48_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr688_qttt_light_skipsliding_batch48_exact.sh)
+  - [icrn_h200_upstream_pr688_qttt_light_skipsliding_batch64_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr688_qttt_light_skipsliding_batch64_proxy.sh)
+  - [h100_upstream_pr688_qttt_light_skipsliding_batch64_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr688_qttt_light_skipsliding_batch64_exact.sh)
+- Reordered the exact PR688 queue so these mild microbatch throughput probes run before harsher epoch/chunk/stride cuts.
+- Rationale: `TTT_BATCH_SEQS` is a cleaner fit lever than reducing epochs or increasing stride, because it changes kernel occupancy and launch count without directly changing the scored-token path.

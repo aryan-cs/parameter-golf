@@ -13,7 +13,9 @@ def replace_once(text: str, old: str, new: str) -> str:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Patch PR688 train_gpt.py with an env-gated torch.compile path.")
+    parser = argparse.ArgumentParser(
+        description="Patch PR688 train_gpt.py with env-gated compile and batch-size knobs."
+    )
     parser.add_argument("train_gpt", type=Path)
     args = parser.parse_args()
 
@@ -66,6 +68,29 @@ def main() -> None:
         '        compiled_logits = base_model.forward_logits\n'
         '        if rank == 0:\n'
         '            print("  ttt: compile disabled", flush=True)\n',
+    )
+
+    text = replace_once(
+        text,
+        '    total_tokens = val_tokens.numel() - 1\n'
+        '\n'
+        '    # Initialize GPU-vectorized logistic context mixer\n',
+        '    total_tokens = val_tokens.numel() - 1\n'
+        '    batch_seqs = int(os.environ.get("TTT_BATCH_SEQS", os.environ.get("EVAL_BATCH_SEQS", str(batch_seqs))))\n'
+        '\n'
+        '    # Initialize GPU-vectorized logistic context mixer\n',
+    )
+
+    text = replace_once(
+        text,
+        '        print(f"ttt:start chunks={num_chunks} chunk_tokens={ttt_chunk_tokens} "\n'
+        '              f"windows={len(window_starts)} stride={stride} "\n'
+        '              f"lr={ttt_lr} epochs={ttt_epochs} opt={ttt_optimizer} "\n'
+        '              f"freeze_first={ttt_freeze_blocks}")\n',
+        '        print(f"ttt:start chunks={num_chunks} chunk_tokens={ttt_chunk_tokens} "\n'
+        '              f"windows={len(window_starts)} stride={stride} batch_seqs={batch_seqs} "\n'
+        '              f"lr={ttt_lr} epochs={ttt_epochs} opt={ttt_optimizer} "\n'
+        '              f"freeze_first={ttt_freeze_blocks}")\n',
     )
 
     path.write_text(text)
