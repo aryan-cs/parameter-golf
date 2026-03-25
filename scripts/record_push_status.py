@@ -50,6 +50,7 @@ PROXY_ORDER = [
     "upstream_pr688_timed_nocompile_qttt_light_exact",
     "upstream_pr688_timed_nocompile_qttt_light_chunk256_exact",
     "upstream_pr688_timed_nocompile_qttt_light_stride64_exact",
+    "upstream_pr688_timed_nocompile_qttt_light_chunk256_stride64_exact",
     "upstream_pr674_hedgemix_exact",
     "upstream_pr674_hedgemix_timed_nocompile_exact",
     "upstream_pr674_mixer5_exact",
@@ -366,6 +367,8 @@ def proxy_log_path(log_dir: Path, arch_candidate: str, ttt_candidate: str, seed:
         return log_dir / f"h200_upstream_pr688_proxy600_timed_nocompile_qttt_light_chunk256_seed{seed}.txt"
     if arch_candidate == "upstream_pr688_timed_nocompile_qttt_light_stride64_exact":
         return log_dir / f"h200_upstream_pr688_proxy600_timed_nocompile_qttt_light_stride64_seed{seed}.txt"
+    if arch_candidate == "upstream_pr688_timed_nocompile_qttt_light_chunk256_stride64_exact":
+        return log_dir / f"h200_upstream_pr688_proxy600_timed_nocompile_qttt_light_chunk256_stride64_seed{seed}.txt"
     if arch_candidate == "upstream_pr674_crownq_exact":
         return log_dir / f"h200_upstream_pr674_crownq_proxy7185_seed{seed}.txt"
     if arch_candidate == "upstream_pr674_crownq_timed_nocompile_exact":
@@ -621,6 +624,12 @@ def h100_command(root_dir: Path, arch_candidate: str, ttt_candidate: str, seed: 
             f"RUN_ID=h100_upstream_pr688_timed_nocompile_qttt_light_stride64_seed{seed} "
             f"bash {root_dir / 'scripts/h100_upstream_pr688_qttt_light_stride64_exact.sh'}"
         )
+    if arch_candidate == "upstream_pr688_timed_nocompile_qttt_light_chunk256_stride64_exact":
+        return (
+            f"TIMED_MODE=1 COMPILE_ENABLED=0 SEED={seed} "
+            f"RUN_ID=h100_upstream_pr688_timed_nocompile_qttt_light_chunk256_stride64_seed{seed} "
+            f"bash {root_dir / 'scripts/h100_upstream_pr688_qttt_light_chunk256_stride64_exact.sh'}"
+        )
     if arch_candidate == "upstream_pr674_crownq_exact":
         return f"SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr674_crownq_exact.sh'}"
     if arch_candidate == "upstream_pr674_crownq_timed_nocompile_exact":
@@ -710,6 +719,11 @@ def h100_three_seed_command(root_dir: Path, arch_candidate: str, ttt_candidate: 
         return (
             f"TIMED_MODE=1 COMPILE_ENABLED=0 "
             f"bash {root_dir / 'scripts/h100_upstream_pr688_qttt_light_stride64_exact_3seed.sh'}"
+        )
+    if arch_candidate == "upstream_pr688_timed_nocompile_qttt_light_chunk256_stride64_exact":
+        return (
+            f"TIMED_MODE=1 COMPILE_ENABLED=0 "
+            f"bash {root_dir / 'scripts/h100_upstream_pr688_qttt_light_chunk256_stride64_exact_3seed.sh'}"
         )
     if arch_candidate == "upstream_pr674_crownq_exact":
         return f"bash {root_dir / 'scripts/h100_upstream_pr674_crownq_exact_3seed.sh'}"

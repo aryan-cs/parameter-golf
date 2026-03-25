@@ -4380,3 +4380,35 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
     - [record_push_status.py](/home/aryang9/parameter-golf/scripts/record_push_status.py)
   - Decision:
     - Keep `stride64` behind `chunk256` in the exact-upstream PR688 queue so we progress from milder to harsher budget cuts.
+
+## 2026-03-25 20:40 UTC — Add PR688 qTTT light chunk256+stride64 extreme budget hedge
+
+- Commit: uncommitted
+- Lane: exact-upstream PR `#688` timed eval variants
+- Objective: stage the lowest-overhead exact-upstream PR688 lane before falling through to PR674 overlays.
+- Finding:
+  - The two strongest clean time cuts inside PR688 are:
+    - fewer score-train chunks via `TTT_CHUNK_TOKENS=262144`
+    - fewer scored windows via `EVAL_STRIDE=64`
+  - Combining them gives the harshest but still clean budget probe in the exact PR688 family.
+- Command or config:
+  - Added wrappers:
+    - [icrn_h200_upstream_pr688_qttt_light_chunk256_stride64_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr688_qttt_light_chunk256_stride64_proxy.sh)
+    - [h100_upstream_pr688_qttt_light_chunk256_stride64_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr688_qttt_light_chunk256_stride64_exact.sh)
+    - [h100_upstream_pr688_qttt_light_chunk256_stride64_exact_3seed.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr688_qttt_light_chunk256_stride64_exact_3seed.sh)
+  - Defaults:
+    - `QTTT=1`
+    - `TTT_FREEZE_BLOCKS=3`
+    - `USE_POLYAK=0`
+    - `ADAPTIVE_LR=0`
+    - `TTT_CHUNK_TOKENS=262144`
+    - `EVAL_STRIDE=64`
+  - Wired through:
+    - [h100_parallel_candidate_portfolio.sh](/home/aryang9/parameter-golf/scripts/h100_parallel_candidate_portfolio.sh)
+    - [record_push_status.py](/home/aryang9/parameter-golf/scripts/record_push_status.py)
+    - [rearm_after_current_timed_nocompile_with_hedge.sh](/home/aryang9/parameter-golf/scripts/rearm_after_current_timed_nocompile_with_hedge.sh)
+  - Queue placement:
+    - directly after `upstream_pr688_timed_nocompile_qttt_light_stride64_exact`
+    - directly before the PR674 timed `nocompile` overlay family
+- Decision:
+  - Use the combined `chunk256+stride64` lane as the final exact-PR688 budget extreme before paying the complexity cost of PR674 overlays.
