@@ -11,6 +11,10 @@ record_push_apply_arch_candidate() {
     bg3072)
       export BIGRAM_VOCAB_SIZE="${BIGRAM_VOCAB_SIZE:-3072}"
       ;;
+    swiglu)
+      export USE_SWIGLU="${USE_SWIGLU:-1}"
+      export SWIGLU_HALF_DIM="${SWIGLU_HALF_DIM:-1024}"
+      ;;
     vr1_bg3072)
       export VALUE_RESIDUAL="${VALUE_RESIDUAL:-1}"
       export BIGRAM_VOCAB_SIZE="${BIGRAM_VOCAB_SIZE:-3072}"
@@ -77,6 +81,8 @@ record_push_apply_ttt_candidate() {
       export NGRAM_EVAL_ENABLED="${NGRAM_EVAL_ENABLED:-1}"
       export NGRAM_STRIDE="${NGRAM_STRIDE:-128}"
       export NGRAM_BATCH_SEQS="${NGRAM_BATCH_SEQS:-32}"
+      export NGRAM_CACHE_KIND="${NGRAM_CACHE_KIND:-hashed}"
+      export NGRAM_HASHED_BUCKETS="${NGRAM_HASHED_BUCKETS:-4194304}"
       export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.20}"
       export NGRAM_MAX_N="${NGRAM_MAX_N:-5}"
       export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-1.0}"

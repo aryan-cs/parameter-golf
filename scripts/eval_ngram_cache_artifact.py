@@ -54,6 +54,8 @@ def build_eval_model(mod, args, device: torch.device, deq_state: dict[str, torch
         ve_layers=args.ve_layers,
         gated_attention=args.gated_attention,
         value_residual=args.value_residual,
+        use_swiglu=getattr(args, "use_swiglu", False),
+        swiglu_half_dim=getattr(args, "swiglu_half_dim", 1024),
     ).to(device).bfloat16()
     eval_model.qo_bank.data = eval_model.qo_bank.data.float()
     eval_model.kv_bank.data = eval_model.kv_bank.data.float()

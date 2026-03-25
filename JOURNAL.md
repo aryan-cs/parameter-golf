@@ -2835,6 +2835,53 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
   - If one of the nearby smokes clearly dominates, promote that exact variant to the next full proxy/default handoff.
   - If the whole hashed family underperforms on the proxy artifact, move immediately to the SwiGLU architecture hedge from PR `#676`.
 
+- Timestamp: 2026-03-25 04:40 UTC
+- Commit: `working tree`
+- Lane: continuous H200 queue, architecture hedge
+- Objective: Keep the H200 continuously busy not just on the current baseline proxy hashed family, but also on the next architecture hedge if that family is still not enough.
+- Research / observation:
+  - The live baseline proxy retrain is still progressing normally:
+    - latest observed progress: `step 750/7185`
+    - `train_time = 496,177ms`
+    - `step_avg = 661.57ms`
+  - The saved proxy artifact still does not exist yet; the previous `record674_proxy7185` log was just the stale header from the earlier premature launch, so I cleared it.
+  - Public frontier refresh still favors PR `#674` for eval-side gains.
+  - The most plausible next architecture-side hedge remains PR `#676`:
+    - parameter-neutral SwiGLU replacing LeakyReLU²
+    - built on a strong public stack
+    - no finished leaderboard score yet, but easy to stack with the hashed 5-gram eval family
+- Code / ops:
+  - Added default-off `USE_SWIGLU` / `SWIGLU_HALF_DIM` support to the active record-lane `train_gpt.py`.
+    - MLP now supports either:
+      - current LeakyReLU² path
+      - gated SwiGLU path
+    - GPT bank shapes switch accordingly while preserving parameter budget
+    - build-time / eval-time model constructors now pass the SwiGLU flags through
+  - Patched artifact evaluators to understand SwiGLU-backed artifacts:
+    - `scripts/eval_ngram_cache_artifact.py`
+    - `scripts/eval_ngram_ttt_artifact.py`
+  - Added `swiglu` as an architecture candidate in `scripts/record_push_candidate_lib.sh`.
+  - Added convenience launcher:
+    - `scripts/icrn_h200_ttt_h100_proxy_swiglu.sh`
+  - Added automatic handoff script:
+    - `scripts/after_baseline_proxy_queue_launch_swiglu.sh`
+    - waits for the current baseline proxy queue to finish
+    - then launches a `swiglu` proxy train
+    - and stages the same hashed `record674 + nearby smokes + conf07` eval family on the resulting artifact
+  - Started that watcher in the background now, so the H200 should continue automatically after the current baseline proxy queue completes.
+- Validation:
+  - `python -m py_compile scripts/eval_ngram_cache_artifact.py scripts/eval_ngram_ttt_artifact.py scripts/record_push_status.py`
+  - `python - <<'PY' ... py_compile.compile(train_gpt.py, doraise=True) ... PY`
+  - `bash -n scripts/icrn_h200_ttt_h100_proxy_swiglu.sh scripts/after_baseline_proxy_queue_launch_swiglu.sh`
+- Decision:
+  - Keep the current baseline hashed family as the primary lane.
+  - Do not wait passively for its result before preparing the next branch.
+  - Queue `swiglu` as the automatic next architecture hedge so the H200 keeps exploring if the current family still isn’t enough.
+- Next step:
+  - Let the baseline proxy train export and finish its hashed eval queue.
+  - If the baseline hashed family is strong, compare it directly against the later `swiglu` hashed family.
+  - If the baseline hashed family is weak, treat `swiglu + hashed 5-gram` as the immediate next main candidate family.
+
 - Timestamp: 2026-03-25 04:19 UTC
 - Commit: `working tree`
 - Lane: pure n-gram frontier, late-only cooling follow-up
@@ -2942,3 +2989,57 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
   - Let the proxy retrain keep running.
   - Auto-run `record674_proxy7185`, then the tiny `record674` smoke neighbors, then proxy `record659_conf07`.
   - If hashed `record674` wins on the proxy artifact, move that family to the front of the eventual `8xH100` slate.
+
+- Timestamp: 2026-03-25 04:31 UTC
+- Commit: `working tree`
+- Lane: native PR-`#674` trainer port, proxy-to-SwiGLU staging
+- Objective: Stop relying on sidecar evaluators for the newest public frontier by giving the counted trainer its own hashed score-first path, while keeping the H200 fully booked through the next architecture hedge.
+- Research / observation:
+  - I fetched the real upstream PR heads over HTTPS:
+    - PR `#674` -> `refs/tmp/pr674`
+    - PR `#672` -> `refs/tmp/pr672`
+  - The relevant confirmation from the actual `#674` diff is that the winning move is not “just more exact 5-gram.”
+    It is a **hashed, segment-only, score-first interpolation path** with:
+    - alpha `0.20`
+    - min_count `2`
+    - hashed buckets `4,194,304`
+  - The active H200 proxy retrain is still healthy and now tracks the old baseline proxy curve cleanly:
+    - `step:1000/7185`
+    - `train_time:656282ms`
+    - `step_avg:656.28ms`
+    - `val_bpb:1.3128`
+  - Both watchers are live:
+    - `after_proxy_train_run_record674_then_conf07.sh`
+    - `after_baseline_proxy_queue_launch_swiglu.sh`
+- Code / ops:
+  - Ported a native hashed n-gram eval path into `records/.../train_gpt.py`:
+    - new envs:
+      - `NGRAM_CACHE_KIND=exact|hashed`
+      - `NGRAM_HASHED_BUCKETS`
+    - new `eval_val_hashed_ngram(...)`
+    - for DDP, hashed eval runs on rank `0` only and broadcasts the exact final result to preserve sequential cache legality
+  - Wired the existing `final_ngram_eval*` path so:
+    - `NGRAM_CACHE_KIND=exact` keeps our existing PR-`#659`-style exact-cache branch
+    - `NGRAM_CACHE_KIND=hashed` switches the counted trainer onto the PR-`#674`-style hashed score-first branch
+  - Updated `scripts/h100_repro_leaky_ttt_parallel_muon_ngram659.sh` with:
+    - `NGRAM_CACHE_KIND`
+    - `NGRAM_HASHED_BUCKETS`
+  - Updated `scripts/h100_parallel_candidate_portfolio.sh` so every `ngram674*` candidate now explicitly sets the hashed path instead of only changing alpha / thresholds.
+  - Updated `scripts/record_push_candidate_lib.sh` so generic handoff commands also know `ngram674` means hashed eval, not exact-cache eval.
+  - Brought the pending SwiGLU helper diffs into alignment:
+    - `scripts/eval_ngram_cache_artifact.py`
+    - `scripts/eval_ngram_ttt_artifact.py`
+    - `scripts/record_push_status.py`
+    now all understand the staged `swiglu` architecture hedge.
+- Validation:
+  - `python -m py_compile records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/train_gpt.py`
+  - `bash -n scripts/h100_parallel_candidate_portfolio.sh scripts/h100_repro_leaky_ttt_parallel_muon_ngram659.sh scripts/record_push_candidate_lib.sh`
+  - `git diff --check`
+- Decision:
+  - Promote hashed PR-`#674` semantics into the counted trainer immediately.
+  - Keep the active H200 on the proxy retrain.
+  - As soon as the baseline proxy `record674/conf07` comparison finishes, let the queued SwiGLU proxy hedge take over if needed instead of letting the GPU go idle.
+- Next step:
+  - Let the current proxy retrain reach export.
+  - Compare hashed `record674` vs proxy `conf07` on the same proxy artifact.
+  - If the baseline architecture still stalls above the real frontier, use the already-staged SwiGLU proxy chain as the next architecture bet.

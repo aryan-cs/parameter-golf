@@ -39,6 +39,7 @@ ARTIFACT_ORDER = [
 
 PROXY_ORDER = [
     "baseline",
+    "swiglu",
     "vr1",
     "bg3072",
     "vr1_bg3072",

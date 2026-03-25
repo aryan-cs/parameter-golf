@@ -111,10 +111,14 @@ class Hyperparameters:
     ttt_proj_lr_mult = float(os.environ.get("TTT_PROJ_LR_MULT", 3.0))
     ttt_fc_lr_mult = float(os.environ.get("TTT_FC_LR_MULT", 0.5))
     ttt_other_lr_mult = float(os.environ.get("TTT_OTHER_LR_MULT", 1.0))
+    use_swiglu = bool(int(os.environ.get("USE_SWIGLU", "0")))
+    swiglu_half_dim = int(os.environ.get("SWIGLU_HALF_DIM", 1024))
     extra_stride64_final_eval = bool(int(os.environ.get("EXTRA_STRIDE64_FINAL_EVAL", "1")))
     ngram_eval_enabled = bool(int(os.environ.get("NGRAM_EVAL_ENABLED", "0")))
     ngram_stride = int(os.environ.get("NGRAM_STRIDE", 128))
     ngram_batch_seqs = int(os.environ.get("NGRAM_BATCH_SEQS", 32))
+    ngram_cache_kind = os.environ.get("NGRAM_CACHE_KIND", "exact")
+    ngram_hashed_buckets = int(os.environ.get("NGRAM_HASHED_BUCKETS", 4_194_304))
     ngram_lambda = float(os.environ.get("NGRAM_LAMBDA", 0.15))
     ngram_max_n = int(os.environ.get("NGRAM_MAX_N", 5))
     ngram_confidence_threshold = float(os.environ.get("NGRAM_CONFIDENCE_THRESHOLD", 0.5))
@@ -782,7 +786,12 @@ class MLP(nn.Module):
     def __init__(self, dim: int, mlp_mult: int):
         super().__init__()
         # No CastedLinear -- weights come from banks
-    def forward(self, x: Tensor, up_w: Tensor, down_w: Tensor) -> Tensor:
+    def forward(self, x: Tensor, up_w: Tensor, down_w: Tensor, use_swiglu: bool = False) -> Tensor:
+        if use_swiglu:
+            half = up_w.shape[0] // 2
+            gate = F.silu(F.linear(x, up_w[:half].to(x.dtype)))
+            up = F.linear(x, up_w[half:].to(x.dtype))
+            return F.linear(gate * up, down_w.to(x.dtype))
         x = F.leaky_relu(F.linear(x, up_w.to(x.dtype)), negative_slope=0.5)
         return F.linear(x.square(), down_w.to(x.dtype))
 
@@ -817,12 +826,14 @@ class Block(nn.Module):
             nn.init.constant_(self.dtg_gate.bias, 2.0)
         else:
             self.dtg_gate = None
-    def forward(self, x: Tensor, x0: Tensor, q_w: Tensor, k_w: Tensor, v_w: Tensor, out_w: Tensor, up_w: Tensor, down_w: Tensor, v_embed: Tensor | None = None, v0: Tensor | None = None) -> tuple[Tensor, Tensor | None]:
+    def forward(self, x: Tensor, x0: Tensor, q_w: Tensor, k_w: Tensor, v_w: Tensor, out_w: Tensor, up_w: Tensor, down_w: Tensor, v_embed: Tensor | None = None, v0: Tensor | None = None, use_swiglu: bool = False) -> tuple[Tensor, Tensor | None]:
         mix = self.resid_mix.to(dtype=x.dtype)
         x_in = mix[0][None, None, :] * x + mix[1][None, None, :] * x0
         attn_out, raw_v = self.attn(self.attn_norm(x_in) * self.ln_scale_factor, q_w, k_w, v_w, out_w, v_embed=v_embed, v0=v0)
         x_out = x_in + self.attn_scale.to(dtype=x_in.dtype)[None, None, :] * attn_out
-        x_out = x_out + self.mlp_scale.to(dtype=x_out.dtype)[None, None, :] * self.mlp(self.mlp_norm(x_out) * self.ln_scale_factor, up_w, down_w)
+        x_out = x_out + self.mlp_scale.to(dtype=x_out.dtype)[None, None, :] * self.mlp(
+            self.mlp_norm(x_out) * self.ln_scale_factor, up_w, down_w, use_swiglu=use_swiglu
+        )
         if self.dtg_gate is not None:
             gate = torch.sigmoid(self.dtg_gate(x_in.detach()))
             x_out = x_in + gate * (x_out - x_in)
@@ -855,6 +866,8 @@ class GPT(nn.Module):
         ve_layers: str = "9,10",
         gated_attention: bool = False,
         value_residual: bool = False,
+        use_swiglu: bool = False,
+        swiglu_half_dim: int = 1024,
     ):
         super().__init__()
         self._ve_target_dim = num_kv_heads * (model_dim // num_heads)  # kv_dim for value projection
@@ -864,6 +877,8 @@ class GPT(nn.Module):
         self.tied_embed_init_std = tied_embed_init_std
         self.logit_softcap = logit_softcap
         self.value_residual = value_residual
+        self.use_swiglu = use_swiglu
+        self.swiglu_half_dim = swiglu_half_dim
         self.mtp_num_heads = mtp_num_heads
         self.mtp_loss_weight = mtp_loss_weight
         self.tok_emb = nn.Embedding(vocab_size, model_dim)
@@ -880,8 +895,12 @@ class GPT(nn.Module):
         self.num_layers = num_layers
         self.qo_bank = nn.Parameter(torch.empty(2 * num_layers, model_dim, model_dim))
         self.kv_bank = nn.Parameter(torch.empty(2 * num_layers, kv_dim, model_dim))
-        self.mlp_up_bank = nn.Parameter(torch.empty(num_layers, mlp_dim, model_dim))
-        self.mlp_down_bank = nn.Parameter(torch.empty(num_layers, model_dim, mlp_dim))
+        if use_swiglu:
+            self.mlp_up_bank = nn.Parameter(torch.empty(num_layers, 2 * swiglu_half_dim, model_dim))
+            self.mlp_down_bank = nn.Parameter(torch.empty(num_layers, model_dim, swiglu_half_dim))
+        else:
+            self.mlp_up_bank = nn.Parameter(torch.empty(num_layers, mlp_dim, model_dim))
+            self.mlp_down_bank = nn.Parameter(torch.empty(num_layers, model_dim, mlp_dim))
         self.blocks = nn.ModuleList(
             [
                 Block(
@@ -940,7 +959,12 @@ class GPT(nn.Module):
             nn.init.zeros_(self.qo_bank.data[n + i])                    # Out (zero init)
             nn.init.orthogonal_(self.kv_bank.data[i], gain=1.0)        # K
             nn.init.orthogonal_(self.kv_bank.data[n + i], gain=1.0)    # V
-            nn.init.orthogonal_(self.mlp_up_bank.data[i], gain=1.0)    # MLP up
+            if self.use_swiglu:
+                half = self.mlp_up_bank.data[i].shape[0] // 2
+                nn.init.orthogonal_(self.mlp_up_bank.data[i, :half], gain=1.0)
+                nn.init.orthogonal_(self.mlp_up_bank.data[i, half:], gain=1.0)
+            else:
+                nn.init.orthogonal_(self.mlp_up_bank.data[i], gain=1.0)
             nn.init.zeros_(self.mlp_down_bank.data[i])                  # MLP down (zero init)
             # Scale proj layers (out_proj and mlp_down are "proj" layers)
             self.qo_bank.data[n + i].mul_(proj_scale)
@@ -977,7 +1001,7 @@ class GPT(nn.Module):
             x, raw_v = self.blocks[i](x, x0,
                 self.qo_bank[i], self.kv_bank[i], self.kv_bank[n + i],
                 self.qo_bank[n + i], self.mlp_up_bank[i], self.mlp_down_bank[i],
-                v_embed=ve, v0=v0)
+                v_embed=ve, v0=v0, use_swiglu=self.use_swiglu)
             if v0 is None and raw_v is not None:
                 v0 = raw_v
             skips.append(x)
@@ -989,7 +1013,7 @@ class GPT(nn.Module):
             x, _ = self.blocks[bi](x, x0,
                 self.qo_bank[bi], self.kv_bank[bi], self.kv_bank[n + bi],
                 self.qo_bank[n + bi], self.mlp_up_bank[bi], self.mlp_down_bank[bi],
-                v_embed=ve, v0=v0)
+                v_embed=ve, v0=v0, use_swiglu=self.use_swiglu)
         x = self.final_norm(x)
         x_flat = x.reshape(-1, x.size(-1))
         targets = target_ids.reshape(-1)
@@ -1035,7 +1059,7 @@ class GPT(nn.Module):
             x, raw_v = self.blocks[i](x, x0,
                 self.qo_bank[i], self.kv_bank[i], self.kv_bank[n + i],
                 self.qo_bank[n + i], self.mlp_up_bank[i], self.mlp_down_bank[i],
-                v_embed=ve, v0=v0)
+                v_embed=ve, v0=v0, use_swiglu=self.use_swiglu)
             if v0 is None and raw_v is not None:
                 v0 = raw_v
             skips.append(x)
@@ -1047,7 +1071,7 @@ class GPT(nn.Module):
             x, _ = self.blocks[bi](x, x0,
                 self.qo_bank[bi], self.kv_bank[bi], self.kv_bank[n + bi],
                 self.qo_bank[n + bi], self.mlp_up_bank[bi], self.mlp_down_bank[bi],
-                v_embed=ve, v0=v0)
+                v_embed=ve, v0=v0, use_swiglu=self.use_swiglu)
         x = self.final_norm(x)
         if self.tie_embeddings:
             logits_proj = F.linear(x, self.tok_emb.weight)
@@ -1144,6 +1168,26 @@ def build_ngram_cache(vocab_size: int, max_n: int, *, packed: bool) -> OnlineNgr
     if packed:
         return PackedOnlineNgramCache(vocab_size, max_n=max_n)
     return OnlineNgramCache(vocab_size, max_n=max_n)
+
+
+def build_hashed_ngram_keys(
+    val_np: np.ndarray,
+    token_positions: np.ndarray,
+    *,
+    order: int,
+    buckets: int,
+    primes: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    ctx_width = order - 1
+    ctx_hash = np.zeros((len(token_positions),), dtype=np.uint64)
+    for k in range(ctx_width):
+        tok = val_np[token_positions - (ctx_width - 1 - k)].astype(np.uint64)
+        ctx_hash ^= tok * primes[k % len(primes)]
+    mask = np.uint64(buckets - 1)
+    ctx_key = (ctx_hash & mask).astype(np.int64)
+    tgt_np = val_np[token_positions + 1].astype(np.uint64)
+    full_key = ((ctx_hash ^ (tgt_np * primes[ctx_width % len(primes)])) & mask).astype(np.int64)
+    return ctx_key, full_key
 
 
 def parse_confidence_schedule(spec: str, default_threshold: float) -> list[tuple[float, float]]:
@@ -1491,6 +1535,7 @@ def build_quantized_eval_model(args: Hyperparameters, device: torch.device, deq_
         rope_dims=args.rope_dims, ln_scale=args.ln_scale, dtg=args.dtg_enabled,
         ve_enabled=args.ve_enabled, ve_dim=args.ve_dim, ve_layers=args.ve_layers,
         gated_attention=args.gated_attention, value_residual=args.value_residual,
+        use_swiglu=args.use_swiglu, swiglu_half_dim=args.swiglu_half_dim,
     ).to(device).bfloat16()
     eval_model.qo_bank.data = eval_model.qo_bank.data.float()
     eval_model.kv_bank.data = eval_model.kv_bank.data.float()
@@ -1974,6 +2019,153 @@ def eval_val_ngram(
     log0(f"  ngram: {ngram_improvements}/{ngram_attempts} improved, {ngram_skipped} skipped")
     base_model.train()
     return val_loss, bits_per_token * tokens_per_byte
+
+
+def eval_val_hashed_ngram(
+    args: Hyperparameters,
+    base_model: nn.Module,
+    rank: int,
+    world_size: int,
+    device: torch.device,
+    val_tokens: Tensor,
+    base_bytes_lut: Tensor,
+    has_leading_space_lut: Tensor,
+    is_boundary_token_lut: Tensor,
+    stride: int,
+    batch_seqs: int = 32,
+    eval_seq_len: int | None = None,
+    ngram_lambda: float = 0.20,
+    ngram_max_n: int = 5,
+    min_count: int = 2,
+    hashed_buckets: int = 4_194_304,
+    log0=print,
+) -> tuple[float, float]:
+    """PR #674-style hashed score-first n-gram interpolation.
+
+    This path is intentionally rank-0 only under DDP to preserve sequential cache
+    legality; other ranks block on a final broadcast of the exact result.
+    """
+    distributed = dist.is_available() and dist.is_initialized() and world_size > 1
+    if distributed and rank != 0:
+        result = torch.zeros(2, device=device, dtype=torch.float64)
+        dist.broadcast(result, src=0)
+        base_model.train()
+        return float(result[0].item()), float(result[1].item())
+
+    if ngram_max_n < 2:
+        raise ValueError(f"hashed ngram requires max_n >= 2, got {ngram_max_n}")
+    if hashed_buckets < 1024 or (hashed_buckets & (hashed_buckets - 1)) != 0:
+        raise ValueError(f"hashed_buckets must be a power of two >=1024, got {hashed_buckets}")
+    if not (0.0 <= ngram_lambda <= 1.0):
+        raise ValueError(f"ngram_lambda must be in [0,1], got {ngram_lambda}")
+
+    seq_len = eval_seq_len or args.train_seq_len
+    total_tokens = val_tokens.numel() - 1
+    window_starts = [ws for ws in range(0, total_tokens, stride) if min(ws + seq_len, total_tokens) - ws >= 1]
+    loss_sum = torch.zeros((), device=device, dtype=torch.float64)
+    token_count = torch.zeros((), device=device, dtype=torch.float64)
+    byte_count = torch.zeros((), device=device, dtype=torch.float64)
+    val_np = val_tokens.cpu().numpy()
+    ctx_table = np.zeros((hashed_buckets,), dtype=np.uint32)
+    full_table = np.zeros((hashed_buckets,), dtype=np.uint32)
+    primes = np.array(
+        [np.uint64(36313), np.uint64(27191), np.uint64(51647), np.uint64(81929), np.uint64(131071)],
+        dtype=np.uint64,
+    )
+
+    base_model.eval()
+    compiled_logits = torch.compile(base_model.forward_logits, dynamic=False, fullgraph=True)
+    log0(
+        "hashed_ngram_eval:start "
+        f"stride={stride} alpha={ngram_lambda} order={ngram_max_n} "
+        f"min_count={min_count} buckets={hashed_buckets}"
+    )
+    for bi in range(0, len(window_starts), batch_seqs):
+        batch_ws = window_starts[bi : bi + batch_seqs]
+        bsz = len(batch_ws)
+        x_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
+        y_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
+        wlens: list[int] = []
+        for i, ws in enumerate(batch_ws):
+            end = min(ws + seq_len, total_tokens)
+            wlen = end - ws
+            wlens.append(wlen)
+            chunk = val_tokens[ws : end + 1].to(dtype=torch.int64, device=device)
+            x_batch[i, :wlen] = chunk[:-1]
+            y_batch[i, :wlen] = chunk[1:]
+
+        with torch.inference_mode():
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                logits = compiled_logits(x_batch)
+        logits_f = logits.float()
+        nll = F.cross_entropy(
+            logits_f.reshape(-1, logits_f.size(-1)),
+            y_batch.reshape(-1),
+            reduction="none",
+        ).reshape(bsz, seq_len)
+
+        for i, ws in enumerate(batch_ws):
+            wlen = wlens[i]
+            s = 0 if ws == 0 else max(wlen - stride, 0)
+            seg_len = wlen - s
+            if seg_len <= 0:
+                continue
+
+            seg_nll = nll[i, s:wlen].to(torch.float64).cpu().numpy()
+            seg_model_p = np.exp(-seg_nll)
+            token_positions = np.arange(ws + s, ws + wlen, dtype=np.int64)
+            valid = token_positions >= (ngram_max_n - 1)
+            if valid.any():
+                valid_positions = token_positions[valid]
+                ctx_key, full_key = build_hashed_ngram_keys(
+                    val_np,
+                    valid_positions,
+                    order=ngram_max_n,
+                    buckets=hashed_buckets,
+                    primes=primes,
+                )
+                ctx_counts = ctx_table[ctx_key].astype(np.float64)
+                full_counts = full_table[full_key].astype(np.float64)
+                can_mix = ctx_counts >= float(min_count)
+                if can_mix.any():
+                    p_ng = np.minimum(full_counts, ctx_counts) / np.maximum(ctx_counts, 1.0)
+                    p_ng = np.clip(p_ng, 0.0, 1.0)
+                    v_idx = np.nonzero(valid)[0]
+                    mixed = (1.0 - ngram_lambda) * seg_model_p[v_idx] + ngram_lambda * p_ng
+                    seg_model_p[v_idx[can_mix]] = mixed[can_mix]
+                seg_nll = -np.log(np.clip(seg_model_p, 1e-12, 1.0))
+                # Score-first legality: only update the cache after scoring this segment.
+                np.add.at(ctx_table, ctx_key, 1)
+                np.add.at(full_table, full_key, 1)
+
+            scored_nll = torch.from_numpy(seg_nll).to(device=device, dtype=torch.float64)
+            loss_sum += scored_nll.sum()
+            token_count += float(seg_len)
+            tgt = y_batch[i, s:wlen]
+            prev = x_batch[i, s:wlen]
+            tb = base_bytes_lut[tgt].to(torch.float64)
+            tb += (has_leading_space_lut[tgt] & ~is_boundary_token_lut[prev]).to(torch.float64)
+            byte_count += tb.sum()
+
+        if bi % (batch_seqs * 200) == 0 and bi > 0 and token_count.item() > 0:
+            running_loss = loss_sum.item() / token_count.item()
+            running_bpb = (running_loss / math.log(2.0)) * (token_count.item() / max(byte_count.item(), 1.0))
+            pct = 100.0 * (bi + bsz) / max(len(window_starts), 1)
+            log0(f"  hashed_ngram [{pct:5.1f}%] bpb={running_bpb:.6f} alpha={ngram_lambda:.3f} min_count={min_count}")
+
+    val_loss = (loss_sum / token_count).item()
+    bits_per_token = val_loss / math.log(2.0)
+    tokens_per_byte = token_count.item() / byte_count.item()
+    val_bpb = bits_per_token * tokens_per_byte
+
+    if distributed:
+        result = torch.tensor([val_loss, val_bpb], device=device, dtype=torch.float64)
+        dist.broadcast(result, src=0)
+        val_loss = float(result[0].item())
+        val_bpb = float(result[1].item())
+
+    base_model.train()
+    return val_loss, val_bpb
 
 
 def eval_val_sliding_ttt(
@@ -2639,6 +2831,8 @@ def main() -> None:
         ve_layers=args.ve_layers,
         gated_attention=args.gated_attention,
         value_residual=args.value_residual,
+        use_swiglu=args.use_swiglu,
+        swiglu_half_dim=args.swiglu_half_dim,
     ).to(device).bfloat16()
     # Banks stay FP32 (like CastedLinear weights), cast to BF16 in forward
     base_model.qo_bank.data = base_model.qo_bank.data.float()
@@ -3029,27 +3223,41 @@ def main() -> None:
     if args.ngram_eval_enabled:
         torch.cuda.synchronize()
         t_ngram = time.perf_counter()
-        ngram_val_loss, ngram_val_bpb = eval_val_ngram(
-            args, eval_model, rank, world_size, device,
-            val_tokens, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut,
-            stride=args.ngram_stride,
-            batch_seqs=args.ngram_batch_seqs,
-            eval_seq_len=sw_seq_len,
-            ngram_lambda=args.ngram_lambda,
-            ngram_max_n=args.ngram_max_n,
-            confidence_threshold=args.ngram_confidence_threshold,
-            gate_mode=args.ngram_gate_mode,
-            apply_mode=args.ngram_apply_mode,
-            min_count=args.ngram_min_count,
-            ngram_adapt_enabled=args.ngram_adapt_enabled,
-            ngram_adapt_lr=args.ngram_adapt_lr,
-            ngram_adapt_decay=args.ngram_adapt_decay,
-            ngram_global_cache=args.ngram_global_cache,
-            lambda_schedule_spec=args.ngram_lambda_schedule,
-            confidence_schedule_spec=args.ngram_confidence_schedule,
-            order_lambdas_spec=args.ngram_order_lambdas,
-            log0=log0,
-        )
+        if args.ngram_cache_kind == "hashed":
+            ngram_val_loss, ngram_val_bpb = eval_val_hashed_ngram(
+                args, eval_model, rank, world_size, device,
+                val_tokens, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut,
+                stride=args.ngram_stride,
+                batch_seqs=args.ngram_batch_seqs,
+                eval_seq_len=sw_seq_len,
+                ngram_lambda=args.ngram_lambda,
+                ngram_max_n=args.ngram_max_n,
+                min_count=args.ngram_min_count,
+                hashed_buckets=args.ngram_hashed_buckets,
+                log0=log0,
+            )
+        else:
+            ngram_val_loss, ngram_val_bpb = eval_val_ngram(
+                args, eval_model, rank, world_size, device,
+                val_tokens, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut,
+                stride=args.ngram_stride,
+                batch_seqs=args.ngram_batch_seqs,
+                eval_seq_len=sw_seq_len,
+                ngram_lambda=args.ngram_lambda,
+                ngram_max_n=args.ngram_max_n,
+                confidence_threshold=args.ngram_confidence_threshold,
+                gate_mode=args.ngram_gate_mode,
+                apply_mode=args.ngram_apply_mode,
+                min_count=args.ngram_min_count,
+                ngram_adapt_enabled=args.ngram_adapt_enabled,
+                ngram_adapt_lr=args.ngram_adapt_lr,
+                ngram_adapt_decay=args.ngram_adapt_decay,
+                ngram_global_cache=args.ngram_global_cache,
+                lambda_schedule_spec=args.ngram_lambda_schedule,
+                confidence_schedule_spec=args.ngram_confidence_schedule,
+                order_lambdas_spec=args.ngram_order_lambdas,
+                log0=log0,
+            )
         torch.cuda.synchronize()
         log0(
             f"final_ngram_eval val_loss:{ngram_val_loss:.4f} val_bpb:{ngram_val_bpb:.4f} "
