@@ -11,10 +11,26 @@ STEP_VAL_RE = re.compile(
     r"step:(?P<step>\d+)/(?P<iterations>\d+)\s+val_loss:(?P<val_loss>[0-9.]+)\s+val_bpb:(?P<val_bpb>[0-9.]+)"
 )
 FINAL_EXACT_RE = re.compile(
-    r"(?P<metric>final_int6_roundtrip_exact|final_int6_sliding_window_exact|final_int6_sliding_window_s64_exact|legal_ttt_exact)"
+    r"(?P<metric>final_int6_roundtrip_exact|final_int6_sliding_window_exact|final_int6_sliding_window_s64_exact|final_ngram_eval_exact|legal_ttt_exact)"
     r"\s+val_loss:(?P<val_loss>[0-9.]+)\s+val_bpb:(?P<val_bpb>[0-9.]+)"
 )
 BYTES_RE = re.compile(r"Total submission size int6\+lzma:\s+(?P<bytes>\d+)\s+bytes")
+SUBMISSION_METRIC_PRIORITY = (
+    "legal_ttt_exact",
+    "final_ngram_eval_exact",
+    "final_int6_sliding_window_exact",
+    "final_int6_sliding_window_s64_exact",
+    "final_int6_roundtrip_exact",
+)
+
+
+def choose_submission_metric(finals: dict[str, dict[str, float]]) -> tuple[str, float] | tuple[None, None]:
+    available = [(metric, payload["val_bpb"]) for metric, payload in finals.items() if metric in SUBMISSION_METRIC_PRIORITY]
+    if not available:
+        return None, None
+    priority = {metric: idx for idx, metric in enumerate(SUBMISSION_METRIC_PRIORITY)}
+    metric, val_bpb = min(available, key=lambda item: (item[1], priority.get(item[0], len(priority))))
+    return metric, val_bpb
 
 
 def parse_log(log_path: Path) -> dict:
@@ -44,15 +60,10 @@ def parse_log(log_path: Path) -> dict:
 
     if finals:
         summary["final_metrics"] = finals
-        if "legal_ttt_exact" in finals:
-            summary["submission_metric"] = "legal_ttt_exact"
-            summary["submission_val_bpb"] = finals["legal_ttt_exact"]["val_bpb"]
-        elif "final_int6_sliding_window_exact" in finals:
-            summary["submission_metric"] = "final_int6_sliding_window_exact"
-            summary["submission_val_bpb"] = finals["final_int6_sliding_window_exact"]["val_bpb"]
-        elif "final_int6_roundtrip_exact" in finals:
-            summary["submission_metric"] = "final_int6_roundtrip_exact"
-            summary["submission_val_bpb"] = finals["final_int6_roundtrip_exact"]["val_bpb"]
+        metric, val_bpb = choose_submission_metric(finals)
+        if metric is not None:
+            summary["submission_metric"] = metric
+            summary["submission_val_bpb"] = val_bpb
     return summary
 
 
@@ -80,15 +91,10 @@ def merge_summaries(summaries: list[dict]) -> dict:
 
     if final_metrics:
         merged["final_metrics"] = final_metrics
-        if "legal_ttt_exact" in final_metrics:
-            merged["submission_metric"] = "legal_ttt_exact"
-            merged["submission_val_bpb"] = final_metrics["legal_ttt_exact"]["val_bpb"]
-        elif "final_int6_sliding_window_exact" in final_metrics:
-            merged["submission_metric"] = "final_int6_sliding_window_exact"
-            merged["submission_val_bpb"] = final_metrics["final_int6_sliding_window_exact"]["val_bpb"]
-        elif "final_int6_roundtrip_exact" in final_metrics:
-            merged["submission_metric"] = "final_int6_roundtrip_exact"
-            merged["submission_val_bpb"] = final_metrics["final_int6_roundtrip_exact"]["val_bpb"]
+        metric, val_bpb = choose_submission_metric(final_metrics)
+        if metric is not None:
+            merged["submission_metric"] = metric
+            merged["submission_val_bpb"] = val_bpb
 
     return merged
 

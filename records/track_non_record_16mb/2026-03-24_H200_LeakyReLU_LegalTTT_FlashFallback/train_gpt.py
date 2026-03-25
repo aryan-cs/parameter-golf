@@ -2095,6 +2095,27 @@ def main() -> None:
         )
         log0(f"final_int6_sliding_window_s64_exact val_loss:{sw64_val_loss:.8f} val_bpb:{sw64_val_bpb:.8f}")
         log0(f"final_int8_zlib_roundtrip_exact val_loss:{sw64_val_loss:.8f} val_bpb:{sw64_val_bpb:.8f}")
+    if args.ngram_eval_enabled:
+        torch.cuda.synchronize()
+        t_ngram = time.perf_counter()
+        ngram_val_loss, ngram_val_bpb = eval_val_ngram(
+            args, eval_model, rank, world_size, device,
+            val_tokens, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut,
+            stride=args.ngram_stride,
+            batch_seqs=args.ngram_batch_seqs,
+            eval_seq_len=sw_seq_len,
+            ngram_lambda=args.ngram_lambda,
+            ngram_max_n=args.ngram_max_n,
+            confidence_threshold=args.ngram_confidence_threshold,
+            min_count=args.ngram_min_count,
+            log0=log0,
+        )
+        torch.cuda.synchronize()
+        log0(
+            f"final_ngram_eval val_loss:{ngram_val_loss:.4f} val_bpb:{ngram_val_bpb:.4f} "
+            f"stride:{args.ngram_stride} eval_time:{1000.0 * (time.perf_counter() - t_ngram):.0f}ms"
+        )
+        log0(f"final_ngram_eval_exact val_loss:{ngram_val_loss:.8f} val_bpb:{ngram_val_bpb:.8f}")
     # Legal score-first TTT (PR #461 recipe)
     if args.ttt_enabled:
         torch.cuda.synchronize()

@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export TTT_ENABLED="${TTT_ENABLED:-0}"
+export NGRAM_EVAL_ENABLED="${NGRAM_EVAL_ENABLED:-1}"
+export NGRAM_STRIDE="${NGRAM_STRIDE:-128}"
+export NGRAM_BATCH_SEQS="${NGRAM_BATCH_SEQS:-32}"
+export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.15}"
+export NGRAM_MAX_N="${NGRAM_MAX_N:-5}"
+export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.5}"
+export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-3}"
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon.sh"
