@@ -9,21 +9,29 @@ source .venv/bin/activate
 # 1. Highest-upside eval-side search first: backward-looking n-gram cache.
 CANDIDATE="${CANDIDATE_NGRAM_1:-record659_smoke}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh"
-CANDIDATE="${CANDIDATE_NGRAM_2:-lowrisk_smoke}" \
+CANDIDATE="${CANDIDATE_NGRAM_2:-record659}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh"
-CANDIDATE="${CANDIDATE_NGRAM_3:-record659}" \
+CANDIDATE="${CANDIDATE_NGRAM_3:-record659_adapt_smoke}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh"
-CANDIDATE="${CANDIDATE_NGRAM_4:-lowrisk}" \
+CANDIDATE="${CANDIDATE_NGRAM_4:-record659_adapt}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh"
-CANDIDATE="${CANDIDATE_NGRAM_5:-lam10_conf05}" \
+CANDIDATE="${CANDIDATE_NGRAM_5:-lowrisk_smoke}" \
+  bash "$ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh"
+CANDIDATE="${CANDIDATE_NGRAM_6:-lowrisk}" \
+  bash "$ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh"
+CANDIDATE="${CANDIDATE_NGRAM_7:-lowrisk_adapt}" \
+  bash "$ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh"
+CANDIDATE="${CANDIDATE_NGRAM_8:-lam10_conf05}" \
+  bash "$ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh"
+CANDIDATE="${CANDIDATE_NGRAM_9:-vr1_record659}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh"
 
 # 1b. Combine backward-looking n-gram scoring with legal TTT on the artifact.
 CANDIDATE="${CANDIDATE_TTT_NGRAM_1:-record659_tttlr25_smoke}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh"
-CANDIDATE="${CANDIDATE_TTT_NGRAM_2:-lowrisk_tttlr25_smoke}" \
+CANDIDATE="${CANDIDATE_TTT_NGRAM_2:-record659_tttlr25}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh"
-CANDIDATE="${CANDIDATE_TTT_NGRAM_3:-record659_tttlr25}" \
+CANDIDATE="${CANDIDATE_TTT_NGRAM_3:-lowrisk_tttlr25_smoke}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh"
 CANDIDATE="${CANDIDATE_TTT_NGRAM_4:-lowrisk_tttlr25}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh"

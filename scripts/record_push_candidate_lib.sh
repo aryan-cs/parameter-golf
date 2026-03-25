@@ -90,6 +90,32 @@ record_push_apply_ttt_candidate() {
       export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.5}"
       export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-3}"
       ;;
+    ngram659_adapt)
+      export TTT_ENABLED="${TTT_ENABLED:-0}"
+      export NGRAM_EVAL_ENABLED="${NGRAM_EVAL_ENABLED:-1}"
+      export NGRAM_STRIDE="${NGRAM_STRIDE:-128}"
+      export NGRAM_BATCH_SEQS="${NGRAM_BATCH_SEQS:-32}"
+      export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.15}"
+      export NGRAM_MAX_N="${NGRAM_MAX_N:-5}"
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.5}"
+      export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-3}"
+      export NGRAM_ADAPT_ENABLED="${NGRAM_ADAPT_ENABLED:-1}"
+      export NGRAM_ADAPT_LR="${NGRAM_ADAPT_LR:-0.0003}"
+      export NGRAM_ADAPT_DECAY="${NGRAM_ADAPT_DECAY:-0.001}"
+      ;;
+    lowrisk_ngram_adapt)
+      export TTT_ENABLED="${TTT_ENABLED:-0}"
+      export NGRAM_EVAL_ENABLED="${NGRAM_EVAL_ENABLED:-1}"
+      export NGRAM_STRIDE="${NGRAM_STRIDE:-128}"
+      export NGRAM_BATCH_SEQS="${NGRAM_BATCH_SEQS:-32}"
+      export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.05}"
+      export NGRAM_MAX_N="${NGRAM_MAX_N:-5}"
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.7}"
+      export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-3}"
+      export NGRAM_ADAPT_ENABLED="${NGRAM_ADAPT_ENABLED:-1}"
+      export NGRAM_ADAPT_LR="${NGRAM_ADAPT_LR:-0.0003}"
+      export NGRAM_ADAPT_DECAY="${NGRAM_ADAPT_DECAY:-0.001}"
+      ;;
     ngram659_tttlr25)
       export TTT_ENABLED="${TTT_ENABLED:-0}"
       export NGRAM_EVAL_ENABLED="${NGRAM_EVAL_ENABLED:-0}"
@@ -189,6 +215,12 @@ record_push_artifact_log_path() {
     lam10_conf05_ngram)
       printf '%s\n' "$log_dir/h200_artifact_ngram_lam10_conf05.txt"
       ;;
+    ngram659_adapt)
+      printf '%s\n' "$log_dir/h200_artifact_ngram_record659_adapt.txt"
+      ;;
+    lowrisk_ngram_adapt)
+      printf '%s\n' "$log_dir/h200_artifact_ngram_lowrisk_adapt.txt"
+      ;;
     ngram659_tttlr25)
       printf '%s\n' "$log_dir/h200_artifact_ttt_ngram_record659_tttlr25.txt"
       ;;
@@ -239,6 +271,15 @@ record_push_ngram_log_path() {
       ;;
     vr1_record659)
       printf '%s\n' "$log_dir/h200_artifact_ngram_vr1_record659.txt"
+      ;;
+    record659_adapt_smoke)
+      printf '%s\n' "$log_dir/h200_artifact_ngram_record659_adapt_smoke.txt"
+      ;;
+    record659_adapt)
+      printf '%s\n' "$log_dir/h200_artifact_ngram_record659_adapt.txt"
+      ;;
+    lowrisk_adapt)
+      printf '%s\n' "$log_dir/h200_artifact_ngram_lowrisk_adapt.txt"
       ;;
     *)
       echo "unknown artifact n-gram candidate: $candidate" >&2

@@ -34,9 +34,12 @@ PROXY_ORDER = [
 
 NGRAM_ORDER = [
     "record659_smoke",
-    "lowrisk_smoke",
     "record659",
+    "record659_adapt_smoke",
+    "record659_adapt",
+    "lowrisk_smoke",
     "lowrisk",
+    "lowrisk_adapt",
     "lam10_conf05",
     "vr1_record659",
 ]
@@ -65,8 +68,11 @@ ARTIFACT_LOG_NAMES = {
 NGRAM_LOG_NAMES = {
     "record659": "h200_artifact_ngram_record659.txt",
     "record659_smoke": "h200_artifact_ngram_record659_smoke.txt",
+    "record659_adapt_smoke": "h200_artifact_ngram_record659_adapt_smoke.txt",
+    "record659_adapt": "h200_artifact_ngram_record659_adapt.txt",
     "lowrisk": "h200_artifact_ngram_lowrisk.txt",
     "lowrisk_smoke": "h200_artifact_ngram_lowrisk_smoke.txt",
+    "lowrisk_adapt": "h200_artifact_ngram_lowrisk_adapt.txt",
     "lam10_conf05": "h200_artifact_ngram_lam10_conf05.txt",
     "vr1_record659": "h200_artifact_ngram_vr1_record659.txt",
 }

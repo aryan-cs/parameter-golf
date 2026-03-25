@@ -109,6 +109,9 @@ class Hyperparameters:
     ngram_max_n = int(os.environ.get("NGRAM_MAX_N", 5))
     ngram_confidence_threshold = float(os.environ.get("NGRAM_CONFIDENCE_THRESHOLD", 0.5))
     ngram_min_count = int(os.environ.get("NGRAM_MIN_COUNT", 3))
+    ngram_adapt_enabled = bool(int(os.environ.get("NGRAM_ADAPT_ENABLED", "0")))
+    ngram_adapt_lr = float(os.environ.get("NGRAM_ADAPT_LR", 0.0003))
+    ngram_adapt_decay = float(os.environ.get("NGRAM_ADAPT_DECAY", 0.001))
     ngram_ttt_enabled = bool(int(os.environ.get("NGRAM_TTT_ENABLED", "0")))
     ngram_ttt_stride = int(os.environ.get("NGRAM_TTT_STRIDE", os.environ.get("EVAL_STRIDE", "64")))
 
@@ -1181,6 +1184,9 @@ def eval_val_ngram(
     ngram_max_n: int = 5,
     confidence_threshold: float = 0.5,
     min_count: int = 3,
+    ngram_adapt_enabled: bool = False,
+    ngram_adapt_lr: float = 0.0003,
+    ngram_adapt_decay: float = 0.001,
     log0=print,
 ) -> tuple[float, float]:
     """Backward-looking n-gram cache with safety-gated log-prob mixing."""
@@ -1201,97 +1207,131 @@ def eval_val_ngram(
     ngram_skipped = 0
     log_1_minus_lam = math.log(1.0 - ngram_lambda)
     log_lam = math.log(ngram_lambda)
+    ngram_adapt_optimizer = None
+    global_weights: dict[int, Tensor] | None = None
 
-    base_model.eval()
+    if ngram_adapt_enabled:
+        base_model.train()
+        num_layers = len(base_model.blocks)
+        update_params = []
+        target_layers = list(range(max(0, num_layers - 3), num_layers))
+        for idx in target_layers:
+            for p in base_model.blocks[idx].parameters():
+                if p.requires_grad:
+                    update_params.append(p)
+        global_weights = {id(p): p.data.clone() for p in update_params}
+        ngram_adapt_optimizer = torch.optim.RMSprop(update_params, lr=ngram_adapt_lr, alpha=0.99, eps=1e-8)
+    else:
+        base_model.eval()
     compiled_logits = torch.compile(base_model.forward_logits, dynamic=False, fullgraph=True)
-    with torch.inference_mode():
-        for bi in range(0, len(my_windows), batch_seqs):
-            batch_ws = my_windows[bi : bi + batch_seqs]
-            bsz = len(batch_ws)
-            x_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
-            y_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
-            wlens: list[int] = []
-            for i, ws in enumerate(batch_ws):
-                end = min(ws + seq_len, total_tokens)
-                wlen = end - ws
-                wlens.append(wlen)
-                chunk = val_tokens[ws : end + 1].to(dtype=torch.int64, device=device)
-                x_batch[i, :wlen] = chunk[:-1]
-                y_batch[i, :wlen] = chunk[1:]
+    for bi in range(0, len(my_windows), batch_seqs):
+        batch_ws = my_windows[bi : bi + batch_seqs]
+        bsz = len(batch_ws)
+        x_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
+        y_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
+        wlens: list[int] = []
+        for i, ws in enumerate(batch_ws):
+            end = min(ws + seq_len, total_tokens)
+            wlen = end - ws
+            wlens.append(wlen)
+            chunk = val_tokens[ws : end + 1].to(dtype=torch.int64, device=device)
+            x_batch[i, :wlen] = chunk[:-1]
+            y_batch[i, :wlen] = chunk[1:]
 
+        with torch.inference_mode():
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
                 logits = compiled_logits(x_batch)
-            logits_f = logits.float()
-            nll = F.cross_entropy(
-                logits_f.reshape(-1, logits_f.size(-1)),
-                y_batch.reshape(-1),
-                reduction="none",
-            ).reshape(bsz, seq_len)
+        logits_f = logits.float()
+        nll = F.cross_entropy(
+            logits_f.reshape(-1, logits_f.size(-1)),
+            y_batch.reshape(-1),
+            reduction="none",
+        ).reshape(bsz, seq_len)
 
-            for i, ws in enumerate(batch_ws):
-                wlen = wlens[i]
-                s = 0 if ws == 0 else max(wlen - stride, 0)
-                scored_nll = nll[i, s:wlen].to(torch.float64).clone()
-                if ws > 0:
-                    log_sm = F.log_softmax(logits_f[i, s:wlen], dim=-1)
-                    max_logp_cpu = log_sm.max(dim=-1).values.cpu().tolist()
-                    x_cpu = x_batch[i, :wlen].cpu().tolist()
-                    y_cpu = y_batch[i, s:wlen].cpu().tolist()
-                    uncertain_indices: list[int] = []
-                    prev_contexts: list[list[int]] = []
-                    targets: list[int] = []
-                    n_scored = wlen - s
-                    for t_off in range(n_scored):
-                        if max_logp_cpu[t_off] > log_conf_thresh:
-                            ngram_skipped += 1
+        for i, ws in enumerate(batch_ws):
+            wlen = wlens[i]
+            s = 0 if ws == 0 else max(wlen - stride, 0)
+            scored_nll = nll[i, s:wlen].to(torch.float64).clone()
+            if ws > 0:
+                log_sm = F.log_softmax(logits_f[i, s:wlen], dim=-1)
+                max_logp_cpu = log_sm.max(dim=-1).values.cpu().tolist()
+                x_cpu = x_batch[i, :wlen].cpu().tolist()
+                y_cpu = y_batch[i, s:wlen].cpu().tolist()
+                uncertain_indices: list[int] = []
+                prev_contexts: list[list[int]] = []
+                targets: list[int] = []
+                n_scored = wlen - s
+                for t_off in range(n_scored):
+                    if max_logp_cpu[t_off] > log_conf_thresh:
+                        ngram_skipped += 1
+                        continue
+                    t_idx = s + t_off
+                    uncertain_indices.append(t_off)
+                    ctx_start = max(0, t_idx - ngram_max_n + 1)
+                    prev_contexts.append(x_cpu[ctx_start : t_idx + 1])
+                    targets.append(y_cpu[t_off])
+
+                if uncertain_indices:
+                    ng_logps = [ngram.logprob_target(ctx, tgt, min_count=min_count) for ctx, tgt in zip(prev_contexts, targets)]
+                    unc_idx_t = torch.tensor(uncertain_indices, dtype=torch.long, device=log_sm.device)
+                    tgt_t = torch.tensor(targets, dtype=torch.long, device=log_sm.device)
+                    model_logps = log_sm[unc_idx_t, tgt_t].cpu().tolist()
+                    for j, t_off in enumerate(uncertain_indices):
+                        ng_lp = ng_logps[j]
+                        if ng_lp is None:
                             continue
-                        t_idx = s + t_off
-                        uncertain_indices.append(t_off)
-                        ctx_start = max(0, t_idx - ngram_max_n + 1)
-                        prev_contexts.append(x_cpu[ctx_start : t_idx + 1])
-                        targets.append(y_cpu[t_off])
+                        ngram_attempts += 1
+                        model_lp = model_logps[j]
+                        a = log_1_minus_lam + model_lp
+                        b = log_lam + ng_lp
+                        mixed_lp = max(a, b) + math.log1p(math.exp(-abs(a - b)))
+                        new_nll = -mixed_lp
+                        old_nll = scored_nll[t_off].item()
+                        if new_nll < old_nll:
+                            scored_nll[t_off] = new_nll
+                            ngram_improvements += 1
 
-                    if uncertain_indices:
-                        ng_logps = [ngram.logprob_target(ctx, tgt, min_count=min_count) for ctx, tgt in zip(prev_contexts, targets)]
-                        unc_idx_t = torch.tensor(uncertain_indices, dtype=torch.long, device=log_sm.device)
-                        tgt_t = torch.tensor(targets, dtype=torch.long, device=log_sm.device)
-                        model_logps = log_sm[unc_idx_t, tgt_t].cpu().tolist()
-                        for j, t_off in enumerate(uncertain_indices):
-                            ng_lp = ng_logps[j]
-                            if ng_lp is None:
-                                continue
-                            ngram_attempts += 1
-                            model_lp = model_logps[j]
-                            a = log_1_minus_lam + model_lp
-                            b = log_lam + ng_lp
-                            mixed_lp = max(a, b) + math.log1p(math.exp(-abs(a - b)))
-                            new_nll = -mixed_lp
-                            old_nll = scored_nll[t_off].item()
-                            if new_nll < old_nll:
-                                scored_nll[t_off] = new_nll
-                                ngram_improvements += 1
+            loss_sum += scored_nll.sum()
+            token_count += float(wlen - s)
+            tgt = y_batch[i, s:wlen]
+            prev = x_batch[i, s:wlen]
+            tb = base_bytes_lut[tgt].to(torch.float64)
+            tb += (has_leading_space_lut[tgt] & ~is_boundary_token_lut[prev]).to(torch.float64)
+            byte_count += tb.sum()
 
-                loss_sum += scored_nll.sum()
-                token_count += float(wlen - s)
-                tgt = y_batch[i, s:wlen]
-                prev = x_batch[i, s:wlen]
-                tb = base_bytes_lut[tgt].to(torch.float64)
-                tb += (has_leading_space_lut[tgt] & ~is_boundary_token_lut[prev]).to(torch.float64)
-                byte_count += tb.sum()
+        for i in range(bsz):
+            wlen = wlens[i]
+            toks = x_batch[i, :wlen].cpu().tolist()
+            toks.append(y_batch[i, wlen - 1].item())
+            ngram.update_from_list(toks)
 
-            for i in range(bsz):
-                wlen = wlens[i]
-                toks = x_batch[i, :wlen].cpu().tolist()
-                toks.append(y_batch[i, wlen - 1].item())
-                ngram.update_from_list(toks)
+        if ngram_adapt_enabled and ngram_adapt_optimizer is not None:
+            last_wlen = wlens[-1]
+            last_s = 0 if batch_ws[-1] == 0 else max(last_wlen - stride, 0)
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                adapt_logits = compiled_logits(x_batch[-1:, :last_wlen])
+            adapt_loss = F.cross_entropy(
+                adapt_logits[0, last_s:last_wlen].float(),
+                y_batch[-1, last_s:last_wlen],
+            )
+            ngram_adapt_optimizer.zero_grad()
+            adapt_loss.backward()
+            ngram_adapt_optimizer.step()
+            if global_weights is not None:
+                with torch.no_grad():
+                    for p in ngram_adapt_optimizer.param_groups[0]["params"]:
+                        pid = id(p)
+                        if pid in global_weights:
+                            p.data.mul_(1.0 - ngram_adapt_decay).add_(global_weights[pid], alpha=ngram_adapt_decay)
 
-            if bi % (batch_seqs * 50) == 0 and token_count.item() > 0:
-                running_loss = loss_sum.item() / token_count.item()
-                running_bpb = (running_loss / math.log(2.0)) * (token_count.item() / max(byte_count.item(), 1))
-                pct = 100.0 * bi / max(len(my_windows), 1)
-                hit = 100.0 * ngram_improvements / max(ngram_attempts, 1)
-                skip = 100.0 * ngram_skipped / max(ngram_skipped + ngram_attempts + 1, 1)
-                log0(f"  ngram [{pct:5.1f}%] bpb={running_bpb:.6f} hit={hit:.1f}% skip={skip:.0f}%")
+        if bi % (batch_seqs * 50) == 0 and token_count.item() > 0:
+            running_loss = loss_sum.item() / token_count.item()
+            running_bpb = (running_loss / math.log(2.0)) * (token_count.item() / max(byte_count.item(), 1))
+            pct = 100.0 * bi / max(len(my_windows), 1)
+            hit = 100.0 * ngram_improvements / max(ngram_attempts, 1)
+            skip = 100.0 * ngram_skipped / max(ngram_skipped + ngram_attempts + 1, 1)
+            suffix = " +ngram_adapt" if ngram_adapt_enabled else ""
+            log0(f"  ngram [{pct:5.1f}%] bpb={running_bpb:.6f} hit={hit:.1f}% skip={skip:.0f}%{suffix}")
 
     if dist.is_available() and dist.is_initialized():
         counts = torch.tensor([float(ngram_improvements), float(ngram_attempts), float(ngram_skipped)], device=device, dtype=torch.float64)
@@ -2333,6 +2373,9 @@ def main() -> None:
             ngram_max_n=args.ngram_max_n,
             confidence_threshold=args.ngram_confidence_threshold,
             min_count=args.ngram_min_count,
+            ngram_adapt_enabled=args.ngram_adapt_enabled,
+            ngram_adapt_lr=args.ngram_adapt_lr,
+            ngram_adapt_decay=args.ngram_adapt_decay,
             log0=log0,
         )
         torch.cuda.synchronize()

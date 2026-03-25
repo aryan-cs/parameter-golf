@@ -2086,3 +2086,28 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: We now have a second pure eval-side n-gram branch ready immediately after the current queue: plain PR `#659` cache mixing, combined `TTT+ngram`, and now `ngram+adapt`. This keeps the H200 search focused on cheap post-train gains instead of reopening broad retraining work while the full `record659` run is still active.
 - Decision: Treat `record659_adapt_smoke` as the next “version two” experiment if the plain full `record659` result is close but not clearly dominant. Keep it out of the counted trainer for now; only promote it into `train_gpt.py` if the H200 artifact result is compelling.
 - Next step: Let the live full `record659` run finish first, then compare plain `record659` against `record659_tttlr25` and `record659_adapt_smoke` before deciding which eval family deserves the next full H200 or future `8xH100` slot.
+
+- Timestamp: 2026-03-25 03:02 UTC
+- Commit: `working tree`
+- Lane: Pure n-gram frontier confirmation + ngram-adapt promotion prep
+- Objective: Keep tightening around the highest-upside eval-side branch while the long H200 `record659` run is still in flight, and remove any remaining plumbing gap between a promising H200 `ngram_adapt` result and a real `8xH100` submission attempt.
+- Command or config: Monitored the live full `record659` artifact run in `logs/h200_artifact_ngram_record659.txt`, then promoted the dormant RMSprop adaptation branch from the standalone evaluator into the counted submission path. Specifically:
+  - added `NGRAM_ADAPT_ENABLED`, `NGRAM_ADAPT_LR`, and `NGRAM_ADAPT_DECAY` to the record-lane `train_gpt.py`
+  - extended `eval_val_ngram(...)` in the counted trainer to optionally run the same last-3-block RMSprop update/decay loop already present in `scripts/eval_ngram_cache_artifact.py`
+  - added new exact-run launchers:
+    - `scripts/h100_repro_leaky_ttt_parallel_muon_ngram659_adapt.sh`
+    - `scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_ngram659_adapt.sh`
+    - `scripts/h100_repro_leaky_ttt_parallel_muon_vr1_bg3072_ngram659_adapt.sh`
+    - `scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_vr1_bg3072_ngram659_adapt.sh`
+  - updated `scripts/h100_parallel_candidate_portfolio.sh`, `scripts/record_push_candidate_lib.sh`, `scripts/record_push_status.py`, and `scripts/queue_h200_credit_prep.sh` so the next queue prioritizes `record659 -> record659_adapt -> record659_tttlr25` before spending more time on lower-signal low-risk branches
+  - validated with `python -m py_compile` and `bash -n`
+- Result: The live full `record659` H200 run is now materially stronger than the earlier `1.092x` plateau. Latest running checkpoints:
+  - `22.1% -> bpb=1.092110`
+  - `27.7% -> bpb=1.090305`
+  - `30.0% -> bpb=1.090214`
+  - `31.4% -> bpb=1.089458`
+  - `32.4% -> bpb=1.089007`
+  - `32.7% -> bpb=1.089130`
+  This is the clearest evidence yet that the `5`-gram branch is a real frontier contender on our saved artifact, not just a smoke-pass curiosity. Even before completion, it is already far ahead of the pure legal-TTT winner `1.11366553`. The codebase is now also ready to escalate immediately if `ngram_adapt` proves real on H200; we will not need a second wiring pass before the next `8xH100` window.
+- Decision: Keep the current full `record659` run untouched. Treat pure `record659` as the primary live bet, `record659_adapt` as the highest-upside next follow-up, and `record659_tttlr25` as the best complementary hybrid branch. Deprioritize lower-signal `lowrisk` variants until at least one of these higher-leverage branches finishes.
+- Next step: Let the current full `record659` run finish, then immediately compare it against the soonest available `record659_adapt` and `record659_tttlr25` runs in the reordered queue. If the pure run lands near the current `1.089x` trajectory, make the `ngram659` family the front of the next `8xH100` launch slate.
