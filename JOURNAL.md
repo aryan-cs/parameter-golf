@@ -4925,3 +4925,36 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
     - PR755 gravity tokenizer for a simpler, already-under-cap base
     - PR753-style backoff/adaptive artifact eval on top
   - Update the public-frontier snapshot so PR755, not PR700, is the more relevant secondary open claim.
+
+## 2026-03-25 19:39 UTC - Pivot the mainline to exact PR758 and reorder the H200 ladder around PR755
+
+- Commit: `TBD`
+- Objective:
+  - Replace the stale PR674/PR700-first automation with a cleaner readiness ladder centered on the newest reproducible-looking exact-upstream family.
+- Findings:
+  - The exact PR753 smoke in [logs/h200_upstream_pr753_proxy600_timed_nocompile_seed1337.txt](/home/aryang9/parameter-golf/records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs/h200_upstream_pr753_proxy600_timed_nocompile_seed1337.txt) finished cleanly enough to answer the branch-sanity question, but it is not a viable `1xH200` dev proxy:
+    - stopped at `step:373/20000` inside `596s`
+    - final `roundtrip_exact` landed at `4.2074`
+  - Fresh public scan on March 25, 2026 showed a better exact-upstream mainline:
+    - [PR #758](https://github.com/openai/parameter-golf/pull/758) reports `1.0465` mean, `13.99 MB`, `600s` train, and `~116s` eval
+    - its method is much cleaner to reproduce locally than PR753: 11L XSA-all + 7-gram cache, no TTT
+  - PR755 remains the strongest simpler second lane:
+    - [PR #755](https://github.com/openai/parameter-golf/pull/755) reports `1.0321` mean with a vanilla 12L trainer and a gravity-scored tokenizer
+- Code / ops:
+  - Added exact-upstream PR758 support:
+    - [scripts/patch_pr758_compile_gate.py](/home/aryang9/parameter-golf/scripts/patch_pr758_compile_gate.py)
+    - [scripts/icrn_h200_upstream_pr758_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr758_proxy.sh)
+    - [scripts/h100_upstream_pr758_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr758_exact.sh)
+    - [scripts/h100_upstream_pr758_exact_3seed.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr758_exact_3seed.sh)
+  - Promoted PR758 and PR755 in the H100/status surface:
+    - [scripts/h100_parallel_candidate_portfolio.sh](/home/aryang9/parameter-golf/scripts/h100_parallel_candidate_portfolio.sh)
+    - [scripts/record_push_status.py](/home/aryang9/parameter-golf/scripts/record_push_status.py)
+  - Replaced [scripts/rearm_after_current_timed_nocompile_with_hedge.sh](/home/aryang9/parameter-golf/scripts/rearm_after_current_timed_nocompile_with_hedge.sh) with a shorter readiness queue:
+    1. current PR753 completion
+    2. exact upstream PR758 timed `nocompile`
+    3. PR755 smoke + record753 hybrid eval
+    4. PR688 `skipsliding -> eta05 -> eta20` fallback
+- Decision:
+  - PR758 is now the exact-upstream mainline.
+  - PR755 is the second serious lane.
+  - PR753 remains an eval-idea donor only unless a future hybrid result justifies another branch-specific pass.

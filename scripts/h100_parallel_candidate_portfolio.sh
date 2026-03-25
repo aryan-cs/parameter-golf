@@ -60,6 +60,18 @@ run_candidate() {
     upstream_pr753_timed_nocompile_exact)
       exec env TIMED_MODE=1 COMPILE_ENABLED=0 bash "$ROOT_DIR/scripts/h100_upstream_pr753_exact.sh"
       ;;
+    upstream_pr758_exact)
+      exec bash "$ROOT_DIR/scripts/h100_upstream_pr758_exact.sh"
+      ;;
+    upstream_pr758_timed_exact)
+      exec env TIMED_MODE=1 bash "$ROOT_DIR/scripts/h100_upstream_pr758_exact.sh"
+      ;;
+    upstream_pr758_timed_nocompile_exact)
+      exec env TIMED_MODE=1 COMPILE_ENABLED=0 bash "$ROOT_DIR/scripts/h100_upstream_pr758_exact.sh"
+      ;;
+    upstream_pr755_exact)
+      exec bash "$ROOT_DIR/scripts/h100_upstream_pr755_exact.sh"
+      ;;
     upstream_pr700_exact)
       exec bash "$ROOT_DIR/scripts/h100_upstream_pr700_exact.sh"
       ;;
@@ -579,6 +591,10 @@ Run one candidate on each 8xH100 node by setting CANDIDATE:
   CANDIDATE=upstream_pr688_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr688_timed_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr688_timed_nocompile_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=upstream_pr758_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=upstream_pr758_timed_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=upstream_pr758_timed_nocompile_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=upstream_pr755_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr700_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr700_timed_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr700_timed_nocompile_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
