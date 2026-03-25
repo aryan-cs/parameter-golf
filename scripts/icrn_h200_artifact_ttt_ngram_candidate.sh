@@ -118,6 +118,27 @@ case "$CANDIDATE" in
     TTT_LR_GROUPING="pr672"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ttt_ngram_record659_adamw30ep_cosine.txt}"
     ;;
+  record659_adamw30ep_cosine_latecool_smoke)
+    TTT_OPTIMIZER="adamw"
+    TTT_LR="0.0005"
+    TTT_EPOCHS="30"
+    TTT_SCHEDULE="step_cosine"
+    TTT_LR_GROUPING="pr672"
+    CONFIDENCE_SCHEDULE="0.00:0.70,0.72:0.65,0.80:0.60,0.90:0.55"
+    CONFIDENCE_THRESHOLD="0.7"
+    MAX_CHUNKS="8"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ttt_ngram_record659_adamw30ep_cosine_latecool_smoke.txt}"
+    ;;
+  record659_adamw30ep_cosine_latecool)
+    TTT_OPTIMIZER="adamw"
+    TTT_LR="0.0005"
+    TTT_EPOCHS="30"
+    TTT_SCHEDULE="step_cosine"
+    TTT_LR_GROUPING="pr672"
+    CONFIDENCE_SCHEDULE="0.00:0.70,0.72:0.65,0.80:0.60,0.90:0.55"
+    CONFIDENCE_THRESHOLD="0.7"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ttt_ngram_record659_adamw30ep_cosine_latecool.txt}"
+    ;;
   record659_adamw30ep_cosine_lamcool_smoke)
     TTT_OPTIMIZER="adamw"
     TTT_LR="0.0005"

@@ -52,6 +52,12 @@ run_candidate() {
       export NGRAM_LAMBDA_SCHEDULE="${NGRAM_LAMBDA_SCHEDULE:-0.00:0.15,0.72:0.12,0.80:0.09,0.90:0.06}"
       exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_ngram659.sh"
       ;;
+    ngram659_latecool_conf07_min4)
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.7}"
+      export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-4}"
+      export NGRAM_CONFIDENCE_SCHEDULE="${NGRAM_CONFIDENCE_SCHEDULE:-0.00:0.70,0.72:0.65,0.80:0.60,0.90:0.55}"
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_ngram659.sh"
+      ;;
     ngram659_conf07_lamcool)
       export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.7}"
       export NGRAM_LAMBDA_SCHEDULE="${NGRAM_LAMBDA_SCHEDULE:-0.00:0.15,0.50:0.12,0.65:0.09,0.80:0.06}"
@@ -119,6 +125,12 @@ run_candidate() {
       export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.7}"
       export NGRAM_CONFIDENCE_SCHEDULE="${NGRAM_CONFIDENCE_SCHEDULE:-0.00:0.70,0.72:0.65,0.80:0.60,0.90:0.55}"
       export NGRAM_LAMBDA_SCHEDULE="${NGRAM_LAMBDA_SCHEDULE:-0.00:0.15,0.72:0.12,0.80:0.09,0.90:0.06}"
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_ngram659.sh"
+      ;;
+    warmup0_ngram659_latecool_conf07_min4)
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.7}"
+      export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-4}"
+      export NGRAM_CONFIDENCE_SCHEDULE="${NGRAM_CONFIDENCE_SCHEDULE:-0.00:0.70,0.72:0.65,0.80:0.60,0.90:0.55}"
       exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_ngram659.sh"
       ;;
     warmup0_ngram659_conf07_lamcool)
@@ -208,6 +220,16 @@ run_candidate() {
       export TTT_LR_GROUPING="${TTT_LR_GROUPING:-pr672}"
       exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_ngram659_tttlr25.sh"
       ;;
+    ngram659_adamw30ep_cosine_latecool)
+      export TTT_OPTIMIZER="${TTT_OPTIMIZER:-adamw}"
+      export TTT_LR="${TTT_LR:-0.0005}"
+      export TTT_EPOCHS="${TTT_EPOCHS:-30}"
+      export TTT_SCHEDULE="${TTT_SCHEDULE:-step_cosine}"
+      export TTT_LR_GROUPING="${TTT_LR_GROUPING:-pr672}"
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.7}"
+      export NGRAM_CONFIDENCE_SCHEDULE="${NGRAM_CONFIDENCE_SCHEDULE:-0.00:0.70,0.72:0.65,0.80:0.60,0.90:0.55}"
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_ngram659_tttlr25.sh"
+      ;;
     ngram659_adamw30ep_cosine_lr3e4)
       export TTT_OPTIMIZER="${TTT_OPTIMIZER:-adamw}"
       export TTT_LR="${TTT_LR:-0.0003}"
@@ -233,6 +255,16 @@ run_candidate() {
       export TTT_EPOCHS="${TTT_EPOCHS:-30}"
       export TTT_SCHEDULE="${TTT_SCHEDULE:-step_cosine}"
       export TTT_LR_GROUPING="${TTT_LR_GROUPING:-pr672}"
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_ngram659_tttlr25.sh"
+      ;;
+    warmup0_ngram659_adamw30ep_cosine_latecool)
+      export TTT_OPTIMIZER="${TTT_OPTIMIZER:-adamw}"
+      export TTT_LR="${TTT_LR:-0.0005}"
+      export TTT_EPOCHS="${TTT_EPOCHS:-30}"
+      export TTT_SCHEDULE="${TTT_SCHEDULE:-step_cosine}"
+      export TTT_LR_GROUPING="${TTT_LR_GROUPING:-pr672}"
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.7}"
+      export NGRAM_CONFIDENCE_SCHEDULE="${NGRAM_CONFIDENCE_SCHEDULE:-0.00:0.70,0.72:0.65,0.80:0.60,0.90:0.55}"
       exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_ngram659_tttlr25.sh"
       ;;
     warmup0_ngram659_adamw30ep_cosine_lr3e4)
@@ -286,6 +318,7 @@ Run one candidate on each 8xH100 node by setting CANDIDATE:
   CANDIDATE=ngram659_conf07 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=ngram659_latecool_conf07 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=ngram659_latecool_conf07_lamtail bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=ngram659_latecool_conf07_min4 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=ngram659_conf07_lamcool bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=ngram659_cool_conf07 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=ngram659_cool_conf07_lamcool bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
@@ -300,6 +333,7 @@ Run one candidate on each 8xH100 node by setting CANDIDATE:
   CANDIDATE=warmup0_ngram659_conf07 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0_ngram659_latecool_conf07 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0_ngram659_latecool_conf07_lamtail bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=warmup0_ngram659_latecool_conf07_min4 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0_ngram659_conf07_lamcool bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0_ngram659_cool_conf07 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0_ngram659_cool_conf07_lamcool bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
@@ -320,10 +354,12 @@ Run one candidate on each 8xH100 node by setting CANDIDATE:
   CANDIDATE=warmup0_vr1_bg3072_ngram659_adapt bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=ngram659_tttlr25 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=ngram659_adamw30ep_cosine bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=ngram659_adamw30ep_cosine_latecool bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=ngram659_adamw30ep_cosine_lr3e4 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=ngram659_adamw12ep_cosine bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0_ngram659_tttlr25 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0_ngram659_adamw30ep_cosine bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=warmup0_ngram659_adamw30ep_cosine_latecool bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0_ngram659_adamw30ep_cosine_lr3e4 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0_ngram659_adamw12ep_cosine bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=vr1_bg3072_ngram659_tttlr25 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
@@ -346,6 +382,8 @@ Candidate meanings:
                       hold conf=0.7 through the strong early/mid regime, then cool only in the final third
   ngram659_latecool_conf07_lamtail
                       late-only confidence cooldown plus a matching late lambda taper
+  ngram659_latecool_conf07_min4
+                      late-only confidence cooldown plus min_count=4
   ngram659_conf07_lamcool
                       conf=0.7 plus lambda taper from 0.15 to 0.06 late
   ngram659_cool_conf07 PR #659 eval cache with conf=0.7 early, then cooling to 0.55 late
@@ -367,6 +405,8 @@ Candidate meanings:
                        ngram659_latecool_conf07 plus WARMUP_STEPS=0 for more timing headroom
   warmup0_ngram659_latecool_conf07_lamtail
                        ngram659_latecool_conf07_lamtail plus WARMUP_STEPS=0 for timing headroom
+  warmup0_ngram659_latecool_conf07_min4
+                       ngram659_latecool_conf07_min4 plus WARMUP_STEPS=0 for timing headroom
   warmup0_ngram659_conf08
                        ngram659_conf08 plus WARMUP_STEPS=0 for more timing headroom
   warmup0_ngram659_conf07_min4
@@ -394,6 +434,8 @@ Candidate meanings:
   ngram659_tttlr25     PR #659 eval cache combined with legal score-first TTT
   ngram659_adamw30ep_cosine
                        PR #672-style AdamW 30-epoch step-cosine grouped TTT on top of PR #659 eval cache
+  ngram659_adamw30ep_cosine_latecool
+                       PR #672-style cosine TTT plus late-only confidence cooldown
   ngram659_adamw30ep_cosine_lr3e4
                        same as above but with a gentler 3e-4 TTT LR
   ngram659_adamw12ep_cosine
@@ -402,6 +444,8 @@ Candidate meanings:
                        ngram659_tttlr25 plus WARMUP_STEPS=0 for timing headroom
   warmup0_ngram659_adamw30ep_cosine
                        PR #672-style cosine TTT plus WARMUP_STEPS=0
+  warmup0_ngram659_adamw30ep_cosine_latecool
+                       late-only cosine-TTT hedge plus WARMUP_STEPS=0
   warmup0_ngram659_adamw30ep_cosine_lr3e4
                        gentler 30-epoch cosine TTT plus WARMUP_STEPS=0
   warmup0_ngram659_adamw12ep_cosine
