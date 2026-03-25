@@ -32,6 +32,11 @@ PROXY_RECORD674_MIN3_SMOKE_LOG="$XSA11_RECORD674_MIN3_SMOKE_LOG" \
 PROXY_CONF07_LOG="$XSA11_PROXY_CONF07_LOG" \
 setsid bash "$ROOT_DIR/scripts/after_proxy_train_run_record674_then_conf07.sh" >/tmp/h200_after_xsa11_proxy_train_record674_then_conf07.log 2>&1 < /dev/null &
 
+XSA11_RECORD674_LOG="$XSA11_RECORD674_LOG" \
+RUN_NEARBY_SMOKES="${RUN_NEARBY_SMOKES:-0}" \
+RUN_CONF07_TAIL="${RUN_CONF07_TAIL:-0}" \
+setsid bash "$ROOT_DIR/scripts/after_xsa11_proxy_queue_launch_podracing674_xsa11.sh" >/tmp/h200_after_xsa11_proxy_queue_launch_podracing674_xsa11.log 2>&1 < /dev/null &
+
 ARCH_CANDIDATE="xsa11" \
 SEED="${SEED:-1337}" \
 bash "$ROOT_DIR/scripts/icrn_h200_ttt_h100_proxy_candidate.sh" >"$XSA11_PROXY_TRAIN_LOG" 2>&1

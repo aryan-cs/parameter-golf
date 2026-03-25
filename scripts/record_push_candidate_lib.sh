@@ -9,6 +9,11 @@ record_push_apply_arch_candidate() {
       export BIGRAM_VOCAB_SIZE="${BIGRAM_VOCAB_SIZE:-1536}"
       export ROPE_DIMS="${ROPE_DIMS:-24}"
       ;;
+    podracing674_xsa11)
+      export BIGRAM_VOCAB_SIZE="${BIGRAM_VOCAB_SIZE:-1536}"
+      export ROPE_DIMS="${ROPE_DIMS:-24}"
+      export XSA_LAST_N="${XSA_LAST_N:-11}"
+      ;;
     vr1)
       export VALUE_RESIDUAL="${VALUE_RESIDUAL:-1}"
       ;;

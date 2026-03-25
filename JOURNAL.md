@@ -3173,3 +3173,33 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Decision:
   - Prioritize architecture throughput over extra proxy-tail eval work.
   - Keep exact `conf07` as a completed reference score, but stop letting it gate the next retrain launch.
+
+- Timestamp: 2026-03-25 05:00 UTC
+- Commit: `working tree`
+- Lane: combined PR-`#674` surrogate hedge
+- Objective: Stop treating the PR-`#674`-aligned architecture deltas as isolated knobs and stage the first combined follow-up that actually composes them.
+- Research / findings:
+  - The current surrogate split was:
+    - `podracing674` -> `BIGRAM_VOCAB_SIZE=1536`, `ROPE_DIMS=24`
+    - `xsa11` -> `XSA_LAST_N=11`
+  - Those came from different reads of the same frontier branch, so the highest-upside next hedge is their combination, not more tiny eval tuning.
+- Code / ops:
+  - Added `podracing674_xsa11` to `scripts/record_push_candidate_lib.sh`.
+  - Added `podracing674_xsa11` to `scripts/record_push_status.py` proxy ordering.
+  - Extended `scripts/h100_parallel_candidate_portfolio.sh` with:
+    - `podracing674_xsa11_ngram674`
+    - `warmup0_podracing674_xsa11_ngram674`
+  - Added `scripts/after_xsa11_proxy_queue_launch_podracing674_xsa11.sh`.
+    - waits for the staged `xsa11` proxy `record674` exact score
+    - launches the combined `podracing674_xsa11` proxy branch
+    - keeps the same fast queue policy: nearby smokes and conf07 tails disabled by default
+  - Updated `scripts/after_rope24_proxy_queue_launch_xsa11.sh` so the queued ladder now extends one step further:
+    - baseline
+    - `podracing674`
+    - `swiglu`
+    - `rope24`
+    - `xsa11`
+    - `podracing674_xsa11`
+- Decision:
+  - Promote the combined PR-`#674` surrogate as the next architecture hedge after `xsa11`.
+  - Keep this as the strongest queued architecture bet until the current proxy artifact tells us otherwise.
