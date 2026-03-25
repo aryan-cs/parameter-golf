@@ -4011,3 +4011,49 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Decision:
   - Keep the current exact-upstream PR-`#674` timed `nocompile` run uninterrupted.
   - Treat `pr674_enhattn_mixer5` as the new strongest clean score-first compound hedge, ahead of the older `hedgemix` and bytes-first tails.
+
+- Timestamp: 2026-03-25 08:36 UTC
+- Commit: uncommitted
+- Lane: exact-upstream PR `#674` + PR `#684` enhattn + PR `#692` CROWN-Q + PR `#688` mixer5
+- Objective: Stage one all-in but still clean exact-upstream hedge that combines:
+  - the strongest clearly valid base family
+  - a cheap architecture lift from PR `#684`
+  - the best portable score-side overlay from PR `#688`
+  - the best portable byte-side hedge from PR `#692`
+- Sources:
+  - PR `#674` Podracing:
+    - https://github.com/openai/parameter-golf/pull/674
+  - PR `#684` enhanced attention:
+    - https://github.com/openai/parameter-golf/pull/684
+  - PR `#688` Hedge Mixer:
+    - https://github.com/openai/parameter-golf/pull/688
+  - PR `#692` / `#693` CROWN-Q:
+    - https://github.com/openai/parameter-golf/pull/692
+    - https://github.com/openai/parameter-golf/pull/693
+- Command or config:
+  - Added launchers:
+    - [icrn_h200_upstream_pr674_enhattn_crownq_mixer5_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr674_enhattn_crownq_mixer5_proxy.sh)
+    - [h100_upstream_pr674_enhattn_crownq_mixer5_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr674_enhattn_crownq_mixer5_exact.sh)
+    - [h100_upstream_pr674_enhattn_crownq_mixer5_exact_3seed.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr674_enhattn_crownq_mixer5_exact_3seed.sh)
+  - These apply, in order:
+    - [patch_pr674_enhattn.py](/home/aryang9/parameter-golf/scripts/patch_pr674_enhattn.py)
+    - [patch_pr674_crownq.py](/home/aryang9/parameter-golf/scripts/patch_pr674_crownq.py)
+    - [patch_pr674_mixer5.py](/home/aryang9/parameter-golf/scripts/patch_pr674_mixer5.py)
+  - Updated:
+    - [record_push_status.py](/home/aryang9/parameter-golf/scripts/record_push_status.py)
+    - [h100_parallel_candidate_portfolio.sh](/home/aryang9/parameter-golf/scripts/h100_parallel_candidate_portfolio.sh)
+    - [rearm_after_current_timed_nocompile_with_hedge.sh](/home/aryang9/parameter-golf/scripts/rearm_after_current_timed_nocompile_with_hedge.sh)
+- Result:
+  - Verified:
+    - `bash -n` on the new launchers and queue helper
+    - `python -m py_compile` on the status tool and the three patch scripts
+    - temp-copy application of all three patches to the PR-`#674` worktree followed by `python -m py_compile`
+  - Rearmed the live watcher chain after the still-running head lane so the new downstream order is now:
+    - `... -> pr674_mixer5 -> pr674_enhattn_mixer5 -> pr674_enhattn_crownq_mixer5 -> pr674_hedgemix -> pr674_crownq -> pr674_crownq_mixer5`
+  - Live head run remains:
+    - [h200_upstream_pr674_proxy7185_timed_nocompile_seed1337.txt](/home/aryang9/parameter-golf/records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs/h200_upstream_pr674_proxy7185_timed_nocompile_seed1337.txt)
+    - latest stable checkpoint:
+      - `step:1500/7185 val_bpb:1.2842`
+- Decision:
+  - Keep the live exact-upstream PR-`#674` timed `nocompile` lane untouched.
+  - Treat `pr674_enhattn_crownq_mixer5` as the strongest all-in clean exact-upstream budget hedge we currently have staged behind it.

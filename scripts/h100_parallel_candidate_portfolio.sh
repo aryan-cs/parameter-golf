@@ -36,6 +36,12 @@ run_candidate() {
     upstream_pr674_enhattn_mixer5_timed_nocompile_exact)
       exec env TIMED_MODE=1 COMPILE_ENABLED=0 bash "$ROOT_DIR/scripts/h100_upstream_pr674_enhattn_mixer5_exact.sh"
       ;;
+    upstream_pr674_enhattn_crownq_mixer5_exact)
+      exec bash "$ROOT_DIR/scripts/h100_upstream_pr674_enhattn_crownq_mixer5_exact.sh"
+      ;;
+    upstream_pr674_enhattn_crownq_mixer5_timed_nocompile_exact)
+      exec env TIMED_MODE=1 COMPILE_ENABLED=0 bash "$ROOT_DIR/scripts/h100_upstream_pr674_enhattn_crownq_mixer5_exact.sh"
+      ;;
     upstream_pr674_crownq_exact)
       exec bash "$ROOT_DIR/scripts/h100_upstream_pr674_crownq_exact.sh"
       ;;
@@ -460,6 +466,8 @@ Run one candidate on each 8xH100 node by setting CANDIDATE:
   CANDIDATE=upstream_pr674_mixer5_timed_nocompile_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr674_enhattn_mixer5_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr674_enhattn_mixer5_timed_nocompile_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=upstream_pr674_enhattn_crownq_mixer5_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=upstream_pr674_enhattn_crownq_mixer5_timed_nocompile_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr674_crownq_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr674_crownq_timed_nocompile_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr674_crownq_mixer5_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
@@ -573,6 +581,10 @@ Candidate meanings:
                        exact upstream PR #674 with both PR #684-style enhanced attention and PR #688-style mixer5, combining a stronger base architecture with the best portable score-side eval overlay
   upstream_pr674_enhattn_mixer5_timed_nocompile_exact
                        timed PR #674 enhattn + mixer5 lane with COMPILE_ENABLED=0 as the strongest clean score-first hedge
+  upstream_pr674_enhattn_crownq_mixer5_exact
+                       exact upstream PR #674 with PR #684-style enhanced attention, PR #692-style CROWN-Q, and PR #688-style mixer5 as the strongest clean full-spectrum hedge
+  upstream_pr674_enhattn_crownq_mixer5_timed_nocompile_exact
+                       timed PR #674 enhattn + CROWN-Q + mixer5 lane with COMPILE_ENABLED=0 as the strongest all-in exact-upstream budget hedge
   upstream_pr674_crownq_exact
                        exact upstream PR #674 plus PR #692-style CROWN-Q warmdown penalty to reduce quantization damage
   upstream_pr674_crownq_timed_nocompile_exact
