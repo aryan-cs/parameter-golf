@@ -4075,3 +4075,45 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Decision:
   - Keep the current live head lane untouched.
   - Preserve the linear queue order so the next free H200 slots are spent on the strongest compounds first instead of duplicated tails.
+
+- Timestamp: 2026-03-25 08:58 UTC
+- Commit: uncommitted
+- Lane: exact-upstream PR `#688` HedgeMixer + legal TTT
+- Objective: Stop treating PR `#688` only as “mixer inspiration” and stage the actual record-folder lane as a first-class comparison, because its expert family is materially different from our lighter local approximation:
+  - neural
+  - unigram
+  - bigram
+  - FastPPM
+  - ExactMatchCache
+- Sources:
+  - PR `#688` Hedge Mixer + TTT:
+    - https://github.com/openai/parameter-golf/pull/688
+  - Raw record files:
+    - `README.md`
+    - `train_gpt.py`
+- Command or config:
+  - Added parser support in [prepare_submission_metadata.py](/home/aryang9/parameter-golf/scripts/prepare_submission_metadata.py) for:
+    - `final_int6_ttt_exact`
+    - generalized `Total submission size int6+...`
+  - Added exact-upstream launchers:
+    - [icrn_h200_upstream_pr688_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr688_proxy.sh)
+    - [h100_upstream_pr688_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr688_exact.sh)
+    - [h100_upstream_pr688_exact_3seed.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr688_exact_3seed.sh)
+  - Added status/portfolio support:
+    - [record_push_status.py](/home/aryang9/parameter-golf/scripts/record_push_status.py)
+    - [h100_parallel_candidate_portfolio.sh](/home/aryang9/parameter-golf/scripts/h100_parallel_candidate_portfolio.sh)
+  - Updated [rearm_after_current_timed_nocompile_with_hedge.sh](/home/aryang9/parameter-golf/scripts/rearm_after_current_timed_nocompile_with_hedge.sh):
+    - broadened upstream wait pattern to match either:
+      - `final_int6_sliding_window_ngram5_exact`
+      - `final_int6_ttt_exact`
+    - inserted exact `pr688` after `pr674_enhattn_crownq_mixer5` and before the older PR674 hedge tails
+- Result:
+  - Verified:
+    - fetched `pr688` over HTTPS into a local branch because SSH fetch is blocked
+    - `bash -n` on the new PR688 launchers and updated queue helper
+    - `python -m py_compile` on the metadata and status parsers
+  - The downstream queue order now includes:
+    - `... -> pr674_enhattn_crownq_mixer5 -> pr688 -> pr674_hedgemix -> pr674_crownq -> pr674_crownq_mixer5`
+- Decision:
+  - Keep the current exact-upstream PR674 timed `nocompile` head lane untouched.
+  - Treat exact `pr688` as the first non-PR674 upstream family to compare directly on H200 once the stronger PR674 compounds finish.

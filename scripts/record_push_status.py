@@ -50,6 +50,7 @@ PROXY_ORDER = [
     "upstream_pr674_enhattn_mixer5_timed_nocompile_exact",
     "upstream_pr674_enhattn_crownq_mixer5_exact",
     "upstream_pr674_enhattn_crownq_mixer5_timed_nocompile_exact",
+    "upstream_pr688_exact",
     "upstream_pr674_crownq_exact",
     "upstream_pr674_crownq_timed_nocompile_exact",
     "upstream_pr674_crownq_mixer5_exact",
@@ -286,6 +287,9 @@ LEGAL_TTT_NGRAM_RE = re.compile(
 FINAL_NGRAM_RE = re.compile(
     r"final_ngram_eval val_loss:(?P<val_loss>[0-9.]+)\s+val_bpb:(?P<val_bpb>[0-9.]+).*eval_time:(?P<eval_time_ms>\d+)ms"
 )
+FINAL_TTT_RE = re.compile(
+    r"final_int6_ttt val_loss:(?P<val_loss>[0-9.]+)\s+val_bpb:(?P<val_bpb>[0-9.]+).*eval_time:(?P<eval_time_ms>\d+)ms"
+)
 FINAL_SLIDING_NGRAM_RE = re.compile(
     r"final_int6_sliding_window_ngram(?P<order>\d+) val_loss:(?P<val_loss>[0-9.]+)\s+val_bpb:(?P<val_bpb>[0-9.]+)\s+eval_time:(?P<eval_time_ms>\d+)ms"
 )
@@ -339,6 +343,8 @@ def proxy_log_path(log_dir: Path, arch_candidate: str, ttt_candidate: str, seed:
         return log_dir / f"h200_upstream_pr674_enhattn_crownq_mixer5_proxy7185_seed{seed}.txt"
     if arch_candidate == "upstream_pr674_enhattn_crownq_mixer5_timed_nocompile_exact":
         return log_dir / f"h200_upstream_pr674_enhattn_crownq_mixer5_proxy7185_timed_nocompile_seed{seed}.txt"
+    if arch_candidate == "upstream_pr688_exact":
+        return log_dir / f"h200_upstream_pr688_proxy600_seed{seed}.txt"
     if arch_candidate == "upstream_pr674_crownq_exact":
         return log_dir / f"h200_upstream_pr674_crownq_proxy7185_seed{seed}.txt"
     if arch_candidate == "upstream_pr674_crownq_timed_nocompile_exact":
@@ -436,6 +442,8 @@ def parse_result(
         if match := FINAL_NGRAM_RE.search(line):
             result["final_ngram_eval_time_ms"] = int(match.group("eval_time_ms"))
             metric_eval_times["final_ngram_eval_exact"] = int(match.group("eval_time_ms"))
+        if match := FINAL_TTT_RE.search(line):
+            metric_eval_times["final_int6_ttt_exact"] = int(match.group("eval_time_ms"))
         if match := FINAL_SLIDING_NGRAM_RE.search(line):
             metric_name = f"final_int6_sliding_window_ngram{match.group('order')}_exact"
             result["final_sliding_ngram_eval_time_ms"] = int(match.group("eval_time_ms"))
@@ -556,6 +564,8 @@ def h100_command(root_dir: Path, arch_candidate: str, ttt_candidate: str, seed: 
         return f"SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr674_enhattn_crownq_mixer5_exact.sh'}"
     if arch_candidate == "upstream_pr674_enhattn_crownq_mixer5_timed_nocompile_exact":
         return f"TIMED_MODE=1 COMPILE_ENABLED=0 SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr674_enhattn_crownq_mixer5_exact.sh'}"
+    if arch_candidate == "upstream_pr688_exact":
+        return f"SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr688_exact.sh'}"
     if arch_candidate == "upstream_pr674_crownq_exact":
         return f"SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr674_crownq_exact.sh'}"
     if arch_candidate == "upstream_pr674_crownq_timed_nocompile_exact":
@@ -615,6 +625,8 @@ def h100_three_seed_command(root_dir: Path, arch_candidate: str, ttt_candidate: 
         return f"bash {root_dir / 'scripts/h100_upstream_pr674_enhattn_crownq_mixer5_exact_3seed.sh'}"
     if arch_candidate == "upstream_pr674_enhattn_crownq_mixer5_timed_nocompile_exact":
         return f"TIMED_MODE=1 COMPILE_ENABLED=0 bash {root_dir / 'scripts/h100_upstream_pr674_enhattn_crownq_mixer5_exact_3seed.sh'}"
+    if arch_candidate == "upstream_pr688_exact":
+        return f"bash {root_dir / 'scripts/h100_upstream_pr688_exact_3seed.sh'}"
     if arch_candidate == "upstream_pr674_crownq_exact":
         return f"bash {root_dir / 'scripts/h100_upstream_pr674_crownq_exact_3seed.sh'}"
     if arch_candidate == "upstream_pr674_crownq_timed_nocompile_exact":

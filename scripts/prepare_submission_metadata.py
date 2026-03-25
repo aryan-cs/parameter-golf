@@ -11,10 +11,10 @@ STEP_VAL_RE = re.compile(
     r"step:(?P<step>\d+)/(?P<iterations>\d+)\s+val_loss:(?P<val_loss>[0-9.]+)\s+val_bpb:(?P<val_bpb>[0-9.]+)"
 )
 FINAL_EXACT_RE = re.compile(
-    r"(?P<metric>final_int6_roundtrip_exact|final_int6_sliding_window_exact|final_int6_sliding_window_s64_exact|final_int6_sliding_window_ngram\d+_exact|final_ngram_eval_exact|final_int8_zlib_roundtrip_exact|legal_ttt_exact|legal_ttt_ngram_exact)"
+    r"(?P<metric>final_int6_roundtrip_exact|final_int6_sliding_window_exact|final_int6_sliding_window_s64_exact|final_int6_sliding_window_ngram\d+_exact|final_int6_ttt_exact|final_ngram_eval_exact|final_int8_zlib_roundtrip_exact|legal_ttt_exact|legal_ttt_ngram_exact)"
     r"\s+val_loss:(?P<val_loss>[0-9.]+)\s+val_bpb:(?P<val_bpb>[0-9.]+)"
 )
-BYTES_RE = re.compile(r"Total submission size int6\+lzma:\s+(?P<bytes>\d+)\s+bytes")
+BYTES_RE = re.compile(r"Total submission size int6\+[A-Za-z0-9_+-]+:\s+(?P<bytes>\d+)\s+bytes")
 
 
 def choose_submission_metric(finals: dict[str, dict[str, float]]) -> tuple[str, float] | tuple[None, None]:
@@ -23,18 +23,20 @@ def choose_submission_metric(finals: dict[str, dict[str, float]]) -> tuple[str, 
             return 0
         if metric == "legal_ttt_exact":
             return 1
-        if metric.startswith("final_int6_sliding_window_ngram") and metric.endswith("_exact"):
+        if metric == "final_int6_ttt_exact":
             return 2
-        if metric == "final_ngram_eval_exact":
+        if metric.startswith("final_int6_sliding_window_ngram") and metric.endswith("_exact"):
             return 3
-        if metric == "final_int8_zlib_roundtrip_exact":
+        if metric == "final_ngram_eval_exact":
             return 4
-        if metric == "final_int6_sliding_window_exact":
+        if metric == "final_int8_zlib_roundtrip_exact":
             return 5
-        if metric == "final_int6_sliding_window_s64_exact":
+        if metric == "final_int6_sliding_window_exact":
             return 6
-        if metric == "final_int6_roundtrip_exact":
+        if metric == "final_int6_sliding_window_s64_exact":
             return 7
+        if metric == "final_int6_roundtrip_exact":
+            return 8
         return 999
 
     available = [(metric, payload["val_bpb"]) for metric, payload in finals.items() if metric_priority(metric) < 999]
