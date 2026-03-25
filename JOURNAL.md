@@ -1913,3 +1913,21 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The resumed TTT pass is healthy and still matches the original curve closely through the early chunks: `ttt_chunk [151/1893] bpb=1.116239`, `ttt_chunk [191/1893] bpb=1.121589`, `ttt_chunk [201/1893] bpb=1.121089`. The H200 is now covered in both directions: continue salvaging the best under-cap artifact now, then automatically hand off to the corrected H100-step proxy chain if the final recovered `legal_ttt_exact` still does not meet the challenge bar.
 - Decision: Keep the salvage pass running. It remains the fastest route to a completed score from our strongest artifact, and the automatic fallback queue means we do not lose momentum afterward.
 - Next step: Harvest the final `legal_ttt_exact` from the resumed eval, then compare it against the challenge acceptance bar and either package the lane or let the corrected proxy queue take over.
+
+- Timestamp: 2026-03-25 00:22 UTC
+- Commit: `b435016`
+- Lane: H200 legal-TTT salvage completion
+- Objective: Determine whether the strongest under-cap H200 artifact can recover a full post-TTT score that is numerically strong enough to beat the current public leaderboard bar.
+- Command or config: Read the completed salvage log `records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs/h200_ttt_recordstack_80shard_seed1337_resume_ttt.txt`, which reran only legal score-first TTT on the saved `final_model.pt` and `final_model.int6.ptz` from the completed exact H200 run using the original lane settings (`BIGRAM_VOCAB_SIZE=1536`, `TTT_FREEZE_BLOCKS=0`, `TTT_EPOCHS=3`, `TTT_LR=0.002`, `EVAL_STRIDE=64`).
+- Result: The salvage eval completed successfully with `legal_ttt_exact val_loss:1.88064655 val_bpb:1.11382777`. Combined with the original exact run's `Total submission size int6+lzma: 15860692 bytes`, this is our best recovered H200 score so far. It is under the 16 MB cap and numerically beats the current public `1.1194` score by more than the required `0.005`.
+- Decision: Treat `1.11382777 @ 15,860,692 bytes` as the current best local score. It is leaderboard-worthy numerically, but still not an official accepted record because we do not yet have the required `8xH100` reproduction and multi-run significance evidence.
+- Next step: Keep gathering stronger evidence and handoff readiness rather than stopping on a single local win.
+
+- Timestamp: 2026-03-25 00:27 UTC
+- Commit: `b435016`
+- Lane: H200 corrected H100-step proxy
+- Objective: Keep the H200 productive after the recovered `1.11382777` lane by running the more faithful single-H200 proxy for the public `8xH100` stopping schedule.
+- Command or config: Let `scripts/queue_h200_followups_after_current.sh` hand off automatically into `scripts/icrn_h200_ttt_h100_proxy.sh`, which uses `ITERATIONS=7185`, `MAX_WALLCLOCK_SECONDS=0`, and the public winning stack settings to better mimic the effective `8xH100` schedule than the original `9000`-step H200 run.
+- Result: The corrected proxy run is live in `records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs/h200_ttt_h100proxy7185_seed1337.txt` and has already reached `step:4500/7185 val_bpb:1.2072`. The GPU remains occupied automatically, and the queue shell is still active to continue into later follow-up variants if needed.
+- Decision: Keep the corrected proxy running. The recovered score is already strong, but this lane gives us another higher-fidelity H200 reproduction path while we wait for qualifying `8xH100` access.
+- Next step: Let the corrected proxy finish and compare its final exact metrics against the recovered `1.11382777` lane before deciding whether to continue with queued variants or pivot toward more seed-based evidence gathering.
