@@ -9,3 +9,4 @@ data/docs_selected.jsonl
 .mypy_cache/
 .venv
 logs/
+records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/final_model.pt
