@@ -1949,3 +1949,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: `python scripts/summarize_record_runs.py --merge-logs ...` now reports a single logical run with `metric_name=legal_ttt_exact`, `metric_mean=1.11382777`, `bytes_total=15860692`, and the merged metric set from both logs. The README for `records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/` now reflects the actual H200 state instead of only mirroring the upstream 8xH100 writeup.
 - Decision: Keep the merged summary path and updated README as the default handoff surface for this lane. They make the current best result much easier to inspect, package, and defend later.
 - Next step: Continue the corrected H100-step proxy run and use it only if it beats the recovered `1.11382777`; otherwise prioritize evidence and handoff readiness over more broad H200 search.
+
+- Timestamp: 2026-03-25 00:10 UTC
+- Commit: `working tree`
+- Lane: H200 corrected H100-step proxy monitoring
+- Objective: Confirm that the post-salvage proxy lane is still healthy, still improving, and keeping the GPU occupied while we hold the recovered `1.11382777` lane as the current best result.
+- Command or config: Read `records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs/h200_ttt_h100proxy7185_seed1337.txt`, checked `nvidia-smi`, and verified repo status with `git status --short --branch` plus `git rev-list --count origin/master..master`.
+- Result: The corrected proxy lane is still active and healthy on the H200, with `step:5000/7185 val_loss:2.0193 val_bpb:1.1959` and the next training checkpoint already advancing to `step:5250`. GPU telemetry shows `100%` utilization on the `NVIDIA H200 NVL` at about `25.4 GiB` used. The recovered best score remains `legal_ttt_exact = 1.11382777 @ 15,860,692 bytes`, and the repo remains ahead of `origin/master` by `19` commits with only the generated model artifacts left untracked.
+- Decision: Leave the corrected proxy lane alone and keep it running. It is healthy, but it is still behind the recovered winning artifact, so there is no reason to interrupt the queue.
+- Next step: Let the current proxy finish, then compare its final exact metrics against `1.11382777` before deciding whether to continue into the queued VR1/Bigram3072 variants or pivot entirely to `8xH100` handoff readiness.
