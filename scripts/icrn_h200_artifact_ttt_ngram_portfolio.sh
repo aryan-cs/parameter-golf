@@ -17,7 +17,9 @@ Run one candidate at a time on the saved winning artifact by setting CANDIDATE:
   CANDIDATE=record659_adamw5e4_late2_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh
   CANDIDATE=record659_adamw1e4_late2_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh
   CANDIDATE=record659_tttlr25 bash $ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh
+  CANDIDATE=record659_late2_tttlr25 bash $ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh
   CANDIDATE=record659_adamw5e4_late2 bash $ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh
+  CANDIDATE=record659_adamw1e4_late2 bash $ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh
   CANDIDATE=lowrisk_tttlr25_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh
   CANDIDATE=lowrisk_tttlr25 bash $ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh
   CANDIDATE=vr1_record659_tttlr25 bash $ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh
@@ -28,7 +30,9 @@ Candidate meanings:
   record659_adamw5e4_late2_smoke  PR #659 settings + masked late-2-block AdamW TTT_LR=5e-4 on first 8 chunks
   record659_adamw1e4_late2_smoke  PR #659 settings + masked late-2-block AdamW TTT_LR=1e-4 on first 8 chunks
   record659_tttlr25        full PR #659 n-gram settings + TTT_LR=0.0025
+  record659_late2_tttlr25  full PR #659 settings + masked late-2-block SGD TTT_LR=0.0025
   record659_adamw5e4_late2 full PR #659 settings + masked late-2-block AdamW TTT_LR=5e-4
+  record659_adamw1e4_late2 full PR #659 settings + masked late-2-block AdamW TTT_LR=1e-4
   lowrisk_tttlr25_smoke    gentler n-gram mix + TTT_LR=0.0025 on first 8 chunks
   lowrisk_tttlr25          gentler n-gram mix + TTT_LR=0.0025 full run
   vr1_record659_tttlr25    PR #659 settings + VR1 load path + TTT_LR=0.0025

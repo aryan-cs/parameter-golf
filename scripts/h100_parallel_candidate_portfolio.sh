@@ -33,7 +33,33 @@ run_candidate() {
     ngram659)
       exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_ngram659.sh"
       ;;
+    ngram659_conf07)
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.7}"
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_ngram659.sh"
+      ;;
+    ngram659_conf08)
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.8}"
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_ngram659.sh"
+      ;;
+    ngram659_conf07_lam20)
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.7}"
+      export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.20}"
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_ngram659.sh"
+      ;;
     warmup0_ngram659)
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_ngram659.sh"
+      ;;
+    warmup0_ngram659_conf07)
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.7}"
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_ngram659.sh"
+      ;;
+    warmup0_ngram659_conf08)
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.8}"
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_ngram659.sh"
+      ;;
+    warmup0_ngram659_conf07_lam20)
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.7}"
+      export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.20}"
       exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_ngram659.sh"
       ;;
     vr1_bg3072_ngram659)
@@ -107,7 +133,13 @@ Run one candidate on each 8xH100 node by setting CANDIDATE:
   CANDIDATE=warmup0 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0_vr1_bg3072_tttlr25 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=ngram659 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=ngram659_conf07 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=ngram659_conf08 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=ngram659_conf07_lam20 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0_ngram659 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=warmup0_ngram659_conf07 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=warmup0_ngram659_conf08 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=warmup0_ngram659_conf07_lam20 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=vr1_bg3072_ngram659 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0_vr1_bg3072_ngram659 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=ngram659_adapt bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
@@ -134,7 +166,17 @@ Candidate meanings:
   warmup0_vr1_bg3072_tttlr25
                        combo bet plus WARMUP_STEPS=0 for score and compliance
   ngram659             PR #659-style 5-gram eval cache with TTT disabled
+  ngram659_conf07      PR #659 eval cache with a stricter 0.7 confidence gate
+  ngram659_conf08      PR #659 eval cache with an even stricter 0.8 confidence gate
+  ngram659_conf07_lam20
+                       PR #659 eval cache with conf=0.7 and a stronger 0.20 n-gram mix
   warmup0_ngram659     ngram659 plus WARMUP_STEPS=0 for more timing headroom
+  warmup0_ngram659_conf07
+                       ngram659_conf07 plus WARMUP_STEPS=0 for more timing headroom
+  warmup0_ngram659_conf08
+                       ngram659_conf08 plus WARMUP_STEPS=0 for more timing headroom
+  warmup0_ngram659_conf07_lam20
+                       ngram659_conf07_lam20 plus WARMUP_STEPS=0 for more timing headroom
   vr1_bg3072_ngram659  stronger architecture knobs plus PR #659 eval cache
   warmup0_vr1_bg3072_ngram659
                        architecture knobs plus PR #659 eval cache plus WARMUP_STEPS=0

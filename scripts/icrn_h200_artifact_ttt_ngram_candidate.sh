@@ -47,6 +47,10 @@ case "$CANDIDATE" in
     MAX_CHUNKS="8"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ttt_ngram_record659_late2_tttlr25_smoke.txt}"
     ;;
+  record659_late2_tttlr25)
+    TTT_LAST_N_BLOCKS="2"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ttt_ngram_record659_late2_tttlr25.txt}"
+    ;;
   record659_adamw5e4_late2_smoke)
     TTT_LAST_N_BLOCKS="2"
     TTT_OPTIMIZER="adamw"
@@ -60,6 +64,18 @@ case "$CANDIDATE" in
     TTT_LR="0.0001"
     MAX_CHUNKS="8"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ttt_ngram_record659_adamw1e4_late2_smoke.txt}"
+    ;;
+  record659_adamw1e4_late2)
+    TTT_LAST_N_BLOCKS="2"
+    TTT_OPTIMIZER="adamw"
+    TTT_LR="0.0001"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ttt_ngram_record659_adamw1e4_late2.txt}"
+    ;;
+  record659_adamw1e4_late2)
+    TTT_LAST_N_BLOCKS="2"
+    TTT_OPTIMIZER="adamw"
+    TTT_LR="0.0001"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ttt_ngram_record659_adamw1e4_late2.txt}"
     ;;
   record659_adamw5e4_late2)
     TTT_LAST_N_BLOCKS="2"

@@ -42,6 +42,10 @@ NGRAM_ORDER = [
     "record659_conf06",
     "record659_conf07_smoke",
     "record659_conf07",
+    "record659_conf08_smoke",
+    "record659_conf08",
+    "record659_lam20_conf07_smoke",
+    "record659_lam20_conf08_smoke",
     "record659_warm_conf07_smoke",
     "record659_warm_conf07",
     "record659_orderlam_smoke",
@@ -67,7 +71,9 @@ TTT_NGRAM_ORDER = [
     "record659_adamw5e4_late2_smoke",
     "record659_adamw1e4_late2_smoke",
     "lowrisk_tttlr25_smoke",
+    "record659_late2_tttlr25",
     "record659_tttlr25",
+    "record659_adamw1e4_late2",
     "record659_adamw5e4_late2",
     "lowrisk_tttlr25",
     "vr1_record659_tttlr25",
@@ -93,6 +99,10 @@ NGRAM_LOG_NAMES = {
     "record659_conf06_smoke": "h200_artifact_ngram_record659_conf06_smoke.txt",
     "record659_conf07": "h200_artifact_ngram_record659_conf07.txt",
     "record659_conf07_smoke": "h200_artifact_ngram_record659_conf07_smoke.txt",
+    "record659_conf08": "h200_artifact_ngram_record659_conf08.txt",
+    "record659_conf08_smoke": "h200_artifact_ngram_record659_conf08_smoke.txt",
+    "record659_lam20_conf07_smoke": "h200_artifact_ngram_record659_lam20_conf07_smoke.txt",
+    "record659_lam20_conf08_smoke": "h200_artifact_ngram_record659_lam20_conf08_smoke.txt",
     "record659_warm_conf07": "h200_artifact_ngram_record659_warm_conf07.txt",
     "record659_warm_conf07_smoke": "h200_artifact_ngram_record659_warm_conf07_smoke.txt",
     "record659_orderlam": "h200_artifact_ngram_record659_orderlam.txt",
@@ -117,7 +127,9 @@ TTT_NGRAM_LOG_NAMES = {
     "record659_late2_tttlr25_smoke": "h200_artifact_ttt_ngram_record659_late2_tttlr25_smoke.txt",
     "record659_adamw5e4_late2_smoke": "h200_artifact_ttt_ngram_record659_adamw5e4_late2_smoke.txt",
     "record659_adamw1e4_late2_smoke": "h200_artifact_ttt_ngram_record659_adamw1e4_late2_smoke.txt",
+    "record659_late2_tttlr25": "h200_artifact_ttt_ngram_record659_late2_tttlr25.txt",
     "record659_tttlr25": "h200_artifact_ttt_ngram_record659_tttlr25.txt",
+    "record659_adamw1e4_late2": "h200_artifact_ttt_ngram_record659_adamw1e4_late2.txt",
     "record659_adamw5e4_late2": "h200_artifact_ttt_ngram_record659_adamw5e4_late2.txt",
     "lowrisk_tttlr25_smoke": "h200_artifact_ttt_ngram_lowrisk_tttlr25_smoke.txt",
     "lowrisk_tttlr25": "h200_artifact_ttt_ngram_lowrisk_tttlr25.txt",
@@ -376,9 +388,9 @@ def build_status(root_dir: Path, seed: int) -> dict[str, object]:
                 "ngram659_late2_adamw5e4"
                 if candidate in {"record659_adamw5e4_late2", "record659_adamw5e4_late2_smoke"}
                 else "ngram659_late2_adamw1e4"
-                if candidate == "record659_adamw1e4_late2_smoke"
+                if candidate in {"record659_adamw1e4_late2", "record659_adamw1e4_late2_smoke"}
                 else "ngram659_late2_tttlr25"
-                if candidate == "record659_late2_tttlr25_smoke"
+                if candidate in {"record659_late2_tttlr25", "record659_late2_tttlr25_smoke"}
                 else
                 "ngram659_tttlr25"
                 if candidate in {"record659_tttlr25", "record659_tttlr25_smoke", "vr1_record659_tttlr25"}

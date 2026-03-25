@@ -2321,6 +2321,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Code / ops:
   - Added confidence-schedule / order-lambda support to the standalone hybrid evaluator path in `scripts/eval_ngram_ttt_artifact.py`.
   - Threaded those arguments through `scripts/icrn_h200_artifact_ttt_ngram_candidate.sh` so future hybrid challengers can reuse the same evaluator controls as the pure n-gram path.
+  - Extended the queue / status / exact-handoff helpers so pure `conf07` and full late-2 hybrid follow-ups can be promoted without ad hoc shell edits once the live H200 run finishes.
   - Re-ran validation after the changes:
     - `python -m py_compile scripts/eval_ngram_ttt_artifact.py`
     - `bash -n scripts/icrn_h200_artifact_ttt_ngram_candidate.sh`
@@ -2333,3 +2334,47 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
   - Commit the hybrid-evaluator plumbing and this journal entry.
   - Launch a full packed-cache `record659_conf07` H200 artifact eval.
   - If full `conf07` improves on `1.08590477`, it becomes the new exact-run frontrunner; otherwise, return to a full late-2 hybrid only if we still want one hedge before `8xH100`.
+
+- Timestamp: 2026-03-25 03:19 UTC
+- Commit: `working tree`
+- Lane: Pure `5`-gram frontier escalation after locking in `record659 = 1.08590477`
+- Result / live status:
+  - The full packed-cache `record659_conf07` H200 run is healthy and still materially ahead of the completed pure `record659` curve at matched checkpoints:
+    - `9.2%`: `conf07 = 1.085986` vs `record659 = 1.091319`
+    - `9.6%`: `conf07 = 1.085447` vs `record659 = 1.090777`
+    - latest live checkpoint: `14.2% -> 1.085077`
+  - This is strong enough that I am **not** interrupting `conf07`; it remains the best active pure challenger.
+- Research pass:
+  - Checked open upstream PRs again.
+  - `#671` is a cleaned Atris Labs resubmission, but the README still reports `val_bpb = 1.18069496`, so it is not the frontier to chase.
+  - `#668` confirms a strong non-record long-train lane can reach `1.0920`, but it is explicitly `30k` steps / non-record, so it does not change our short-horizon record-track strategy.
+  - `#670` reinforces the current lesson from the upstream side: more kernel work is mostly dead weight on this stack; the remaining leverage is eval-side and quant/eval quality.
+- Code / ops:
+  - Added new pure-n-gram challenger candidates in `scripts/icrn_h200_artifact_ngram_candidate.sh`:
+    - `record659_conf08(_smoke)`
+    - `record659_lam20_conf07_smoke`
+    - `record659_lam20_conf08_smoke`
+  - Reordered `scripts/queue_h200_credit_prep.sh` so the next H200 cycles prioritize those higher-confidence / higher-lambda pure probes before falling back to the lower-value adapt and hybrid tails.
+  - Extended the future H100 portfolio in `scripts/h100_parallel_candidate_portfolio.sh` and `scripts/record_push_candidate_lib.sh` with:
+    - `ngram659_conf08`
+    - `warmup0_ngram659_conf08`
+    - `ngram659_conf07_lam20`
+    - `warmup0_ngram659_conf07_lam20`
+  - Updated `scripts/record_push_status.py` to track the new pure candidates.
+  - Revalidated after the edits:
+    - `bash -n scripts/icrn_h200_artifact_ngram_candidate.sh scripts/queue_h200_credit_prep.sh scripts/h100_parallel_candidate_portfolio.sh scripts/record_push_candidate_lib.sh`
+    - `python -m py_compile scripts/record_push_status.py`
+  - Armed an automatic post-`conf07` queue watcher in:
+    - `logs/h200_credit_queue_after_conf07_20260325_031920.txt`
+- Decision:
+  - Keep pure `record659` as the best completed handoff candidate for now.
+  - Keep the full `record659_conf07` run alive because it is outperforming the completed baseline at matched progress.
+  - Treat `conf08` and `lam20 + conf07` as the next highest-signal pure challengers, ahead of more hybrid churn.
+- Next step:
+  - Let full `record659_conf07` finish.
+  - After it exits, the queue will automatically run:
+    - `record659_conf08_smoke`
+    - `record659_conf08`
+    - `record659_lam20_conf07_smoke`
+    - `record659_lam20_conf08_smoke`
+  - Only after that does the queue fall back to the adapt and hybrid branches.
