@@ -45,6 +45,7 @@ launch_after_record674_arch() {
     TARGET_CONF07_LOG="$conf07_log" \
     RUN_NEARBY_SMOKES="$RUN_NEARBY_SMOKES" \
     RUN_CONF07_TAIL="$RUN_CONF07_TAIL" \
+    TARGET_SKIP_IF_LOG_EXISTS="1" \
     bash "$ROOT_DIR/scripts/after_record674_launch_arch.sh" >/tmp/h200_after_${arch}_record674_queue.log 2>&1 < /dev/null &
 }
 
@@ -60,12 +61,18 @@ BASE_RECORD674_LAM22_SMOKE_LOG="$LOG_DIR/h200_artifact_ngram_record674_lam22_h10
 BASE_RECORD674_MIN3_SMOKE_LOG="$LOG_DIR/h200_artifact_ngram_record674_min3_h100proxy7185_seed${SEED}_smoke.txt"
 BASE_CONF07_LOG="$LOG_DIR/h200_artifact_ngram_record659_conf07_h100proxy7185_seed${SEED}.txt"
 UPSTREAM_PR674_LOG="$LOG_DIR/h200_upstream_pr674_proxy7185_seed${SEED}.txt"
+UPSTREAM_PR674_TIMED_LOG="$LOG_DIR/h200_upstream_pr674_proxy7185_timed_seed${SEED}.txt"
+UPSTREAM_PR674_TIMED_NOCOMPILE_LOG="$LOG_DIR/h200_upstream_pr674_proxy7185_timed_nocompile_seed${SEED}.txt"
 UPSTREAM_PR674_ENHATTN_LOG="$LOG_DIR/h200_upstream_pr674_enhattn_proxy7185_seed${SEED}.txt"
+UPSTREAM_PR674_ENHATTN_TIMED_LOG="$LOG_DIR/h200_upstream_pr674_enhattn_proxy7185_timed_seed${SEED}.txt"
 UPSTREAM_PR676_LOG="$LOG_DIR/h200_upstream_pr676_proxy7185_seed${SEED}.txt"
+UPSTREAM_PR676_TIMED_LOG="$LOG_DIR/h200_upstream_pr676_proxy7185_timed_seed${SEED}.txt"
 UPSTREAM_PR685_POWMEAN4_LOG="$LOG_DIR/h200_upstream_pr685_powmean4_proxy7185_seed${SEED}.txt"
 UPSTREAM_PR685_MEANPROB_LOG="$LOG_DIR/h200_upstream_pr685_meanprob_proxy7185_seed${SEED}.txt"
 UPSTREAM_PR685_PHASE1_LOG="$LOG_DIR/h200_upstream_pr685_phase1_proxy7185_seed${SEED}.txt"
 UPSTREAM_PR684_LOG="$LOG_DIR/h200_upstream_pr684_proxy6555_seed${SEED}.txt"
+UPSTREAM_PR684_TIMED_LOG="$LOG_DIR/h200_upstream_pr684_proxy6555_timed_seed${SEED}.txt"
+UPSTREAM_PR684_TIMED_NOCOMPILE_LOG="$LOG_DIR/h200_upstream_pr684_proxy6555_timed_nocompile_seed${SEED}.txt"
 
 PROXY_TRAIN_LOG="$BASE_PROXY_TRAIN_LOG" \
 PROXY_ARTIFACT_PT="$BASE_PROXY_ARTIFACT_PT" \
@@ -77,6 +84,7 @@ PROXY_RECORD674_MIN3_SMOKE_LOG="$BASE_RECORD674_MIN3_SMOKE_LOG" \
 PROXY_CONF07_LOG="$BASE_CONF07_LOG" \
 RUN_NEARBY_SMOKES="$RUN_NEARBY_SMOKES" \
 RUN_CONF07_TAIL="$RUN_CONF07_TAIL" \
+SKIP_EXISTING_PROXY_CANDIDATES="1" \
 setsid bash "$ROOT_DIR/scripts/after_proxy_train_run_record674_then_conf07.sh" >/tmp/h200_after_baseline_proxy_train_record674.log 2>&1 < /dev/null &
 
 WAIT_LOG="$BASE_RECORD674_LOG" \
@@ -86,14 +94,56 @@ TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr674_proxy.sh" \
 TARGET_LOG_PATH="$UPSTREAM_PR674_LOG" \
 TARGET_RUN_ID="h200_upstream_pr674_proxy7185_seed${SEED}" \
 TARGET_SEED="$SEED" \
+TARGET_SKIP_IF_LOG_EXISTS="1" \
 NEXT_WAIT_LOG="$UPSTREAM_PR674_LOG" \
 NEXT_WAIT_PATTERN="$UPSTREAM_WAIT_PATTERN" \
+NEXT_TARGET_LABEL="upstream_pr674_timed_exact" \
+NEXT_TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr674_proxy.sh" \
+NEXT_LOG_PATH="$UPSTREAM_PR674_TIMED_LOG" \
+NEXT_RUN_ID="h200_upstream_pr674_proxy7185_timed_seed${SEED}" \
+NEXT_SEED="$SEED" \
+NEXT_TARGET_ENV_ASSIGNMENTS="TIMED_MODE=1" \
+NEXT_TARGET_SKIP_IF_LOG_EXISTS="1" \
+setsid bash "$ROOT_DIR/scripts/after_log_launch_script.sh" >/tmp/h200_after_baseline_record674_launch_upstream_pr674.log 2>&1 < /dev/null &
+
+WAIT_LOG="$UPSTREAM_PR674_TIMED_LOG" \
+WAIT_PATTERN="$UPSTREAM_WAIT_PATTERN" \
+TARGET_LABEL="upstream_pr674_timed_nocompile_exact" \
+TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr674_proxy.sh" \
+TARGET_LOG_PATH="$UPSTREAM_PR674_TIMED_NOCOMPILE_LOG" \
+TARGET_RUN_ID="h200_upstream_pr674_proxy7185_timed_nocompile_seed${SEED}" \
+TARGET_SEED="$SEED" \
+TARGET_ENV_ASSIGNMENTS="TIMED_MODE=1 COMPILE_ENABLED=0" \
+TARGET_SKIP_IF_LOG_EXISTS="1" \
+NEXT_WAIT_LOG="$UPSTREAM_PR674_TIMED_NOCOMPILE_LOG" \
+NEXT_WAIT_PATTERN="$UPSTREAM_WAIT_PATTERN" \
+NEXT_TARGET_LABEL="upstream_pr674_enhattn_timed_exact" \
+NEXT_TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr674_enhattn_proxy.sh" \
+NEXT_LOG_PATH="$UPSTREAM_PR674_ENHATTN_TIMED_LOG" \
+NEXT_RUN_ID="h200_upstream_pr674_enhattn_proxy7185_timed_seed${SEED}" \
+NEXT_SEED="$SEED" \
+NEXT_TARGET_ENV_ASSIGNMENTS="TIMED_MODE=1" \
+NEXT_TARGET_SKIP_IF_LOG_EXISTS="1" \
+setsid bash "$ROOT_DIR/scripts/after_log_launch_script.sh" >/tmp/h200_after_upstream_pr674_timed_launch_upstream_pr674_timed_nocompile.log 2>&1 < /dev/null &
+
+WAIT_LOG="$UPSTREAM_PR674_ENHATTN_TIMED_LOG" \
+WAIT_PATTERN="$UPSTREAM_PR674_ENHATTN_WAIT_PATTERN" \
+TARGET_LABEL="upstream_pr676_timed_exact" \
+TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr676_proxy.sh" \
+TARGET_LOG_PATH="$UPSTREAM_PR676_TIMED_LOG" \
+TARGET_RUN_ID="h200_upstream_pr676_proxy7185_timed_seed${SEED}" \
+TARGET_SEED="$SEED" \
+TARGET_ENV_ASSIGNMENTS="TIMED_MODE=1" \
+TARGET_SKIP_IF_LOG_EXISTS="1" \
+NEXT_WAIT_LOG="$UPSTREAM_PR676_TIMED_LOG" \
+NEXT_WAIT_PATTERN="$UPSTREAM_PR676_WAIT_PATTERN" \
 NEXT_TARGET_LABEL="upstream_pr674_enhattn_exact" \
 NEXT_TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr674_enhattn_proxy.sh" \
 NEXT_LOG_PATH="$UPSTREAM_PR674_ENHATTN_LOG" \
 NEXT_RUN_ID="h200_upstream_pr674_enhattn_proxy7185_seed${SEED}" \
 NEXT_SEED="$SEED" \
-setsid bash "$ROOT_DIR/scripts/after_log_launch_script.sh" >/tmp/h200_after_baseline_record674_launch_upstream_pr674.log 2>&1 < /dev/null &
+NEXT_TARGET_SKIP_IF_LOG_EXISTS="1" \
+setsid bash "$ROOT_DIR/scripts/after_log_launch_script.sh" >/tmp/h200_after_upstream_pr674_enhattn_timed_launch_upstream_pr676_timed.log 2>&1 < /dev/null &
 
 WAIT_LOG="$UPSTREAM_PR674_ENHATTN_LOG" \
 WAIT_PATTERN="$UPSTREAM_PR674_ENHATTN_WAIT_PATTERN" \
@@ -102,6 +152,7 @@ TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr676_proxy.sh" \
 TARGET_LOG_PATH="$UPSTREAM_PR676_LOG" \
 TARGET_RUN_ID="h200_upstream_pr676_proxy7185_seed${SEED}" \
 TARGET_SEED="$SEED" \
+TARGET_SKIP_IF_LOG_EXISTS="1" \
 NEXT_WAIT_LOG="$UPSTREAM_PR676_LOG" \
 NEXT_WAIT_PATTERN="$UPSTREAM_PR676_WAIT_PATTERN" \
 NEXT_TARGET_LABEL="upstream_pr685_powmean4_exact" \
@@ -109,6 +160,7 @@ NEXT_TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr685_powmean4_proxy.sh
 NEXT_LOG_PATH="$UPSTREAM_PR685_POWMEAN4_LOG" \
 NEXT_RUN_ID="h200_upstream_pr685_powmean4_proxy7185_seed${SEED}" \
 NEXT_SEED="$SEED" \
+NEXT_TARGET_SKIP_IF_LOG_EXISTS="1" \
 setsid bash "$ROOT_DIR/scripts/after_log_launch_script.sh" >/tmp/h200_after_upstream_pr674_enhattn_launch_upstream_pr676.log 2>&1 < /dev/null &
 
 WAIT_LOG="$UPSTREAM_PR676_LOG" \
@@ -118,6 +170,7 @@ TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr685_powmean4_proxy.sh" \
 TARGET_LOG_PATH="$UPSTREAM_PR685_POWMEAN4_LOG" \
 TARGET_RUN_ID="h200_upstream_pr685_powmean4_proxy7185_seed${SEED}" \
 TARGET_SEED="$SEED" \
+TARGET_SKIP_IF_LOG_EXISTS="1" \
 NEXT_WAIT_LOG="$UPSTREAM_PR685_POWMEAN4_LOG" \
 NEXT_WAIT_PATTERN="$UPSTREAM_PR685_POWMEAN4_WAIT_PATTERN" \
 NEXT_TARGET_LABEL="upstream_pr685_meanprob_exact" \
@@ -125,6 +178,7 @@ NEXT_TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr685_meanprob_proxy.sh
 NEXT_LOG_PATH="$UPSTREAM_PR685_MEANPROB_LOG" \
 NEXT_RUN_ID="h200_upstream_pr685_meanprob_proxy7185_seed${SEED}" \
 NEXT_SEED="$SEED" \
+NEXT_TARGET_SKIP_IF_LOG_EXISTS="1" \
 setsid bash "$ROOT_DIR/scripts/after_log_launch_script.sh" >/tmp/h200_after_upstream_pr676_launch_upstream_pr685_powmean4.log 2>&1 < /dev/null &
 
 WAIT_LOG="$UPSTREAM_PR685_MEANPROB_LOG" \
@@ -134,23 +188,46 @@ TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr685_phase1_proxy.sh" \
 TARGET_LOG_PATH="$UPSTREAM_PR685_PHASE1_LOG" \
 TARGET_RUN_ID="h200_upstream_pr685_phase1_proxy7185_seed${SEED}" \
 TARGET_SEED="$SEED" \
+TARGET_SKIP_IF_LOG_EXISTS="1" \
 NEXT_WAIT_LOG="$UPSTREAM_PR685_PHASE1_LOG" \
 NEXT_WAIT_PATTERN="$UPSTREAM_PR685_PHASE1_WAIT_PATTERN" \
+NEXT_TARGET_LABEL="upstream_pr684_timed_exact" \
+NEXT_TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr684_proxy.sh" \
+NEXT_LOG_PATH="$UPSTREAM_PR684_TIMED_LOG" \
+NEXT_RUN_ID="h200_upstream_pr684_proxy6555_timed_seed${SEED}" \
+NEXT_SEED="$SEED" \
+NEXT_TARGET_ENV_ASSIGNMENTS="TIMED_MODE=1" \
+NEXT_TARGET_SKIP_IF_LOG_EXISTS="1" \
+setsid bash "$ROOT_DIR/scripts/after_log_launch_script.sh" >/tmp/h200_after_upstream_pr685_powmean4_launch_upstream_pr685_meanprob.log 2>&1 < /dev/null &
+
+WAIT_LOG="$UPSTREAM_PR684_TIMED_LOG" \
+WAIT_PATTERN="$UPSTREAM_PR684_WAIT_PATTERN" \
+TARGET_LABEL="upstream_pr684_timed_nocompile_exact" \
+TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr684_proxy.sh" \
+TARGET_LOG_PATH="$UPSTREAM_PR684_TIMED_NOCOMPILE_LOG" \
+TARGET_RUN_ID="h200_upstream_pr684_proxy6555_timed_nocompile_seed${SEED}" \
+TARGET_SEED="$SEED" \
+TARGET_ENV_ASSIGNMENTS="TIMED_MODE=1 USE_COMPILE=0" \
+TARGET_SKIP_IF_LOG_EXISTS="1" \
+NEXT_WAIT_LOG="$UPSTREAM_PR684_TIMED_NOCOMPILE_LOG" \
+NEXT_WAIT_PATTERN="$UPSTREAM_PR684_WAIT_PATTERN" \
 NEXT_TARGET_LABEL="upstream_pr684_exact" \
 NEXT_TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr684_proxy.sh" \
 NEXT_LOG_PATH="$UPSTREAM_PR684_LOG" \
 NEXT_RUN_ID="h200_upstream_pr684_proxy6555_seed${SEED}" \
 NEXT_SEED="$SEED" \
-setsid bash "$ROOT_DIR/scripts/after_log_launch_script.sh" >/tmp/h200_after_upstream_pr685_powmean4_launch_upstream_pr685_meanprob.log 2>&1 < /dev/null &
+NEXT_TARGET_SKIP_IF_LOG_EXISTS="1" \
+setsid bash "$ROOT_DIR/scripts/after_log_launch_script.sh" >/tmp/h200_after_upstream_pr684_timed_launch_upstream_pr684_timed_nocompile.log 2>&1 < /dev/null &
 
-WAIT_LOG="$UPSTREAM_PR685_PHASE1_LOG" \
-WAIT_PATTERN="$UPSTREAM_PR685_PHASE1_WAIT_PATTERN" \
+WAIT_LOG="$UPSTREAM_PR684_TIMED_NOCOMPILE_LOG" \
+WAIT_PATTERN="$UPSTREAM_PR684_WAIT_PATTERN" \
 TARGET_LABEL="upstream_pr684_exact" \
 TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr684_proxy.sh" \
 TARGET_LOG_PATH="$UPSTREAM_PR684_LOG" \
 TARGET_RUN_ID="h200_upstream_pr684_proxy6555_seed${SEED}" \
 TARGET_SEED="$SEED" \
-setsid bash "$ROOT_DIR/scripts/after_log_launch_script.sh" >/tmp/h200_after_upstream_pr685_phase1_launch_upstream_pr684.log 2>&1 < /dev/null &
+TARGET_SKIP_IF_LOG_EXISTS="1" \
+setsid bash "$ROOT_DIR/scripts/after_log_launch_script.sh" >/tmp/h200_after_upstream_pr684_timed_nocompile_launch_upstream_pr684.log 2>&1 < /dev/null &
 
 POD_RECORD674_LOG="$LOG_DIR/h200_artifact_ngram_record674_h100proxy7185_podracing674_seed${SEED}.txt"
 POD_SWIGLU_RECORD674_LOG="$LOG_DIR/h200_artifact_ngram_record674_h100proxy7185_podracing674_swiglu_seed${SEED}.txt"

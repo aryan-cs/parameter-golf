@@ -3688,3 +3688,36 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Decision:
   - Keep the live watcher chain unchanged for now; I did **not** auto-queue timed variants behind it because the current watcher helper does not yet carry target-specific timing env safely.
   - Use the new timed exact candidates as the front of the next manual H200/H100 slate when we want direct budget-shape measurements.
+
+- Timestamp: 2026-03-25 07:2x UTC
+- Commit: uncommitted
+- Lane: Queue hardening / timed exact-upstream automation
+- Objective: Make the watcher chain safe to rearm on a live run, then pivot the downstream order onto the new timed exact-upstream candidates.
+- Command or config:
+  - Added target-specific env passing and `skip-if-log-exists` support to [after_log_launch_script.sh](/home/aryang9/parameter-golf/scripts/after_log_launch_script.sh).
+  - Added safe skip behavior for already-produced proxy eval logs in [after_proxy_train_run_record674_then_conf07.sh](/home/aryang9/parameter-golf/scripts/after_proxy_train_run_record674_then_conf07.sh).
+  - Added skip/log guards plus env passthrough to [after_record674_launch_arch.sh](/home/aryang9/parameter-golf/scripts/after_record674_launch_arch.sh).
+  - Updated [rearm_proxy_record674_queue.sh](/home/aryang9/parameter-golf/scripts/rearm_proxy_record674_queue.sh) so the exact-upstream downstream queue is now:
+    - `pr674`
+    - `pr674_timed`
+    - `pr674_timed_nocompile`
+    - `pr674_enhattn_timed`
+    - `pr676_timed`
+    - `pr674_enhattn`
+    - `pr676`
+    - `pr685_powmean4`
+    - `pr685_meanprob`
+    - `pr685_phase1`
+    - `pr684_timed`
+    - `pr684_timed_nocompile`
+    - `pr684`
+  - Validated:
+    - watcher scripts pass `bash -n`
+    - `bash scripts/rearm_proxy_record674_queue.sh` succeeded while the live `pr674` train stayed running
+    - new waiting watcher processes came up cleanly
+- Result:
+  - We can now safely rearm the queue on top of an existing live run without relaunching already-started candidates or leaking `TIMED_MODE` into the wrong downstream jobs.
+  - The current H200 PR `#674` proxy remains the live head of the chain and has reached `step:2000/7185 val_bpb:1.2559`.
+- Decision:
+  - Keep exact upstream `pr674` on the GPU.
+  - Use the hardened queue to make the next free H200 slots answer the timing question first, not just the raw-score question.
