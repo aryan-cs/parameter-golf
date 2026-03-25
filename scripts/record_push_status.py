@@ -42,10 +42,15 @@ PROXY_ORDER = [
     "upstream_pr674_exact",
     "upstream_pr674_timed_exact",
     "upstream_pr674_timed_nocompile_exact",
+    "upstream_pr700_exact",
+    "upstream_pr700_timed_exact",
+    "upstream_pr700_timed_nocompile_exact",
     "upstream_pr688_exact",
     "upstream_pr688_timed_exact",
     "upstream_pr688_timed_nocompile_exact",
     "upstream_pr688_timed_nocompile_skipsliding_exact",
+    "upstream_pr688_timed_nocompile_skipsliding_eta05_exact",
+    "upstream_pr688_timed_nocompile_skipsliding_eta20_exact",
     "upstream_pr688_timed_nocompile_qttt_exact",
     "upstream_pr688_timed_nocompile_qttt_nopolyak_exact",
     "upstream_pr688_timed_nocompile_qttt_light_exact",
@@ -376,8 +381,18 @@ def proxy_log_path(log_dir: Path, arch_candidate: str, ttt_candidate: str, seed:
         return log_dir / f"h200_upstream_pr688_proxy600_timed_seed{seed}.txt"
     if arch_candidate == "upstream_pr688_timed_nocompile_exact":
         return log_dir / f"h200_upstream_pr688_proxy600_timed_nocompile_seed{seed}.txt"
+    if arch_candidate == "upstream_pr700_exact":
+        return log_dir / f"h200_upstream_pr700_proxy600_seed{seed}.txt"
+    if arch_candidate == "upstream_pr700_timed_exact":
+        return log_dir / f"h200_upstream_pr700_proxy600_timed_seed{seed}.txt"
+    if arch_candidate == "upstream_pr700_timed_nocompile_exact":
+        return log_dir / f"h200_upstream_pr700_proxy600_timed_nocompile_seed{seed}.txt"
     if arch_candidate == "upstream_pr688_timed_nocompile_skipsliding_exact":
         return log_dir / f"h200_upstream_pr688_proxy600_timed_nocompile_skipsliding_seed{seed}.txt"
+    if arch_candidate == "upstream_pr688_timed_nocompile_skipsliding_eta05_exact":
+        return log_dir / f"h200_upstream_pr688_proxy600_timed_nocompile_skipsliding_eta05_seed{seed}.txt"
+    if arch_candidate == "upstream_pr688_timed_nocompile_skipsliding_eta20_exact":
+        return log_dir / f"h200_upstream_pr688_proxy600_timed_nocompile_skipsliding_eta20_seed{seed}.txt"
     if arch_candidate == "upstream_pr688_timed_nocompile_qttt_exact":
         return log_dir / f"h200_upstream_pr688_proxy600_timed_nocompile_qttt_seed{seed}.txt"
     if arch_candidate == "upstream_pr688_timed_nocompile_qttt_nopolyak_exact":
@@ -633,11 +648,29 @@ def h100_command(root_dir: Path, arch_candidate: str, ttt_candidate: str, seed: 
         return f"TIMED_MODE=1 SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr688_exact.sh'}"
     if arch_candidate == "upstream_pr688_timed_nocompile_exact":
         return f"TIMED_MODE=1 COMPILE_ENABLED=0 SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr688_exact.sh'}"
+    if arch_candidate == "upstream_pr700_exact":
+        return f"SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr700_exact.sh'}"
+    if arch_candidate == "upstream_pr700_timed_exact":
+        return f"TIMED_MODE=1 SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr700_exact.sh'}"
+    if arch_candidate == "upstream_pr700_timed_nocompile_exact":
+        return f"TIMED_MODE=1 COMPILE_ENABLED=0 SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr700_exact.sh'}"
     if arch_candidate == "upstream_pr688_timed_nocompile_skipsliding_exact":
         return (
             f"TIMED_MODE=1 COMPILE_ENABLED=0 SEED={seed} "
             f"RUN_ID=h100_upstream_pr688_timed_nocompile_skipsliding_seed{seed} "
             f"bash {root_dir / 'scripts/h100_upstream_pr688_skipsliding_exact.sh'}"
+        )
+    if arch_candidate == "upstream_pr688_timed_nocompile_skipsliding_eta05_exact":
+        return (
+            f"TIMED_MODE=1 COMPILE_ENABLED=0 MIXER_ETA=0.05 SEED={seed} "
+            f"RUN_ID=h100_upstream_pr688_timed_nocompile_skipsliding_eta05_seed{seed} "
+            f"bash {root_dir / 'scripts/h100_upstream_pr688_skipsliding_eta05_exact.sh'}"
+        )
+    if arch_candidate == "upstream_pr688_timed_nocompile_skipsliding_eta20_exact":
+        return (
+            f"TIMED_MODE=1 COMPILE_ENABLED=0 MIXER_ETA=0.20 SEED={seed} "
+            f"RUN_ID=h100_upstream_pr688_timed_nocompile_skipsliding_eta20_seed{seed} "
+            f"bash {root_dir / 'scripts/h100_upstream_pr688_skipsliding_eta20_exact.sh'}"
         )
     if arch_candidate == "upstream_pr688_timed_nocompile_qttt_exact":
         return (
@@ -782,8 +815,24 @@ def h100_three_seed_command(root_dir: Path, arch_candidate: str, ttt_candidate: 
         return f"TIMED_MODE=1 bash {root_dir / 'scripts/h100_upstream_pr688_exact_3seed.sh'}"
     if arch_candidate == "upstream_pr688_timed_nocompile_exact":
         return f"TIMED_MODE=1 COMPILE_ENABLED=0 bash {root_dir / 'scripts/h100_upstream_pr688_exact_3seed.sh'}"
+    if arch_candidate == "upstream_pr700_exact":
+        return f"bash {root_dir / 'scripts/h100_upstream_pr700_exact_3seed.sh'}"
+    if arch_candidate == "upstream_pr700_timed_exact":
+        return f"TIMED_MODE=1 bash {root_dir / 'scripts/h100_upstream_pr700_exact_3seed.sh'}"
+    if arch_candidate == "upstream_pr700_timed_nocompile_exact":
+        return f"TIMED_MODE=1 COMPILE_ENABLED=0 bash {root_dir / 'scripts/h100_upstream_pr700_exact_3seed.sh'}"
     if arch_candidate == "upstream_pr688_timed_nocompile_skipsliding_exact":
         return f"TIMED_MODE=1 COMPILE_ENABLED=0 bash {root_dir / 'scripts/h100_upstream_pr688_skipsliding_exact_3seed.sh'}"
+    if arch_candidate == "upstream_pr688_timed_nocompile_skipsliding_eta05_exact":
+        return (
+            f"TIMED_MODE=1 COMPILE_ENABLED=0 MIXER_ETA=0.05 "
+            f"bash {root_dir / 'scripts/h100_upstream_pr688_skipsliding_eta05_exact_3seed.sh'}"
+        )
+    if arch_candidate == "upstream_pr688_timed_nocompile_skipsliding_eta20_exact":
+        return (
+            f"TIMED_MODE=1 COMPILE_ENABLED=0 MIXER_ETA=0.20 "
+            f"bash {root_dir / 'scripts/h100_upstream_pr688_skipsliding_eta20_exact_3seed.sh'}"
+        )
     if arch_candidate == "upstream_pr688_timed_nocompile_qttt_exact":
         return (
             f"TIMED_MODE=1 COMPILE_ENABLED=0 "

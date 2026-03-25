@@ -420,6 +420,15 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Decision: Treat PR-674-style hashed eval as the main frontier, drop the full `conf07` tail from the default post-export path, and spend the next architecture shots on the stronger public `podracing` base before the still-unproven SwiGLU hedge.
 - Next step: Let the current `7185`-step proxy train finish, watch the first `record674` exact score on the in-budget artifact, and then compare that baseline hashed result against the queued `podracing674` proxy branch.
 
+- Timestamp: 2026-03-25 18:27 UTC
+- Commit: uncommitted
+- Lane: h200 queue hygiene / frontier research
+- Objective: Make sure the single H200 never double-books itself after proxy export, and check whether the newer public mixer lane changes what we should try next.
+- Command or config: Pulled PR `#688` from GitHub API, confirmed a new legal online Hedge/context-mixer TTT result at `1.0745`, and audited the local evaluator/queue scripts. Found that the repo already contains `record674_hedge*` and `record688_mixer5*` artifact-eval candidates plus arch candidates like `podracing674_swiglu` and `podracing674_xsa11`. Also found an ops bug: if `after_proxy_train_run_record674_then_conf07.sh` runs nearby smokes after full `record674`, it races the next queued proxy train on the only H200.
+- Result: Kept the live chain focused on exact `record674` only by relaunching the current proxy export watcher and the baseline -> `podracing674` -> `swiglu` handoff with `RUN_NEARBY_SMOKES=0` and `RUN_CONF07_TAIL=0`.
+- Decision: On the scarce H200, exact `record674` beats extra smoke sweeps in priority. Keep PR `#688` as a hedge lane we can promote later, but do not let mixer smokes block the current `record674 -> podracing674 -> swiglu` train queue.
+- Next step: Once the first in-budget proxy `record674` finishes, decide whether the next best use of the H200 is the already-queued architecture branch or one fast `record674_hedge_proxy7185` / `record688_mixer5_smoke` challenger on the saved artifact.
+
 - Timestamp: 2026-03-23 22:53 America/Chicago
 - Commit: uncommitted
 - Lane: non-ttt VRL long-run
@@ -4679,3 +4688,47 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Decision:
   - Do **not** spend the next H200 slot on longartifact re-quantization unless we recover a true paired FP/int6 snapshot of the finished `record659_conf07` lane.
   - Keep the exact PR688 budget ladder and PR674 overlays ahead of any future artifact re-quant experiments.
+
+## 2026-03-25 18:26 UTC - Add exact PR688 mixer-eta skipsliding sweeps
+
+- Objective:
+  - Add a real scored-path PR688 sweep with near-zero runtime impact while the live PR674 timed `nocompile` run stays on-GPU.
+- Findings:
+  - The live exact-upstream PR674 timed `nocompile` lane kept improving and had reached `step:6500/7185 val_bpb:1.1658`, so I left it untouched.
+  - In the actual PR688 record-folder trainer, `MIXER_ETA` is a live knob on the online Hedge mixer in the exact scored path.
+  - That makes `MIXER_ETA` a cleaner next probe than more runtime-heavy qTTT cuts: it changes the expert-weight update dynamics with almost no wallclock penalty.
+- Code / ops:
+  - Added exact-upstream PR688 skipsliding eta wrappers for `MIXER_ETA=0.05` and `MIXER_ETA=0.20`:
+    - [scripts/icrn_h200_upstream_pr688_skipsliding_eta05_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr688_skipsliding_eta05_proxy.sh)
+    - [scripts/icrn_h200_upstream_pr688_skipsliding_eta20_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr688_skipsliding_eta20_proxy.sh)
+    - [scripts/h100_upstream_pr688_skipsliding_eta05_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr688_skipsliding_eta05_exact.sh)
+    - [scripts/h100_upstream_pr688_skipsliding_eta20_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr688_skipsliding_eta20_exact.sh)
+  - Wired both candidates into [scripts/h100_parallel_candidate_portfolio.sh](/home/aryang9/parameter-golf/scripts/h100_parallel_candidate_portfolio.sh), [scripts/record_push_status.py](/home/aryang9/parameter-golf/scripts/record_push_status.py), and [scripts/rearm_after_current_timed_nocompile_with_hedge.sh](/home/aryang9/parameter-golf/scripts/rearm_after_current_timed_nocompile_with_hedge.sh).
+  - Corrected the PR688 portfolio description to match the real scored expert stack: neural + unigram + bigram + trigram + entropy.
+- Decision:
+  - Put `eta05` and `eta20` immediately after `upstream_pr688_timed_nocompile_skipsliding_exact` in the exact-upstream queue.
+  - Keep the heavier qTTT / optimizer / chunk / stride cuts behind the cheaper mixer-eta sweeps.
+
+## 2026-03-25 18:34 UTC - Promote exact PR700 and fix copied-worktree upstream launchers
+
+- Objective:
+  - Repair the copied-worktree exact-upstream launchers so PR688-family branches can actually start on this host, and stage the newly discovered PR700 record family as the next mainline under-budget probe.
+- Findings:
+  - The live exact-upstream PR674 timed `nocompile` lane finished cleanly at `legal_ttt_exact val_bpb:1.12245568`.
+  - The queued PR688 head launch was failing before training: `cp -a` was aborting with repeated `preserving permissions ... Operation not permitted` errors while copying the worktree into a patched run dir.
+  - Upstream PR700 is now a real official exact family to chase:
+    - [PR #700](https://github.com/openai/parameter-golf/pull/700)
+    - official README reports `1.0541` 3-seed mean, `train_time=582s`, `eval_time=336s`, and worst-seed bytes `15,892,040`
+    - record recipe is HedgeMixer + CROWN-Q + `EVAL_STRIDE=64` with `TTT_EPOCHS=4`
+  - After fixing the copy step and rearming, the H200 successfully started [logs/h200_upstream_pr700_proxy600_timed_nocompile_seed1337.txt](/home/aryang9/parameter-golf/records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs/h200_upstream_pr700_proxy600_timed_nocompile_seed1337.txt) and reached tokenizer/dataset initialization.
+- Code / ops:
+  - Added compile-gated PR700 exact launch support:
+    - [scripts/patch_pr700_compile_gate.py](/home/aryang9/parameter-golf/scripts/patch_pr700_compile_gate.py)
+    - [scripts/icrn_h200_upstream_pr700_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr700_proxy.sh)
+    - [scripts/h100_upstream_pr700_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr700_exact.sh)
+    - [scripts/h100_upstream_pr700_exact_3seed.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr700_exact_3seed.sh)
+  - Fixed copied-worktree exact launchers for PR688 and PR698 by switching the snapshot step to `cp -a --no-preserve=mode,ownership`, which avoids the permission-preservation failure on this machine.
+  - Wired PR700 into [scripts/h100_parallel_candidate_portfolio.sh](/home/aryang9/parameter-golf/scripts/h100_parallel_candidate_portfolio.sh), [scripts/record_push_status.py](/home/aryang9/parameter-golf/scripts/record_push_status.py), and [scripts/rearm_after_current_timed_nocompile_with_hedge.sh](/home/aryang9/parameter-golf/scripts/rearm_after_current_timed_nocompile_with_hedge.sh).
+- Decision:
+  - Put `upstream_pr700_timed_nocompile_exact` at the front of the exact-upstream queue, ahead of the PR688 ladder.
+  - Keep the PR688 eta/qTTT budget ladder immediately behind PR700 once the copied-worktree failure is fixed.

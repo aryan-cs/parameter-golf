@@ -51,8 +51,23 @@ run_candidate() {
     upstream_pr688_timed_nocompile_exact)
       exec env TIMED_MODE=1 COMPILE_ENABLED=0 bash "$ROOT_DIR/scripts/h100_upstream_pr688_exact.sh"
       ;;
+    upstream_pr700_exact)
+      exec bash "$ROOT_DIR/scripts/h100_upstream_pr700_exact.sh"
+      ;;
+    upstream_pr700_timed_exact)
+      exec env TIMED_MODE=1 bash "$ROOT_DIR/scripts/h100_upstream_pr700_exact.sh"
+      ;;
+    upstream_pr700_timed_nocompile_exact)
+      exec env TIMED_MODE=1 COMPILE_ENABLED=0 bash "$ROOT_DIR/scripts/h100_upstream_pr700_exact.sh"
+      ;;
     upstream_pr688_timed_nocompile_skipsliding_exact)
       exec env TIMED_MODE=1 COMPILE_ENABLED=0 RUN_ID="${RUN_ID:-h100_upstream_pr688_timed_nocompile_skipsliding_seed${SEED:-2045}}" bash "$ROOT_DIR/scripts/h100_upstream_pr688_skipsliding_exact.sh"
+      ;;
+    upstream_pr688_timed_nocompile_skipsliding_eta05_exact)
+      exec env TIMED_MODE=1 COMPILE_ENABLED=0 MIXER_ETA=0.05 RUN_ID="${RUN_ID:-h100_upstream_pr688_timed_nocompile_skipsliding_eta05_seed${SEED:-2045}}" bash "$ROOT_DIR/scripts/h100_upstream_pr688_skipsliding_eta05_exact.sh"
+      ;;
+    upstream_pr688_timed_nocompile_skipsliding_eta20_exact)
+      exec env TIMED_MODE=1 COMPILE_ENABLED=0 MIXER_ETA=0.20 RUN_ID="${RUN_ID:-h100_upstream_pr688_timed_nocompile_skipsliding_eta20_seed${SEED:-2045}}" bash "$ROOT_DIR/scripts/h100_upstream_pr688_skipsliding_eta20_exact.sh"
       ;;
     upstream_pr688_timed_nocompile_qttt_exact)
       exec env TIMED_MODE=1 COMPILE_ENABLED=0 RUN_ID="${RUN_ID:-h100_upstream_pr688_timed_nocompile_qttt_seed${SEED:-2045}}" bash "$ROOT_DIR/scripts/h100_upstream_pr688_qttt_exact.sh"
@@ -555,7 +570,12 @@ Run one candidate on each 8xH100 node by setting CANDIDATE:
   CANDIDATE=upstream_pr688_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr688_timed_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr688_timed_nocompile_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=upstream_pr700_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=upstream_pr700_timed_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=upstream_pr700_timed_nocompile_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr688_timed_nocompile_skipsliding_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=upstream_pr688_timed_nocompile_skipsliding_eta05_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=upstream_pr688_timed_nocompile_skipsliding_eta20_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr688_timed_nocompile_qttt_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr688_timed_nocompile_qttt_nopolyak_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr688_timed_nocompile_qttt_light_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
@@ -693,13 +713,23 @@ Candidate meanings:
   upstream_pr674_enhattn_crownq_mixer5_timed_nocompile_exact
                        timed PR #674 enhattn + CROWN-Q + mixer5 lane with COMPILE_ENABLED=0 as the strongest all-in exact-upstream budget hedge
   upstream_pr688_exact
-                       exact upstream PR #688 HedgeMixer + legal TTT record-folder lane, using the real FastPPM / ExactMatchCache expert family instead of our lighter local approximation
+                       exact upstream PR #688 HedgeMixer + legal TTT record-folder lane, using the trainer's real neural + unigram + bigram + trigram + entropy expert stack rather than our lighter local approximation
   upstream_pr688_timed_exact
                        exact upstream PR #688 HedgeMixer + legal TTT lane with warmup and periodic validation removed to make the budget path explicit
   upstream_pr688_timed_nocompile_exact
                        timed PR #688 lane with COMPILE_ENABLED=0, giving us a budget-first comparison against the PR674 timed nocompile family
+  upstream_pr700_exact
+                       exact upstream PR #700 HedgeMixer + CROWN-Q + stride=64 record-folder lane, matching the newest official under-budget hybrid frontier we can reproduce directly
+  upstream_pr700_timed_exact
+                       timed PR #700 lane with warmup and periodic validation removed so we can pressure-test the official record family against the 10-minute budget
+  upstream_pr700_timed_nocompile_exact
+                       timed PR #700 lane with COMPILE_ENABLED=0, giving a lower-startup systems hedge for the newest exact-upstream record family
   upstream_pr688_timed_nocompile_skipsliding_exact
                        timed PR #688 lane with COMPILE_ENABLED=0 and `SKIP_SLIDING=1`, removing the pre-TTT sliding eval to cut budget with no intended change to final TTT scoring
+  upstream_pr688_timed_nocompile_skipsliding_eta05_exact
+                       timed PR #688 `SKIP_SLIDING=1` lane with `MIXER_ETA=0.05`, probing a slower online Hedge update at near-zero runtime cost
+  upstream_pr688_timed_nocompile_skipsliding_eta20_exact
+                       timed PR #688 `SKIP_SLIDING=1` lane with `MIXER_ETA=0.20`, probing a faster online Hedge update at near-zero runtime cost
   upstream_pr688_timed_nocompile_qttt_exact
                        timed PR #688 lane with COMPILE_ENABLED=0 plus QTTT-only adaptation over the last 4 blocks, as a smaller and potentially more quantization-safe TTT hedge
   upstream_pr688_timed_nocompile_qttt_nopolyak_exact

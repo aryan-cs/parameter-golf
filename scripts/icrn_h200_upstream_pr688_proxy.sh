@@ -38,7 +38,7 @@ git config --global --add safe.directory "$WORKTREE_DIR" >/dev/null 2>&1 || true
 
 rm -rf "$PATCH_RUN_DIR"
 mkdir -p "$PATCH_RUN_DIR"
-cp -a "$WORKTREE_DIR/." "$PATCH_RUN_DIR/"
+cp -a --no-preserve=mode,ownership "$WORKTREE_DIR/." "$PATCH_RUN_DIR/"
 python "$ROOT_DIR/scripts/patch_pr688_compile_gate.py" "$PATCH_RUN_DIR/$RECORD_DIR_REL/train_gpt.py"
 
 cd "$ROOT_DIR"

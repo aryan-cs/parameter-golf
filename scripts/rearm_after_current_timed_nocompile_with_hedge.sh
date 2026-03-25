@@ -12,11 +12,14 @@ cd "$ROOT_DIR"
 pkill -f '/scripts/after_log_launch_script.sh' || true
 
 CURRENT_LOG="$LOG_DIR/h200_upstream_pr674_proxy7185_timed_nocompile_seed${SEED}.txt"
+UPSTREAM_PR700_TIMED_NOCOMPILE_LOG="$LOG_DIR/h200_upstream_pr700_proxy600_timed_nocompile_seed${SEED}.txt"
 UPSTREAM_PR674_MIXER5_TIMED_NOCOMPILE_LOG="$LOG_DIR/h200_upstream_pr674_mixer5_proxy7185_timed_nocompile_seed${SEED}.txt"
 UPSTREAM_PR674_ENHATTN_MIXER5_TIMED_NOCOMPILE_LOG="$LOG_DIR/h200_upstream_pr674_enhattn_mixer5_proxy7185_timed_nocompile_seed${SEED}.txt"
 UPSTREAM_PR674_ENHATTN_CROWNQ_MIXER5_TIMED_NOCOMPILE_LOG="$LOG_DIR/h200_upstream_pr674_enhattn_crownq_mixer5_proxy7185_timed_nocompile_seed${SEED}.txt"
 UPSTREAM_PR688_TIMED_NOCOMPILE_LOG="$LOG_DIR/h200_upstream_pr688_proxy600_timed_nocompile_seed${SEED}.txt"
 UPSTREAM_PR688_TIMED_NOCOMPILE_SKIPSLIDING_LOG="$LOG_DIR/h200_upstream_pr688_proxy600_timed_nocompile_skipsliding_seed${SEED}.txt"
+UPSTREAM_PR688_TIMED_NOCOMPILE_SKIPSLIDING_ETA05_LOG="$LOG_DIR/h200_upstream_pr688_proxy600_timed_nocompile_skipsliding_eta05_seed${SEED}.txt"
+UPSTREAM_PR688_TIMED_NOCOMPILE_SKIPSLIDING_ETA20_LOG="$LOG_DIR/h200_upstream_pr688_proxy600_timed_nocompile_skipsliding_eta20_seed${SEED}.txt"
 UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LOG="$LOG_DIR/h200_upstream_pr688_proxy600_timed_nocompile_qttt_seed${SEED}.txt"
 UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_NOPOLYAK_LOG="$LOG_DIR/h200_upstream_pr688_proxy600_timed_nocompile_qttt_nopolyak_seed${SEED}.txt"
 UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LIGHT_LOG="$LOG_DIR/h200_upstream_pr688_proxy600_timed_nocompile_qttt_light_seed${SEED}.txt"
@@ -44,14 +47,54 @@ UPSTREAM_PR674_CROWNQ_MIXER5_TIMED_NOCOMPILE_LOG="$LOG_DIR/h200_upstream_pr674_c
 
 WAIT_LOG="$CURRENT_LOG" \
 WAIT_PATTERN="$UPSTREAM_WAIT_PATTERN" \
-TARGET_LABEL="upstream_pr688_timed_nocompile_skipsliding_exact" \
-TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr688_skipsliding_proxy.sh" \
-TARGET_LOG_PATH="$UPSTREAM_PR688_TIMED_NOCOMPILE_SKIPSLIDING_LOG" \
-TARGET_RUN_ID="h200_upstream_pr688_proxy600_timed_nocompile_skipsliding_seed${SEED}" \
+TARGET_LABEL="upstream_pr700_timed_nocompile_exact" \
+TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr700_proxy.sh" \
+TARGET_LOG_PATH="$UPSTREAM_PR700_TIMED_NOCOMPILE_LOG" \
+TARGET_RUN_ID="h200_upstream_pr700_proxy600_timed_nocompile_seed${SEED}" \
 TARGET_SEED="$SEED" \
 TARGET_ENV_ASSIGNMENTS="TIMED_MODE=1 COMPILE_ENABLED=0" \
 TARGET_SKIP_IF_LOG_EXISTS="1" \
-NEXT_WAIT_LOG="$UPSTREAM_PR688_TIMED_NOCOMPILE_SKIPSLIDING_LOG" \
+NEXT_WAIT_LOG="$UPSTREAM_PR700_TIMED_NOCOMPILE_LOG" \
+NEXT_WAIT_PATTERN="$UPSTREAM_WAIT_PATTERN" \
+NEXT_TARGET_LABEL="upstream_pr688_timed_nocompile_skipsliding_exact" \
+NEXT_TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr688_skipsliding_proxy.sh" \
+NEXT_LOG_PATH="$UPSTREAM_PR688_TIMED_NOCOMPILE_SKIPSLIDING_LOG" \
+NEXT_TARGET_RUN_ID="h200_upstream_pr688_proxy600_timed_nocompile_skipsliding_seed${SEED}" \
+NEXT_TARGET_SEED="$SEED" \
+NEXT_TARGET_ENV_ASSIGNMENTS="TIMED_MODE=1 COMPILE_ENABLED=0" \
+NEXT_TARGET_SKIP_IF_LOG_EXISTS="1" \
+setsid bash "$ROOT_DIR/scripts/after_log_launch_script.sh" >/tmp/h200_after_pr674_timed_nocompile_launch_upstream_pr700_timed_nocompile.log 2>&1 < /dev/null &
+
+WAIT_LOG="$UPSTREAM_PR688_TIMED_NOCOMPILE_SKIPSLIDING_LOG" \
+WAIT_PATTERN="$UPSTREAM_WAIT_PATTERN" \
+TARGET_LABEL="upstream_pr688_timed_nocompile_skipsliding_eta05_exact" \
+TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr688_skipsliding_eta05_proxy.sh" \
+TARGET_LOG_PATH="$UPSTREAM_PR688_TIMED_NOCOMPILE_SKIPSLIDING_ETA05_LOG" \
+TARGET_RUN_ID="h200_upstream_pr688_proxy600_timed_nocompile_skipsliding_eta05_seed${SEED}" \
+TARGET_SEED="$SEED" \
+TARGET_ENV_ASSIGNMENTS="TIMED_MODE=1 COMPILE_ENABLED=0 MIXER_ETA=0.05" \
+TARGET_SKIP_IF_LOG_EXISTS="1" \
+NEXT_WAIT_LOG="$UPSTREAM_PR688_TIMED_NOCOMPILE_SKIPSLIDING_ETA05_LOG" \
+NEXT_WAIT_PATTERN="$UPSTREAM_WAIT_PATTERN" \
+NEXT_TARGET_LABEL="upstream_pr688_timed_nocompile_skipsliding_eta20_exact" \
+NEXT_TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr688_skipsliding_eta20_proxy.sh" \
+NEXT_LOG_PATH="$UPSTREAM_PR688_TIMED_NOCOMPILE_SKIPSLIDING_ETA20_LOG" \
+NEXT_TARGET_RUN_ID="h200_upstream_pr688_proxy600_timed_nocompile_skipsliding_eta20_seed${SEED}" \
+NEXT_TARGET_SEED="$SEED" \
+NEXT_TARGET_ENV_ASSIGNMENTS="TIMED_MODE=1 COMPILE_ENABLED=0 MIXER_ETA=0.20" \
+NEXT_TARGET_SKIP_IF_LOG_EXISTS="1" \
+setsid bash "$ROOT_DIR/scripts/after_log_launch_script.sh" >/tmp/h200_after_upstream_pr700_timed_nocompile_launch_upstream_pr688_timed_nocompile_skipsliding.log 2>&1 < /dev/null &
+
+WAIT_LOG="$UPSTREAM_PR688_TIMED_NOCOMPILE_SKIPSLIDING_ETA05_LOG" \
+WAIT_PATTERN="$UPSTREAM_WAIT_PATTERN" \
+TARGET_LABEL="upstream_pr688_timed_nocompile_skipsliding_eta20_exact" \
+TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr688_skipsliding_eta20_proxy.sh" \
+TARGET_LOG_PATH="$UPSTREAM_PR688_TIMED_NOCOMPILE_SKIPSLIDING_ETA20_LOG" \
+TARGET_RUN_ID="h200_upstream_pr688_proxy600_timed_nocompile_skipsliding_eta20_seed${SEED}" \
+TARGET_SEED="$SEED" \
+TARGET_ENV_ASSIGNMENTS="TIMED_MODE=1 COMPILE_ENABLED=0 MIXER_ETA=0.20" \
+TARGET_SKIP_IF_LOG_EXISTS="1" \
+NEXT_WAIT_LOG="$UPSTREAM_PR688_TIMED_NOCOMPILE_SKIPSLIDING_ETA20_LOG" \
 NEXT_WAIT_PATTERN="$UPSTREAM_WAIT_PATTERN" \
 NEXT_TARGET_LABEL="upstream_pr688_timed_nocompile_exact" \
 NEXT_TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr688_proxy.sh" \
@@ -60,7 +103,7 @@ NEXT_TARGET_RUN_ID="h200_upstream_pr688_proxy600_timed_nocompile_seed${SEED}" \
 NEXT_TARGET_SEED="$SEED" \
 NEXT_TARGET_ENV_ASSIGNMENTS="TIMED_MODE=1 COMPILE_ENABLED=0" \
 NEXT_TARGET_SKIP_IF_LOG_EXISTS="1" \
-setsid bash "$ROOT_DIR/scripts/after_log_launch_script.sh" >/tmp/h200_after_pr674_timed_nocompile_launch_upstream_pr688_timed_nocompile_skipsliding.log 2>&1 < /dev/null &
+setsid bash "$ROOT_DIR/scripts/after_log_launch_script.sh" >/tmp/h200_after_upstream_pr688_skipsliding_eta05_launch_upstream_pr688_skipsliding_eta20.log 2>&1 < /dev/null &
 
 WAIT_LOG="$UPSTREAM_PR688_TIMED_NOCOMPILE_LOG" \
 WAIT_PATTERN="$UPSTREAM_WAIT_PATTERN" \
@@ -80,7 +123,7 @@ NEXT_TARGET_RUN_ID="h200_upstream_pr688_proxy600_timed_nocompile_qttt_nopolyak_s
 NEXT_TARGET_SEED="$SEED" \
 NEXT_TARGET_ENV_ASSIGNMENTS="TIMED_MODE=1 COMPILE_ENABLED=0" \
 NEXT_TARGET_SKIP_IF_LOG_EXISTS="1" \
-setsid bash "$ROOT_DIR/scripts/after_log_launch_script.sh" >/tmp/h200_after_upstream_pr688_skipsliding_launch_upstream_pr688_timed_nocompile.log 2>&1 < /dev/null &
+setsid bash "$ROOT_DIR/scripts/after_log_launch_script.sh" >/tmp/h200_after_upstream_pr688_skipsliding_eta20_launch_upstream_pr688_timed_nocompile.log 2>&1 < /dev/null &
 
 WAIT_LOG="$UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_NOPOLYAK_LOG" \
 WAIT_PATTERN="$UPSTREAM_WAIT_PATTERN" \
