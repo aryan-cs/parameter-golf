@@ -4798,3 +4798,66 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
     - transfer test on our existing matched proxy artifact
     - exact upstream timed smoke
   - Use the PR727 ablation as guidance for the next nearby smoke variants if the default PR753 transfer lands in the right ballpark.
+
+## 2026-03-25 19:12 UTC - Fix the artifact-candidate default bug and pivot the live H200 to upstream PR753
+
+- Objective:
+  - Stop wasting the H200 on a dead-end PR700 tail, correct the broken local `record753` candidate wiring, and get a clean upstream PR753 smoke running.
+- Findings:
+  - The PR700 timed smoke had already answered the important question locally:
+    - it reached only `step:285` before the `596s` wallclock cap
+    - serialized model bytes were already `130,432,585` before final packing
+    - the process then lingered off-GPU, so it was not worth holding the H200 any longer
+  - The first local `record753_smoke` result was not a trustworthy transfer signal:
+    - [logs/h200_artifact_ngram_record753_smoke.txt](/home/aryang9/parameter-golf/records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs/h200_artifact_ngram_record753_smoke.txt) came out at `1.77711832`
+    - but the run was silently misconfigured as `5`-gram / `alpha=0.15` because [scripts/icrn_h200_artifact_ngram_candidate.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_artifact_ngram_candidate.sh) was applying global defaults before candidate-specific defaults
+    - the fixed-alpha ablation was also accidentally still running with adaptive alpha enabled for the same reason
+  - The exact upstream PR753 smoke is the right mainline test for now, because our existing `7185`-step proxy artifact is still over the byte cap and the short first-128-window local n-gram smokes are low-signal for a long-horizon cache method anyway.
+- Code / ops:
+  - Added [scripts/icrn_h200_pr753_frontier_ladder.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_pr753_frontier_ladder.sh) as a reusable PR753 queue wrapper instead of a giant one-off shell command.
+  - Killed the stalled PR700 smoke and its waiting queue, then relaunched the H200 via the new ladder onto [logs/h200_upstream_pr753_proxy600_timed_nocompile_seed1337.txt](/home/aryang9/parameter-golf/records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs/h200_upstream_pr753_proxy600_timed_nocompile_seed1337.txt).
+  - Fixed the candidate-default bug in [scripts/icrn_h200_artifact_ngram_candidate.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_artifact_ngram_candidate.sh) by:
+    - deferring global defaults until after the candidate `case`
+    - allowing `record753*` to respect caller overrides such as `NGRAM_ADAPTIVE_ALPHA=0`
+    - making the PR753 candidates default to `apply_mode=always`
+  - Simplified [scripts/icrn_h200_pr753_frontier_ladder.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_pr753_frontier_ladder.sh) so the upstream PR753 timed smoke runs first, and local full-artifact ablations only run when `RUN_LOCAL_ABLATIONS=1`.
+- Current live result:
+  - The relaunched upstream PR753 smoke is healthy on `1xH200`:
+    - first 10 steps in [logs/h200_upstream_pr753_proxy600_timed_nocompile_seed1337.txt](/home/aryang9/parameter-golf/records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs/h200_upstream_pr753_proxy600_timed_nocompile_seed1337.txt) show `step_avg` settling to about `1590.88 ms`
+    - that is far too slow for our `~91.7 min` H200 proxy heuristic, so this branch is currently an exact-smoke / readiness lane, not a dev-proxy lane
+- Decision:
+  - Keep the live upstream PR753 timed smoke running to completion and use it for:
+    - branch sanity
+    - artifact bytes
+    - end-to-end eval behavior
+  - Do not overreact to the earlier `1.7771` local smoke, because that was produced by a broken candidate wrapper rather than the intended PR753 settings.
+
+## 2026-03-25 19:20 UTC - Prepare PR755 Gravity Tokenizer as the second ready-to-run lane
+
+- Objective:
+  - Turn the fresh tokenizer frontier into runnable repo state without derailing the live PR753 GPU run.
+- Findings:
+  - Public scan on March 25, 2026 surfaced a new open tokenizer-centric record claim:
+    - [PR #755](https://github.com/openai/parameter-golf/pull/755) claims `1.0321` mean BPB at about `15.63 MB`
+    - the submission describes a simple `12L x 384d` baseline-style model with no XSA/TTT/sliding-eval extras
+    - the key change is a gravity-scored tokenizer plus retokenized FineWeb shards
+  - The branch looks operationally real, not just conceptual:
+    - it bundles `gravity_beta_1.0.model`
+    - it ships a deterministic [retokenize_corpus.py](https://github.com/openai/parameter-golf/pull/755) pipeline
+    - it uses the standard train/eval code path rather than a bespoke external service
+  - This makes PR755 an attractive second lane:
+    - probably lighter to smoke on `1xH200` than PR753
+    - plausibly stackable later with stronger eval-time ideas if the tokenizer is genuinely that strong
+- Code / ops:
+  - Added local setup / smoke / budget-proxy launchers for PR755:
+    - [scripts/icrn_h200_upstream_pr755_setup.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr755_setup.sh)
+    - [scripts/icrn_h200_upstream_pr755_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr755_proxy.sh)
+    - [scripts/icrn_h200_upstream_pr755_proxybudget.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr755_proxybudget.sh)
+  - Added exact `8xH100` handoff launchers too so the Gravity lane is not blocked on orchestration later:
+    - [scripts/h100_upstream_pr755_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr755_exact.sh)
+    - [scripts/h100_upstream_pr755_exact_3seed.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr755_exact_3seed.sh)
+  - Chose not to start full Gravity retokenization immediately while the PR753 smoke is running, to avoid disk / CPU contention against the active GPU job; the lane is now one command away instead.
+- Decision:
+  - Treat PR755 as the prepared tokenizer hedge behind PR753:
+    - PR753 remains the live GPU focus because it is the stronger open claim
+    - PR755 is now ready for setup and H200 smoke as soon as we want a second serious lane
