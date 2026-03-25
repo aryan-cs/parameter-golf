@@ -4515,3 +4515,15 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
   - [h100_upstream_pr688_qttt_light_skipsliding_batch64_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr688_qttt_light_skipsliding_batch64_exact.sh)
 - Reordered the exact PR688 queue so these mild microbatch throughput probes run before harsher epoch/chunk/stride cuts.
 - Rationale: `TTT_BATCH_SEQS` is a cleaner fit lever than reducing epochs or increasing stride, because it changes kernel occupancy and launch count without directly changing the scored-token path.
+
+## 2026-03-25 08:54 UTC - PR688 SGD budget hedges
+
+- Confirmed exact upstream PR688 already supports `TTT_OPTIMIZER=sgd` natively, so no trainer patch was needed for an optimizer-side throughput probe.
+- Added new exact-upstream PR688 budget variants:
+  - [icrn_h200_upstream_pr688_qttt_light_skipsliding_sgd_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr688_qttt_light_skipsliding_sgd_proxy.sh)
+  - [icrn_h200_upstream_pr688_qttt_light_skipsliding_sgd_batch64_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr688_qttt_light_skipsliding_sgd_batch64_proxy.sh)
+  - plus matching H100 exact / 3-seed launchers
+- Inserted both in the exact PR688 queue ahead of the epoch-cut lanes:
+  - plain `sgd`
+  - `sgd + batch64`
+- Rationale: SGD is a cleaner low-overhead hedge than harsher eval-sparsity cuts because it attacks optimizer cost directly while preserving the same score-first chunking and final exact path.
