@@ -2271,3 +2271,21 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
   - Let `record659_tttlr25_smoke` finish.
   - If that smoke is promising, continue into the queued `record659_tttlr25` / late-2-block legal hybrid challengers.
   - If it is flat or worse, keep pure `record659` as the `8xH100` lead and use the rest of the H200 queue for narrow legal adapt ablations only.
+
+- Timestamp: 2026-03-25 03:12 UTC
+- Commit: `working tree`
+- Lane: `TTT+ngram` smoke triage after pure `record659`
+- Result:
+  - `record659_tttlr25_smoke` finished at:
+    - `legal_ttt_ngram_exact = 1.08878022`
+    - `eval_time = 33503ms`
+  - `record659_late2_tttlr25_smoke` finished slightly better at:
+    - `legal_ttt_ngram_exact = 1.08872199`
+    - `eval_time = 33578ms`
+  - Both are still worse than the completed pure `record659 = 1.08590477`, but they are clearly record-level on the smoke proxy and therefore still worth keeping in the queue as fallback / hedge candidates.
+- Decision:
+  - Keep pure `record659` as the main `8xH100` handoff candidate.
+  - If we need a hybrid hedge, prefer the late-2-block version over the full-block `TTT+ngram` variant.
+- Next step:
+  - Let the queue continue into `record659_adamw5e4_late2_smoke`.
+  - Only promote a full hybrid run if the smoke keeps pace with the current late-2 SGD result.
