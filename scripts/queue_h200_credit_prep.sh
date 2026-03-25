@@ -29,13 +29,21 @@ CANDIDATE="${CANDIDATE_NGRAM_9:-vr1_record659}" \
 # 1b. Combine backward-looking n-gram scoring with legal TTT on the artifact.
 CANDIDATE="${CANDIDATE_TTT_NGRAM_1:-record659_tttlr25_smoke}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh"
-CANDIDATE="${CANDIDATE_TTT_NGRAM_2:-record659_tttlr25}" \
+CANDIDATE="${CANDIDATE_TTT_NGRAM_2:-record659_late2_tttlr25_smoke}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh"
-CANDIDATE="${CANDIDATE_TTT_NGRAM_3:-lowrisk_tttlr25_smoke}" \
+CANDIDATE="${CANDIDATE_TTT_NGRAM_3:-record659_adamw5e4_late2_smoke}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh"
-CANDIDATE="${CANDIDATE_TTT_NGRAM_4:-lowrisk_tttlr25}" \
+CANDIDATE="${CANDIDATE_TTT_NGRAM_4:-record659_adamw1e4_late2_smoke}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh"
-CANDIDATE="${CANDIDATE_TTT_NGRAM_5:-vr1_record659_tttlr25}" \
+CANDIDATE="${CANDIDATE_TTT_NGRAM_5:-record659_tttlr25}" \
+  bash "$ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh"
+CANDIDATE="${CANDIDATE_TTT_NGRAM_6:-record659_adamw5e4_late2}" \
+  bash "$ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh"
+CANDIDATE="${CANDIDATE_TTT_NGRAM_7:-lowrisk_tttlr25_smoke}" \
+  bash "$ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh"
+CANDIDATE="${CANDIDATE_TTT_NGRAM_8:-lowrisk_tttlr25}" \
+  bash "$ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh"
+CANDIDATE="${CANDIDATE_TTT_NGRAM_9:-vr1_record659_tttlr25}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh"
 
 # 1c. Remaining cheap eval-side TTT search on the same artifact.

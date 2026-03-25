@@ -143,7 +143,8 @@ def eval_val_sliding_ttt_ngram(
         "ttt_ngram:start "
         f"chunks={num_chunks} chunk_tokens={ttt_chunk} total_windows={len(window_starts)} "
         f"stride={stride} ttt_lr={args.ttt_lr} ttt_epochs={args.ttt_epochs} "
-        f"freeze_blocks={args.ttt_freeze_blocks} ngram_lambda={ngram_lambda} "
+        f"freeze_blocks={args.ttt_freeze_blocks} last_n_blocks={args.ttt_last_n_blocks} "
+        f"optimizer={args.ttt_optimizer} ngram_lambda={ngram_lambda} "
         f"ngram_max_n={ngram_max_n} confidence_threshold={confidence_threshold}"
     )
 
@@ -155,17 +156,10 @@ def eval_val_sliding_ttt_ngram(
     ngram_attempts = 0
     ngram_skipped = 0
 
-    frozen_block_ids = set(range(min(args.ttt_freeze_blocks, len(base_model.blocks))))
-    ttt_params = []
-    for name, p in base_model.named_parameters():
-        freeze = any(f"blocks.{bi}." in name for bi in frozen_block_ids)
-        if freeze:
-            p.requires_grad_(False)
-        else:
-            p.requires_grad_(True)
-            ttt_params.append(p)
-
-    optimizer = torch.optim.SGD(ttt_params, lr=args.ttt_lr, momentum=args.ttt_momentum)
+    ttt_params, control_params, matrix_params, head_params, bank_mask_items = mod.configure_ttt_params(
+        args, base_model, log0=log
+    )
+    optimizer = mod.build_ttt_optimizer(args, ttt_params, control_params, matrix_params, head_params)
     t0 = time.perf_counter()
 
     for ci in range(num_chunks):
@@ -278,6 +272,7 @@ def eval_val_sliding_ttt_ngram(
                         with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
                             loss = base_model(x, y)
                         loss.backward()
+                        mod.apply_ttt_grad_masks(bank_mask_items)
                         torch.nn.utils.clip_grad_norm_(ttt_params, args.ttt_grad_clip)
                         optimizer.step()
 
@@ -314,9 +309,14 @@ def main() -> None:
     parser.add_argument("--bigram-vocab-size", type=int, default=1536)
     parser.add_argument("--value-residual", type=int, choices=[0, 1], default=None)
     parser.add_argument("--ttt-freeze-blocks", type=int, default=0)
+    parser.add_argument("--ttt-last-n-blocks", type=int, default=0)
     parser.add_argument("--ttt-lr", type=float, default=0.0025)
     parser.add_argument("--ttt-epochs", type=int, default=3)
     parser.add_argument("--ttt-chunk-tokens", type=int, default=32768)
+    parser.add_argument("--ttt-optimizer", choices=["sgd", "adamw", "grouped_adamw"], default="sgd")
+    parser.add_argument("--ttt-weight-decay", type=float, default=0.0)
+    parser.add_argument("--ttt-beta1", type=float, default=0.9)
+    parser.add_argument("--ttt-beta2", type=float, default=0.999)
     parser.add_argument("--ttt-momentum", type=float, default=0.9)
     parser.add_argument("--ttt-grad-clip", type=float, default=1.0)
     parser.add_argument("--batch-seqs", type=int, default=32)
@@ -346,9 +346,14 @@ def main() -> None:
         args.value_residual = bool(args_ns.value_residual)
     args.ttt_enabled = True
     args.ttt_freeze_blocks = args_ns.ttt_freeze_blocks
+    args.ttt_last_n_blocks = args_ns.ttt_last_n_blocks
     args.ttt_lr = args_ns.ttt_lr
     args.ttt_epochs = args_ns.ttt_epochs
     args.ttt_chunk_tokens = args_ns.ttt_chunk_tokens
+    args.ttt_optimizer = args_ns.ttt_optimizer
+    args.ttt_weight_decay = args_ns.ttt_weight_decay
+    args.ttt_beta1 = args_ns.ttt_beta1
+    args.ttt_beta2 = args_ns.ttt_beta2
     args.ttt_momentum = args_ns.ttt_momentum
     args.ttt_grad_clip = args_ns.ttt_grad_clip
     args.ttt_batch_seqs = args_ns.batch_seqs
@@ -386,6 +391,11 @@ def main() -> None:
                 "ttt_epochs": args.ttt_epochs,
                 "ttt_chunk_tokens": args.ttt_chunk_tokens,
                 "ttt_freeze_blocks": args.ttt_freeze_blocks,
+                "ttt_last_n_blocks": args.ttt_last_n_blocks,
+                "ttt_optimizer": args.ttt_optimizer,
+                "ttt_weight_decay": args.ttt_weight_decay,
+                "ttt_beta1": args.ttt_beta1,
+                "ttt_beta2": args.ttt_beta2,
                 "ttt_momentum": args.ttt_momentum,
                 "ttt_batch_seqs": args.ttt_batch_seqs,
                 "ttt_grad_clip": args.ttt_grad_clip,

@@ -9,7 +9,10 @@ from pathlib import Path
 
 from prepare_submission_metadata import merge_summaries, parse_log
 
-ACCEPTANCE_GATE_BPB = 1.1144
+CURRENT_PUBLIC_SOTA_BPB = 1.0920
+RECORD_DELTA_NAT = 0.005
+APPROX_BPB_PER_NAT = 0.5923
+PRACTICAL_WIN_GATE_BPB = CURRENT_PUBLIC_SOTA_BPB - RECORD_DELTA_NAT * APPROX_BPB_PER_NAT
 RECORD_DIR_REL = Path("records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback")
 
 ARTIFACT_ORDER = [
@@ -46,8 +49,12 @@ NGRAM_ORDER = [
 
 TTT_NGRAM_ORDER = [
     "record659_tttlr25_smoke",
+    "record659_late2_tttlr25_smoke",
+    "record659_adamw5e4_late2_smoke",
+    "record659_adamw1e4_late2_smoke",
     "lowrisk_tttlr25_smoke",
     "record659_tttlr25",
+    "record659_adamw5e4_late2",
     "lowrisk_tttlr25",
     "vr1_record659_tttlr25",
 ]
@@ -79,7 +86,11 @@ NGRAM_LOG_NAMES = {
 
 TTT_NGRAM_LOG_NAMES = {
     "record659_tttlr25_smoke": "h200_artifact_ttt_ngram_record659_tttlr25_smoke.txt",
+    "record659_late2_tttlr25_smoke": "h200_artifact_ttt_ngram_record659_late2_tttlr25_smoke.txt",
+    "record659_adamw5e4_late2_smoke": "h200_artifact_ttt_ngram_record659_adamw5e4_late2_smoke.txt",
+    "record659_adamw1e4_late2_smoke": "h200_artifact_ttt_ngram_record659_adamw1e4_late2_smoke.txt",
     "record659_tttlr25": "h200_artifact_ttt_ngram_record659_tttlr25.txt",
+    "record659_adamw5e4_late2": "h200_artifact_ttt_ngram_record659_adamw5e4_late2.txt",
     "lowrisk_tttlr25_smoke": "h200_artifact_ttt_ngram_lowrisk_tttlr25_smoke.txt",
     "lowrisk_tttlr25": "h200_artifact_ttt_ngram_lowrisk_tttlr25.txt",
     "vr1_record659_tttlr25": "h200_artifact_ttt_ngram_vr1_record659_tttlr25.txt",
@@ -329,6 +340,13 @@ def build_status(root_dir: Path, seed: int) -> dict[str, object]:
             source="ttt_ngram",
             arch_candidate="baseline" if candidate != "vr1_record659_tttlr25" else "vr1",
             ttt_candidate=(
+                "ngram659_late2_adamw5e4"
+                if candidate in {"record659_adamw5e4_late2", "record659_adamw5e4_late2_smoke"}
+                else "ngram659_late2_adamw1e4"
+                if candidate == "record659_adamw1e4_late2_smoke"
+                else "ngram659_late2_tttlr25"
+                if candidate == "record659_late2_tttlr25_smoke"
+                else
                 "ngram659_tttlr25"
                 if candidate in {"record659_tttlr25", "record659_tttlr25_smoke", "vr1_record659_tttlr25"}
                 else "lowrisk_ngram_tttlr25"
@@ -368,10 +386,10 @@ def build_status(root_dir: Path, seed: int) -> dict[str, object]:
         }
 
     promotion_pool = [
-        *[result for result in artifact_results if result.get("completed")],
-        *[result for result in ngram_results if result.get("completed")],
-        *[result for result in ttt_ngram_results if result.get("completed")],
-        *[result for result in proxy_results if result.get("completed")],
+        *[result for result in artifact_results if result.get("completed") and not str(result["label"]).endswith("_smoke")],
+        *[result for result in ngram_results if result.get("completed") and not str(result["label"]).endswith("_smoke")],
+        *[result for result in ttt_ngram_results if result.get("completed") and not str(result["label"]).endswith("_smoke")],
+        *[result for result in proxy_results if result.get("completed") and not str(result["label"]).endswith("_smoke")],
     ]
     if combined_result is not None and combined_result.get("completed"):
         promotion_pool.append(combined_result)
@@ -391,7 +409,8 @@ def build_status(root_dir: Path, seed: int) -> dict[str, object]:
     handoff = None
     if promoted is not None:
         handoff = {
-            "acceptance_gate_bpb": ACCEPTANCE_GATE_BPB,
+            "current_public_sota_bpb": CURRENT_PUBLIC_SOTA_BPB,
+            "practical_win_gate_bpb": PRACTICAL_WIN_GATE_BPB,
             "winner": promoted,
             "runner_up": runner_up,
             "winner_seed1337_command": h100_command(
@@ -511,7 +530,8 @@ def main() -> None:
             f"log={combined['log_path']}"
         )
     print()
-    print(f"Acceptance gate: legal_ttt_exact <= {ACCEPTANCE_GATE_BPB}")
+    print(f"Current public SOTA (2026-03-25): {CURRENT_PUBLIC_SOTA_BPB:.4f}")
+    print(f"Approx record-claim gate (0.005 nat better): <= {PRACTICAL_WIN_GATE_BPB:.4f}")
     print(f"Record folder: {status['record_dir']}")
     print()
     handoff = status.get("handoff")
@@ -536,7 +556,7 @@ def main() -> None:
     print(f"  seed1337: {handoff['winner_seed1337_command']}")
     print(
         "  "
-        f"if the exact 8xH100 seed clears bytes, train/eval time, and <= {ACCEPTANCE_GATE_BPB}: "
+        f"if the exact 8xH100 seed clears bytes, train/eval time, and <= {handoff['practical_win_gate_bpb']:.4f}: "
         f"{handoff['winner_three_seed_command']}"
     )
     if handoff.get("runner_up_seed1337_command"):

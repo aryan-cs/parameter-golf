@@ -69,6 +69,7 @@ record_push_apply_ttt_candidate() {
       export NGRAM_MAX_N="${NGRAM_MAX_N:-5}"
       export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.5}"
       export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-3}"
+      export NGRAM_GLOBAL_CACHE="${NGRAM_GLOBAL_CACHE:-1}"
       ;;
     lowrisk_ngram)
       export TTT_ENABLED="${TTT_ENABLED:-0}"
@@ -112,6 +113,7 @@ record_push_apply_ttt_candidate() {
       export NGRAM_MAX_N="${NGRAM_MAX_N:-5}"
       export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.7}"
       export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-3}"
+      export NGRAM_GLOBAL_CACHE="${NGRAM_GLOBAL_CACHE:-1}"
       export NGRAM_ADAPT_ENABLED="${NGRAM_ADAPT_ENABLED:-1}"
       export NGRAM_ADAPT_LR="${NGRAM_ADAPT_LR:-0.0003}"
       export NGRAM_ADAPT_DECAY="${NGRAM_ADAPT_DECAY:-0.001}"
@@ -129,6 +131,51 @@ record_push_apply_ttt_candidate() {
       export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.5}"
       export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-3}"
       ;;
+    ngram659_late2_tttlr25)
+      export TTT_ENABLED="${TTT_ENABLED:-0}"
+      export NGRAM_EVAL_ENABLED="${NGRAM_EVAL_ENABLED:-0}"
+      export NGRAM_TTT_ENABLED="${NGRAM_TTT_ENABLED:-1}"
+      export TTT_LR="${TTT_LR:-0.0025}"
+      export TTT_LAST_N_BLOCKS="${TTT_LAST_N_BLOCKS:-2}"
+      export NGRAM_TTT_STRIDE="${NGRAM_TTT_STRIDE:-64}"
+      export NGRAM_STRIDE="${NGRAM_STRIDE:-128}"
+      export NGRAM_BATCH_SEQS="${NGRAM_BATCH_SEQS:-32}"
+      export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.15}"
+      export NGRAM_MAX_N="${NGRAM_MAX_N:-5}"
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.5}"
+      export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-3}"
+      ;;
+    ngram659_late2_adamw5e4)
+      export TTT_ENABLED="${TTT_ENABLED:-0}"
+      export NGRAM_EVAL_ENABLED="${NGRAM_EVAL_ENABLED:-0}"
+      export NGRAM_TTT_ENABLED="${NGRAM_TTT_ENABLED:-1}"
+      export TTT_OPTIMIZER="${TTT_OPTIMIZER:-adamw}"
+      export TTT_LR="${TTT_LR:-0.0005}"
+      export TTT_LAST_N_BLOCKS="${TTT_LAST_N_BLOCKS:-2}"
+      export NGRAM_TTT_STRIDE="${NGRAM_TTT_STRIDE:-64}"
+      export NGRAM_STRIDE="${NGRAM_STRIDE:-128}"
+      export NGRAM_BATCH_SEQS="${NGRAM_BATCH_SEQS:-32}"
+      export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.15}"
+      export NGRAM_MAX_N="${NGRAM_MAX_N:-5}"
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.5}"
+      export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-3}"
+      ;;
+    ngram659_late2_adamw1e4)
+      export TTT_ENABLED="${TTT_ENABLED:-0}"
+      export NGRAM_EVAL_ENABLED="${NGRAM_EVAL_ENABLED:-0}"
+      export NGRAM_TTT_ENABLED="${NGRAM_TTT_ENABLED:-1}"
+      export TTT_OPTIMIZER="${TTT_OPTIMIZER:-adamw}"
+      export TTT_LR="${TTT_LR:-0.0001}"
+      export TTT_LAST_N_BLOCKS="${TTT_LAST_N_BLOCKS:-2}"
+      export NGRAM_TTT_STRIDE="${NGRAM_TTT_STRIDE:-64}"
+      export NGRAM_STRIDE="${NGRAM_STRIDE:-128}"
+      export NGRAM_BATCH_SEQS="${NGRAM_BATCH_SEQS:-32}"
+      export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.15}"
+      export NGRAM_MAX_N="${NGRAM_MAX_N:-5}"
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.5}"
+      export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-3}"
+      export NGRAM_GLOBAL_CACHE="${NGRAM_GLOBAL_CACHE:-1}"
+      ;;
     lowrisk_ngram_tttlr25)
       export TTT_ENABLED="${TTT_ENABLED:-0}"
       export NGRAM_EVAL_ENABLED="${NGRAM_EVAL_ENABLED:-0}"
@@ -141,6 +188,7 @@ record_push_apply_ttt_candidate() {
       export NGRAM_MAX_N="${NGRAM_MAX_N:-5}"
       export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.7}"
       export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-3}"
+      export NGRAM_GLOBAL_CACHE="${NGRAM_GLOBAL_CACHE:-1}"
       ;;
     *)
       echo "unknown TTT candidate: $candidate" >&2
@@ -224,6 +272,15 @@ record_push_artifact_log_path() {
     ngram659_tttlr25)
       printf '%s\n' "$log_dir/h200_artifact_ttt_ngram_record659_tttlr25.txt"
       ;;
+    ngram659_late2_tttlr25)
+      printf '%s\n' "$log_dir/h200_artifact_ttt_ngram_record659_late2_tttlr25_smoke.txt"
+      ;;
+    ngram659_late2_adamw5e4)
+      printf '%s\n' "$log_dir/h200_artifact_ttt_ngram_record659_adamw5e4_late2.txt"
+      ;;
+    ngram659_late2_adamw1e4)
+      printf '%s\n' "$log_dir/h200_artifact_ttt_ngram_record659_adamw1e4_late2_smoke.txt"
+      ;;
     lowrisk_ngram_tttlr25)
       printf '%s\n' "$log_dir/h200_artifact_ttt_ngram_lowrisk_tttlr25.txt"
       ;;
@@ -298,6 +355,18 @@ record_push_ttt_ngram_log_path() {
       ;;
     record659_tttlr25)
       printf '%s\n' "$log_dir/h200_artifact_ttt_ngram_record659_tttlr25.txt"
+      ;;
+    record659_late2_tttlr25_smoke)
+      printf '%s\n' "$log_dir/h200_artifact_ttt_ngram_record659_late2_tttlr25_smoke.txt"
+      ;;
+    record659_adamw5e4_late2_smoke)
+      printf '%s\n' "$log_dir/h200_artifact_ttt_ngram_record659_adamw5e4_late2_smoke.txt"
+      ;;
+    record659_adamw1e4_late2_smoke)
+      printf '%s\n' "$log_dir/h200_artifact_ttt_ngram_record659_adamw1e4_late2_smoke.txt"
+      ;;
+    record659_adamw5e4_late2)
+      printf '%s\n' "$log_dir/h200_artifact_ttt_ngram_record659_adamw5e4_late2.txt"
       ;;
     lowrisk_tttlr25_smoke)
       printf '%s\n' "$log_dir/h200_artifact_ttt_ngram_lowrisk_tttlr25_smoke.txt"

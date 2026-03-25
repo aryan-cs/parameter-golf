@@ -12,9 +12,14 @@ source .venv/bin/activate
 BIGRAM_VOCAB_SIZE="${BIGRAM_VOCAB_SIZE:-1536}"
 VALUE_RESIDUAL="${VALUE_RESIDUAL:-0}"
 TTT_FREEZE_BLOCKS="${TTT_FREEZE_BLOCKS:-0}"
+TTT_LAST_N_BLOCKS="${TTT_LAST_N_BLOCKS:-0}"
 TTT_LR="${TTT_LR:-0.0025}"
 TTT_EPOCHS="${TTT_EPOCHS:-3}"
 TTT_CHUNK_TOKENS="${TTT_CHUNK_TOKENS:-32768}"
+TTT_OPTIMIZER="${TTT_OPTIMIZER:-sgd}"
+TTT_WEIGHT_DECAY="${TTT_WEIGHT_DECAY:-0.0}"
+TTT_BETA1="${TTT_BETA1:-0.9}"
+TTT_BETA2="${TTT_BETA2:-0.999}"
 TTT_MOMENTUM="${TTT_MOMENTUM:-0.9}"
 TTT_GRAD_CLIP="${TTT_GRAD_CLIP:-1.0}"
 BATCH_SEQS="${BATCH_SEQS:-32}"
@@ -32,6 +37,31 @@ case "$CANDIDATE" in
     ;;
   record659_tttlr25)
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ttt_ngram_record659_tttlr25.txt}"
+    ;;
+  record659_late2_tttlr25_smoke)
+    TTT_LAST_N_BLOCKS="2"
+    MAX_CHUNKS="8"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ttt_ngram_record659_late2_tttlr25_smoke.txt}"
+    ;;
+  record659_adamw5e4_late2_smoke)
+    TTT_LAST_N_BLOCKS="2"
+    TTT_OPTIMIZER="adamw"
+    TTT_LR="0.0005"
+    MAX_CHUNKS="8"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ttt_ngram_record659_adamw5e4_late2_smoke.txt}"
+    ;;
+  record659_adamw1e4_late2_smoke)
+    TTT_LAST_N_BLOCKS="2"
+    TTT_OPTIMIZER="adamw"
+    TTT_LR="0.0001"
+    MAX_CHUNKS="8"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ttt_ngram_record659_adamw1e4_late2_smoke.txt}"
+    ;;
+  record659_adamw5e4_late2)
+    TTT_LAST_N_BLOCKS="2"
+    TTT_OPTIMIZER="adamw"
+    TTT_LR="0.0005"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ttt_ngram_record659_adamw5e4_late2.txt}"
     ;;
   lowrisk_tttlr25_smoke)
     NGRAM_LAMBDA="0.05"
@@ -62,9 +92,14 @@ exec python scripts/eval_ngram_ttt_artifact.py \
   --bigram-vocab-size "$BIGRAM_VOCAB_SIZE" \
   --value-residual "$VALUE_RESIDUAL" \
   --ttt-freeze-blocks "$TTT_FREEZE_BLOCKS" \
+  --ttt-last-n-blocks "$TTT_LAST_N_BLOCKS" \
   --ttt-lr "$TTT_LR" \
   --ttt-epochs "$TTT_EPOCHS" \
   --ttt-chunk-tokens "$TTT_CHUNK_TOKENS" \
+  --ttt-optimizer "$TTT_OPTIMIZER" \
+  --ttt-weight-decay "$TTT_WEIGHT_DECAY" \
+  --ttt-beta1 "$TTT_BETA1" \
+  --ttt-beta2 "$TTT_BETA2" \
   --ttt-momentum "$TTT_MOMENTUM" \
   --ttt-grad-clip "$TTT_GRAD_CLIP" \
   --batch-seqs "$BATCH_SEQS" \

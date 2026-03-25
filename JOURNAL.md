@@ -2111,3 +2111,33 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
   This is the clearest evidence yet that the `5`-gram branch is a real frontier contender on our saved artifact, not just a smoke-pass curiosity. Even before completion, it is already far ahead of the pure legal-TTT winner `1.11366553`. The codebase is now also ready to escalate immediately if `ngram_adapt` proves real on H200; we will not need a second wiring pass before the next `8xH100` window.
 - Decision: Keep the current full `record659` run untouched. Treat pure `record659` as the primary live bet, `record659_adapt` as the highest-upside next follow-up, and `record659_tttlr25` as the best complementary hybrid branch. Deprioritize lower-signal `lowrisk` variants until at least one of these higher-leverage branches finishes.
 - Next step: Let the current full `record659` run finish, then immediately compare it against the soonest available `record659_adapt` and `record659_tttlr25` runs in the reordered queue. If the pure run lands near the current `1.089x` trajectory, make the `ngram659` family the front of the next `8xH100` launch slate.
+
+- Timestamp: 2026-03-25 03:26 UTC
+- Commit: `working tree`
+- Lane: Global-cache distributed n-gram submission path + late-block hybrid queue
+- Objective: Close the biggest remaining gap between our strongest H200 signal and the counted `8xH100` submission path. The standalone H200 `record659` evaluator is a single-device global-cache pass, but the counted trainer still evaluated n-gram windows independently per rank. I wanted the exact-run path to preserve a global cache without giving up distributed model forward throughput.
+- Command or config: Re-read the exact upstream `submission/5gram-eval-1.0920` trainer and confirmed it also shards windows by rank, then implemented a stronger submission-side alternative in our record trainer:
+  - added `NGRAM_GLOBAL_CACHE` to `records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/train_gpt.py`
+  - extended `eval_val_ngram(...)` so, when distributed, each rank still computes target log-probs and max-log-probs for its local windows, but rank `0` gathers those compact summaries and performs the actual 5-gram mixing in true global token order
+  - this preserves a single global online cache while keeping the expensive neural forward pass parallelized
+  - kept `ngram_adapt` support compatible with this new path and synchronized its gradients with `all_reduce_avg_grads(...)`
+  - made the H100 `ngram659` launchers explicit about `NGRAM_GLOBAL_CACHE=1`
+  - validated with `python -m py_compile` and `bash -n`
+  In parallel, I also validated and kept the already-uncommitted late-block hybrid branch work:
+  - `scripts/eval_ngram_ttt_artifact.py` now supports `ttt_last_n_blocks`, `ttt_optimizer`, and AdamW-style TTT smokes
+  - `scripts/icrn_h200_artifact_ttt_ngram_candidate.sh`, `scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh`, `scripts/queue_h200_credit_prep.sh`, and `scripts/record_push_status.py` now include:
+    - `record659_late2_tttlr25_smoke`
+    - `record659_adamw5e4_late2_smoke`
+    - `record659_adamw1e4_late2_smoke`
+    - `record659_adamw5e4_late2`
+  These are intended as the next H200 queue after the pure `record659` / `record659_adapt` branches, not as replacements for them.
+- Result: The live full `record659` H200 run strengthened again while I was wiring the submission path:
+  - `37.0% -> 1.086167`
+  - `37.3% -> 1.085714`
+  - `41.9% -> 1.085645`
+  - `43.9% -> 1.085348`
+  - `44.2% -> 1.085158`
+  - `44.9% -> 1.085108`
+  This is now substantially ahead of the upstream public PR `#659` mean `1.0920`, at least on our single-H200 global-cache artifact evaluator. The pure 5-gram branch is clearly the best active lane. The new counted-trainer `NGRAM_GLOBAL_CACHE` path is important because it gives us a plausible way to carry more of this H200-side gain into the eventual exact `8xH100` submission run, instead of settling for the weaker rank-sharded cache behavior.
+- Decision: Treat pure `record659` as the primary push lane, `record659_adapt` as the highest-upside immediate follow-up, and the late-2-block masked `TTT+ngram` family as the next hedge if pure n-gram saturates before the final H100 window. Keep the exact-run H100 launchers pointed at pure `ngram659` first.
+- Next step: Let the current full `record659` run continue to completion, then compare it against `record659_adapt` and the new late-2-block hybrid smokes. If the completed pure run stays near the current `1.085x` curve, promote the pure `ngram659` family to the front of the first `8xH100` slate and treat `ngram659_adapt` as the immediate challenger.
