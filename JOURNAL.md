@@ -15,6 +15,22 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 
 ## Entries
 
+- Timestamp: 2026-03-25 09:24 UTC
+- Commit: uncommitted
+- Lane: exact-upstream PR688 / queue integrity
+- Objective: Repair the PR688 watcher chain after replacing the fake `nocache` branch, so the honest lean lanes launch in the right order.
+- Command or config: After confirming that `USE_CACHE`, `CACHE_ALPHA`, and `PPM_ALPHA` are dead on the exact PR688 TTT path, rewired [rearm_after_current_timed_nocompile_with_hedge.sh](/home/aryang9/parameter-golf/scripts/rearm_after_current_timed_nocompile_with_hedge.sh) so the active ladder is:
+  - `sgd_nomom_batch64`
+  - `temp1`
+  - `nomixer_temp1`
+  - `nomixer_temp1_unweighted`
+  - `ep2`
+  - `ep1`
+  Then `last2`, `last1`, and the harsher chunk/stride cuts. Added the missing explicit `nomixer_temp1_unweighted -> ep2 -> ep1` watcher block and revalidated with `bash -n`.
+- Result: The detached watcher chain now matches the intended honest PR688 budget ladder and no longer skips `ep2`.
+- Decision: Keep the queue focused on real exact-path levers only; no dead-cache branches.
+- Next step: Rearm the watchers again, confirm the fresh log targets stay unused, then commit the correction batch.
+
 - Timestamp: 2026-03-25 09:32 UTC
 - Commit: uncommitted
 - Lane: exact-upstream PR688 / budget fit
