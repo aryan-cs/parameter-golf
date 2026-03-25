@@ -12,5 +12,5 @@ exec env \
   TTT_OPTIMIZER="${TTT_OPTIMIZER:-sgd}" \
   TTT_MOMENTUM="${TTT_MOMENTUM:-0.0}" \
   TTT_BATCH_SEQS="${TTT_BATCH_SEQS:-64}" \
-  USE_CACHE="${USE_CACHE:-0}" \
-  bash "$ROOT_DIR/scripts/h100_upstream_pr688_exact.sh"
+  USE_MIXER="${USE_MIXER:-0}" \
+  bash "$ROOT_DIR/scripts/icrn_h200_upstream_pr688_proxy.sh"

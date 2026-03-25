@@ -31,8 +31,9 @@ UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LIGHT_SKIPSLIDING_SGD_LOG="$LOG_DIR/h200_ups
 UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LIGHT_SKIPSLIDING_SGD_NOMOM_LOG="$LOG_DIR/h200_upstream_pr688_proxy600_timed_nocompile_qttt_light_skipsliding_sgd_nomom_seed${SEED}.txt"
 UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LIGHT_SKIPSLIDING_SGD_BATCH64_LOG="$LOG_DIR/h200_upstream_pr688_proxy600_timed_nocompile_qttt_light_skipsliding_sgd_batch64_seed${SEED}.txt"
 UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LIGHT_SKIPSLIDING_SGD_NOMOM_BATCH64_LOG="$LOG_DIR/h200_upstream_pr688_proxy600_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_seed${SEED}.txt"
-UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LIGHT_SKIPSLIDING_SGD_NOMOM_BATCH64_NOCACHE_LOG="$LOG_DIR/h200_upstream_pr688_proxy600_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_nocache_seed${SEED}.txt"
-UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LIGHT_SKIPSLIDING_SGD_NOMOM_BATCH64_LEAN_LOG="$LOG_DIR/h200_upstream_pr688_proxy600_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_lean_seed${SEED}.txt"
+UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LIGHT_SKIPSLIDING_SGD_NOMOM_BATCH64_TEMP1_LOG="$LOG_DIR/h200_upstream_pr688_proxy600_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_temp1_seed${SEED}.txt"
+UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LIGHT_SKIPSLIDING_SGD_NOMOM_BATCH64_NOMIXER_TEMP1_LOG="$LOG_DIR/h200_upstream_pr688_proxy600_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_nomixer_temp1_seed${SEED}.txt"
+UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LIGHT_SKIPSLIDING_SGD_NOMOM_BATCH64_NOMIXER_TEMP1_UNWEIGHTED_LOG="$LOG_DIR/h200_upstream_pr688_proxy600_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_nomixer_temp1_unweighted_seed${SEED}.txt"
 UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LIGHT_EP2_SKIPSLIDING_LOG="$LOG_DIR/h200_upstream_pr688_proxy600_timed_nocompile_qttt_light_ep2_skipsliding_seed${SEED}.txt"
 UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LIGHT_EP1_SKIPSLIDING_LOG="$LOG_DIR/h200_upstream_pr688_proxy600_timed_nocompile_qttt_light_ep1_skipsliding_seed${SEED}.txt"
 UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LAST2_SKIPSLIDING_LOG="$LOG_DIR/h200_upstream_pr688_proxy600_timed_nocompile_qttt_last2_skipsliding_seed${SEED}.txt"
@@ -228,45 +229,65 @@ TARGET_ENV_ASSIGNMENTS="TIMED_MODE=1 COMPILE_ENABLED=0" \
 TARGET_SKIP_IF_LOG_EXISTS="1" \
 NEXT_WAIT_LOG="$UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LIGHT_SKIPSLIDING_SGD_NOMOM_BATCH64_LOG" \
 NEXT_WAIT_PATTERN="$UPSTREAM_WAIT_PATTERN" \
-NEXT_TARGET_LABEL="upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_nocache_exact" \
-NEXT_TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr688_qttt_light_skipsliding_sgd_nomom_batch64_nocache_proxy.sh" \
-NEXT_LOG_PATH="$UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LIGHT_SKIPSLIDING_SGD_NOMOM_BATCH64_NOCACHE_LOG" \
-NEXT_TARGET_RUN_ID="h200_upstream_pr688_proxy600_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_nocache_seed${SEED}" \
+NEXT_TARGET_LABEL="upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_temp1_exact" \
+NEXT_TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr688_qttt_light_skipsliding_sgd_nomom_batch64_proxy.sh" \
+NEXT_LOG_PATH="$UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LIGHT_SKIPSLIDING_SGD_NOMOM_BATCH64_TEMP1_LOG" \
+NEXT_TARGET_RUN_ID="h200_upstream_pr688_proxy600_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_temp1_seed${SEED}" \
 NEXT_TARGET_SEED="$SEED" \
-NEXT_TARGET_ENV_ASSIGNMENTS="TIMED_MODE=1 COMPILE_ENABLED=0" \
+NEXT_TARGET_ENV_ASSIGNMENTS="TIMED_MODE=1 COMPILE_ENABLED=0 TTT_TEMPERATURE=1.0" \
 NEXT_TARGET_SKIP_IF_LOG_EXISTS="1" \
 setsid bash "$ROOT_DIR/scripts/after_log_launch_script.sh" >/tmp/h200_after_upstream_pr688_qttt_light_skipsliding_sgd_batch64_launch_upstream_pr688_qttt_light_skipsliding_sgd_nomom_batch64.log 2>&1 < /dev/null &
 
 WAIT_LOG="$UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LIGHT_SKIPSLIDING_SGD_NOMOM_BATCH64_LOG" \
 WAIT_PATTERN="$UPSTREAM_WAIT_PATTERN" \
-TARGET_LABEL="upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_nocache_exact" \
-TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr688_qttt_light_skipsliding_sgd_nomom_batch64_nocache_proxy.sh" \
-TARGET_LOG_PATH="$UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LIGHT_SKIPSLIDING_SGD_NOMOM_BATCH64_NOCACHE_LOG" \
-TARGET_RUN_ID="h200_upstream_pr688_proxy600_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_nocache_seed${SEED}" \
+TARGET_LABEL="upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_temp1_exact" \
+TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr688_qttt_light_skipsliding_sgd_nomom_batch64_proxy.sh" \
+TARGET_LOG_PATH="$UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LIGHT_SKIPSLIDING_SGD_NOMOM_BATCH64_TEMP1_LOG" \
+TARGET_RUN_ID="h200_upstream_pr688_proxy600_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_temp1_seed${SEED}" \
 TARGET_SEED="$SEED" \
-TARGET_ENV_ASSIGNMENTS="TIMED_MODE=1 COMPILE_ENABLED=0" \
+TARGET_ENV_ASSIGNMENTS="TIMED_MODE=1 COMPILE_ENABLED=0 TTT_TEMPERATURE=1.0" \
 TARGET_SKIP_IF_LOG_EXISTS="1" \
-NEXT_WAIT_LOG="$UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LIGHT_SKIPSLIDING_SGD_NOMOM_BATCH64_NOCACHE_LOG" \
+NEXT_WAIT_LOG="$UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LIGHT_SKIPSLIDING_SGD_NOMOM_BATCH64_TEMP1_LOG" \
 NEXT_WAIT_PATTERN="$UPSTREAM_WAIT_PATTERN" \
-NEXT_TARGET_LABEL="upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_lean_exact" \
-NEXT_TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr688_qttt_light_skipsliding_sgd_nomom_batch64_lean_proxy.sh" \
-NEXT_LOG_PATH="$UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LIGHT_SKIPSLIDING_SGD_NOMOM_BATCH64_LEAN_LOG" \
-NEXT_TARGET_RUN_ID="h200_upstream_pr688_proxy600_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_lean_seed${SEED}" \
+NEXT_TARGET_LABEL="upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_nomixer_temp1_exact" \
+NEXT_TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr688_qttt_light_skipsliding_sgd_nomom_batch64_nomixer_proxy.sh" \
+NEXT_LOG_PATH="$UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LIGHT_SKIPSLIDING_SGD_NOMOM_BATCH64_NOMIXER_TEMP1_LOG" \
+NEXT_TARGET_RUN_ID="h200_upstream_pr688_proxy600_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_nomixer_temp1_seed${SEED}" \
 NEXT_TARGET_SEED="$SEED" \
-NEXT_TARGET_ENV_ASSIGNMENTS="TIMED_MODE=1 COMPILE_ENABLED=0" \
+NEXT_TARGET_ENV_ASSIGNMENTS="TIMED_MODE=1 COMPILE_ENABLED=0 TTT_TEMPERATURE=1.0" \
 NEXT_TARGET_SKIP_IF_LOG_EXISTS="1" \
-setsid bash "$ROOT_DIR/scripts/after_log_launch_script.sh" >/tmp/h200_after_upstream_pr688_qttt_light_skipsliding_sgd_nomom_batch64_launch_upstream_pr688_qttt_light_skipsliding_sgd_nomom_batch64_nocache.log 2>&1 < /dev/null &
+setsid bash "$ROOT_DIR/scripts/after_log_launch_script.sh" >/tmp/h200_after_upstream_pr688_qttt_light_skipsliding_sgd_nomom_batch64_launch_upstream_pr688_qttt_light_skipsliding_sgd_nomom_batch64_temp1.log 2>&1 < /dev/null &
 
-WAIT_LOG="$UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LIGHT_SKIPSLIDING_SGD_NOMOM_BATCH64_NOCACHE_LOG" \
+WAIT_LOG="$UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LIGHT_SKIPSLIDING_SGD_NOMOM_BATCH64_TEMP1_LOG" \
 WAIT_PATTERN="$UPSTREAM_WAIT_PATTERN" \
-TARGET_LABEL="upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_lean_exact" \
-TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr688_qttt_light_skipsliding_sgd_nomom_batch64_lean_proxy.sh" \
-TARGET_LOG_PATH="$UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LIGHT_SKIPSLIDING_SGD_NOMOM_BATCH64_LEAN_LOG" \
-TARGET_RUN_ID="h200_upstream_pr688_proxy600_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_lean_seed${SEED}" \
+TARGET_LABEL="upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_nomixer_temp1_exact" \
+TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr688_qttt_light_skipsliding_sgd_nomom_batch64_nomixer_proxy.sh" \
+TARGET_LOG_PATH="$UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LIGHT_SKIPSLIDING_SGD_NOMOM_BATCH64_NOMIXER_TEMP1_LOG" \
+TARGET_RUN_ID="h200_upstream_pr688_proxy600_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_nomixer_temp1_seed${SEED}" \
 TARGET_SEED="$SEED" \
-TARGET_ENV_ASSIGNMENTS="TIMED_MODE=1 COMPILE_ENABLED=0" \
+TARGET_ENV_ASSIGNMENTS="TIMED_MODE=1 COMPILE_ENABLED=0 TTT_TEMPERATURE=1.0" \
 TARGET_SKIP_IF_LOG_EXISTS="1" \
-NEXT_WAIT_LOG="$UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LIGHT_SKIPSLIDING_SGD_NOMOM_BATCH64_LEAN_LOG" \
+NEXT_WAIT_LOG="$UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LIGHT_SKIPSLIDING_SGD_NOMOM_BATCH64_NOMIXER_TEMP1_LOG" \
+NEXT_WAIT_PATTERN="$UPSTREAM_WAIT_PATTERN" \
+NEXT_TARGET_LABEL="upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_nomixer_temp1_unweighted_exact" \
+NEXT_TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr688_qttt_light_skipsliding_sgd_nomom_batch64_lean_proxy.sh" \
+NEXT_LOG_PATH="$UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LIGHT_SKIPSLIDING_SGD_NOMOM_BATCH64_NOMIXER_TEMP1_UNWEIGHTED_LOG" \
+NEXT_TARGET_RUN_ID="h200_upstream_pr688_proxy600_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_nomixer_temp1_unweighted_seed${SEED}" \
+NEXT_TARGET_SEED="$SEED" \
+NEXT_TARGET_ENV_ASSIGNMENTS="TIMED_MODE=1 COMPILE_ENABLED=0 TTT_TEMPERATURE=1.0" \
+NEXT_TARGET_SKIP_IF_LOG_EXISTS="1" \
+setsid bash "$ROOT_DIR/scripts/after_log_launch_script.sh" >/tmp/h200_after_upstream_pr688_qttt_light_skipsliding_sgd_nomom_batch64_temp1_launch_upstream_pr688_qttt_light_skipsliding_sgd_nomom_batch64_nomixer_temp1.log 2>&1 < /dev/null &
+
+WAIT_LOG="$UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LIGHT_SKIPSLIDING_SGD_NOMOM_BATCH64_NOMIXER_TEMP1_LOG" \
+WAIT_PATTERN="$UPSTREAM_WAIT_PATTERN" \
+TARGET_LABEL="upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_nomixer_temp1_unweighted_exact" \
+TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr688_qttt_light_skipsliding_sgd_nomom_batch64_lean_proxy.sh" \
+TARGET_LOG_PATH="$UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LIGHT_SKIPSLIDING_SGD_NOMOM_BATCH64_NOMIXER_TEMP1_UNWEIGHTED_LOG" \
+TARGET_RUN_ID="h200_upstream_pr688_proxy600_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_nomixer_temp1_unweighted_seed${SEED}" \
+TARGET_SEED="$SEED" \
+TARGET_ENV_ASSIGNMENTS="TIMED_MODE=1 COMPILE_ENABLED=0 TTT_TEMPERATURE=1.0" \
+TARGET_SKIP_IF_LOG_EXISTS="1" \
+NEXT_WAIT_LOG="$UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LIGHT_SKIPSLIDING_SGD_NOMOM_BATCH64_NOMIXER_TEMP1_UNWEIGHTED_LOG" \
 NEXT_WAIT_PATTERN="$UPSTREAM_WAIT_PATTERN" \
 NEXT_TARGET_LABEL="upstream_pr688_timed_nocompile_qttt_light_ep2_skipsliding_exact" \
 NEXT_TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr688_qttt_light_ep2_skipsliding_proxy.sh" \
@@ -275,30 +296,7 @@ NEXT_TARGET_RUN_ID="h200_upstream_pr688_proxy600_timed_nocompile_qttt_light_ep2_
 NEXT_TARGET_SEED="$SEED" \
 NEXT_TARGET_ENV_ASSIGNMENTS="TIMED_MODE=1 COMPILE_ENABLED=0" \
 NEXT_TARGET_SKIP_IF_LOG_EXISTS="1" \
-setsid bash "$ROOT_DIR/scripts/after_log_launch_script.sh" >/tmp/h200_after_upstream_pr688_qttt_light_skipsliding_sgd_nomom_batch64_nocache_launch_upstream_pr688_qttt_light_skipsliding_sgd_nomom_batch64_lean.log 2>&1 < /dev/null &
-
-WAIT_LOG="$UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LIGHT_SKIPSLIDING_SGD_NOMOM_BATCH64_LEAN_LOG" \
-WAIT_PATTERN="$UPSTREAM_WAIT_PATTERN" \
-TARGET_LABEL="upstream_pr688_timed_nocompile_qttt_light_ep2_skipsliding_exact" \
-TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr688_qttt_light_ep2_skipsliding_proxy.sh" \
-TARGET_LOG_PATH="$UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LIGHT_EP2_SKIPSLIDING_LOG" \
-TARGET_RUN_ID="h200_upstream_pr688_proxy600_timed_nocompile_qttt_light_ep2_skipsliding_seed${SEED}" \
-TARGET_SEED="$SEED" \
-TARGET_ENV_ASSIGNMENTS="TIMED_MODE=1 COMPILE_ENABLED=0" \
-TARGET_SKIP_IF_LOG_EXISTS="1" \
-NEXT_WAIT_LOG="$UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LIGHT_EP2_SKIPSLIDING_LOG" \
-NEXT_WAIT_PATTERN="$UPSTREAM_WAIT_PATTERN" \
-NEXT_TARGET_LABEL="upstream_pr688_timed_nocompile_qttt_light_ep1_skipsliding_exact" \
-NEXT_TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr688_qttt_light_ep1_skipsliding_proxy.sh" \
-NEXT_LOG_PATH="$UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LIGHT_EP1_SKIPSLIDING_LOG" \
-NEXT_TARGET_RUN_ID="h200_upstream_pr688_proxy600_timed_nocompile_qttt_light_ep1_skipsliding_seed${SEED}" \
-NEXT_TARGET_SEED="$SEED" \
-NEXT_TARGET_ENV_ASSIGNMENTS="TIMED_MODE=1 COMPILE_ENABLED=0" \
-NEXT_TARGET_SKIP_IF_LOG_EXISTS="1" \
-setsid bash "$ROOT_DIR/scripts/after_log_launch_script.sh" >/tmp/h200_after_upstream_pr688_qttt_light_skipsliding_sgd_nomom_batch64_lean_launch_upstream_pr688_qttt_light_ep2_skipsliding.log 2>&1 < /dev/null &
-
-WAIT_LOG="$UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LIGHT_EP1_SKIPSLIDING_LOG" \
-WAIT_PATTERN="$UPSTREAM_WAIT_PATTERN" \
+setsid bash "$ROOT_DIR/scripts/after_log_launch_script.sh" >/tmp/h200_after_upstream_pr688_qttt_light_skipsliding_sgd_nomom_batch64_nomixer_temp1_launch_upstream_pr688_qttt_light_skipsliding_sgd_nomom_batch64_nomixer_temp1_unweighted.log 2>&1 < /dev/null &
 
 WAIT_LOG="$UPSTREAM_PR688_TIMED_NOCOMPILE_QTTT_LIGHT_EP1_SKIPSLIDING_LOG" \
 WAIT_PATTERN="$UPSTREAM_WAIT_PATTERN" \

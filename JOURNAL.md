@@ -15,6 +15,22 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 
 ## Entries
 
+- Timestamp: 2026-03-25 09:32 UTC
+- Commit: uncommitted
+- Lane: exact-upstream PR688 / budget fit
+- Objective: Correct the fake PR688 `nocache` idea before it burns H200 time, and replace it with honest exact-path cuts.
+- Command or config: Re-read the real PR688 trainer and confirmed `USE_CACHE`, `CACHE_ALPHA`, and `PPM_ALPHA` are dead on the exact TTT path: they are threaded into `eval_val_sliding_ttt(...)` but never referenced inside the body. Replaced the queued fake cache cut with three real branches built on the current cleanest optimizer lane:
+  - `upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_temp1_exact`
+  - `upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_nomixer_temp1_exact`
+  - `upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_nomixer_temp1_unweighted_exact`
+  These use:
+  - `TTT_TEMPERATURE=1.0` to remove adaptive-temperature overhead
+  - `USE_MIXER=0` to drop the online mixer on the exact path
+  - `BYTE_WEIGHTED_TTT=0` for the harshest honest inner-loop cut
+- Result: The active PR688 queue no longer contains a fake `nocache` lane. It now goes `sgd_nomom_batch64 -> temp1 -> nomixer_temp1 -> nomixer_temp1_unweighted -> ep2 -> ep1`, which is a much more honest budget ladder.
+- Decision: Treat adaptive temperature, mixer, and byte-weighted loss as the remaining real exact-path levers inside PR688. Do not spend H200 time on dead `USE_CACHE` / `PPM_ALPHA` / `CACHE_ALPHA` toggles.
+- Next step: Validate the corrected wrappers and queue, rearm the watchers, and let the live PR674 head run continue untouched while the honest PR688 lean lanes wait behind it.
+
 - Timestamp: 2026-03-25 09:20 UTC
 - Commit: uncommitted
 - Lane: exact-upstream PR688 / budget fit
