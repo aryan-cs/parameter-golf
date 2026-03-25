@@ -780,6 +780,15 @@ def main() -> None:
     elapsed_ms = 1000.0 * (time.perf_counter() - t0)
     log(f"final_ngram_eval val_loss:{val_loss:.4f} val_bpb:{val_bpb:.4f} stride:{args_ns.stride} eval_time:{elapsed_ms:.0f}ms")
     log(f"final_ngram_eval_exact val_loss:{val_loss:.8f} val_bpb:{val_bpb:.8f}")
+    if args_ns.cache_kind == "hashed":
+        log(
+            f"final_int6_sliding_window_ngram{args_ns.ngram_max_n} val_loss:{val_loss:.4f} "
+            f"val_bpb:{val_bpb:.4f} eval_time:{elapsed_ms:.0f}ms"
+        )
+        log(
+            f"final_int6_sliding_window_ngram{args_ns.ngram_max_n}_exact "
+            f"val_loss:{val_loss:.8f} val_bpb:{val_bpb:.8f}"
+        )
     log(
         f"resume_ngram_eval:peak_memory_allocated_mib={torch.cuda.max_memory_allocated() // 1024 // 1024} "
         f"reserved_mib={torch.cuda.max_memory_reserved() // 1024 // 1024}"

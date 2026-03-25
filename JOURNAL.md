@@ -3230,3 +3230,42 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: Future `ngram674` / `podracing674_*_ngram674` H100 launches will now match the PR `#674` stride semantics much more closely.
 - Decision: Treat this as a required parity fix, not an optional tweak.
 - Next step: Validate, commit, and keep the H200 proxy running while the corrected H100 handoff waits for credits.
+
+- Timestamp: 2026-03-25 05:18 UTC
+- Commit: uncommitted
+- Lane: counted trainer / PR674 activation parity
+- Objective: Make the counted trainer actually honor `MLP_ACT=leaky_relu_sq` instead of silently ignoring the env knob.
+- Command or config: Compared the local record trainer against PR `#674`'s root `train_gpt.py` and found our banked-MLP path hardcoded LeakyReLU² with no `MLP_ACT` / `MLP_LEAKY_SLOPE` support. Patched `train_gpt.py` so `Hyperparameters`, `GPT`, `Block`, and `MLP` all accept and propagate `mlp_act` / `mlp_leaky_slope`, and added startup logging for `mlp_act`, `mlp_leaky_slope`, and `use_swiglu`.
+- Result: The future queued proxy branches can now actually run `leaky_relu_sq` instead of just exporting dead env vars. Verified with `python -m py_compile` and a `.venv` smoke that both `relu_sq` and `leaky_relu_sq` MLP forwards return finite tensors.
+- Decision: Treat this as another required PR-`#674` parity fix. The already-armed watcher chain can now launch post-baseline candidates with the intended activation.
+- Next step: Commit the trainer fix, keep the proxy alive, and let the corrected `podracing674` ladder consume it automatically.
+
+- Timestamp: 2026-03-25 05:33 UTC
+- Commit: uncommitted
+- Lane: PR674 exact hashed eval parity
+- Objective: Replace the loose `ngram674` surrogate with the actual PR `#674` fixed-weight hashed sliding metric path in the counted trainer and handoff tooling.
+- Research / findings:
+  - Fetched upstream PR heads `#674`, `#676`, and `#678` over HTTPS and diffed the real `train_gpt.py` implementations locally.
+  - Confirmed PR `#674` still uses the older `NGRAM_EVAL_ORDER/NGRAM_EVAL_ALPHA/NGRAM_EVAL_MIN_COUNT/NGRAM_EVAL_BUCKETS` interface and reports `final_int6_sliding_window_ngram5_exact`, not our generic `final_ngram_eval_exact`.
+  - PR `#678` remains non-record and negative on current evidence, so it stays out of the active queue.
+- Code / ops:
+  - Added exact PR-`#674`-style score-first hashed eval to `records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/train_gpt.py` under the real `NGRAM_EVAL_*` env interface, including:
+    - distributed window sharding across ranks
+    - fixed-weight linear mixing
+    - optional partial coverage via `NGRAM_EVAL_MAX_SECONDS`
+    - exact PR-style output lines `final_int6_sliding_window_ngram{order}` / `_exact`
+  - Switched `ngram674` in `scripts/record_push_candidate_lib.sh` from the custom cache API to the real PR-`#674` envs:
+    - `NGRAM_EVAL_ORDER=5`
+    - `NGRAM_EVAL_ALPHA=0.20`
+    - `NGRAM_EVAL_MIN_COUNT=2`
+    - `NGRAM_EVAL_BUCKETS=4194304`
+    - `NGRAM_EVAL_ENABLED=0`
+  - Updated `scripts/h100_parallel_candidate_portfolio.sh` so plain `ngram674` and `vr1_bg3072_ngram674` now route through `h100_record_push_candidate.sh`, reusing the corrected candidate library instead of stale custom-cache envs.
+  - Updated `scripts/prepare_submission_metadata.py` and `scripts/record_push_status.py` to treat `final_int6_sliding_window_ngram*_exact` as a first-class submission metric.
+  - Updated `scripts/eval_ngram_cache_artifact.py` to emit the PR-style hashed metric names too, and broadened `scripts/icrn_h200_artifact_ngram_candidate.sh` skip-completed detection accordingly.
+- Result:
+  - The next `record674` proxy or H100 handoff will finally test the same metric family the upstream record claim reports, instead of our custom hashed surrogate.
+  - Status and submission tooling will no longer mis-rank those logs under the generic n-gram bucket.
+- Decision:
+  - Treat this as the main remaining PR-`#674` parity fix after activation and stride parity.
+  - Keep the live H200 proxy running untouched while the exact hashed handoff path is tightened around it.

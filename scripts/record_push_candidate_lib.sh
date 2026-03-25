@@ -110,18 +110,12 @@ record_push_apply_ttt_candidate() {
       ;;
     ngram674)
       export TTT_ENABLED="${TTT_ENABLED:-0}"
-      export NGRAM_EVAL_ENABLED="${NGRAM_EVAL_ENABLED:-1}"
-      export NGRAM_STRIDE="${NGRAM_STRIDE:-64}"
-      export NGRAM_BATCH_SEQS="${NGRAM_BATCH_SEQS:-32}"
-      export NGRAM_CACHE_KIND="${NGRAM_CACHE_KIND:-hashed}"
-      export NGRAM_HASHED_BUCKETS="${NGRAM_HASHED_BUCKETS:-4194304}"
-      export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.20}"
-      export NGRAM_MAX_N="${NGRAM_MAX_N:-5}"
-      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-1.0}"
-      export NGRAM_APPLY_MODE="${NGRAM_APPLY_MODE:-always}"
-      export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-2}"
-      export NGRAM_PACKED_CACHE="${NGRAM_PACKED_CACHE:-1}"
-      export NGRAM_GLOBAL_CACHE="${NGRAM_GLOBAL_CACHE:-1}"
+      export NGRAM_EVAL_ENABLED="${NGRAM_EVAL_ENABLED:-0}"
+      export NGRAM_EVAL_ORDER="${NGRAM_EVAL_ORDER:-5}"
+      export NGRAM_EVAL_ALPHA="${NGRAM_EVAL_ALPHA:-0.20}"
+      export NGRAM_EVAL_MIN_COUNT="${NGRAM_EVAL_MIN_COUNT:-2}"
+      export NGRAM_EVAL_BUCKETS="${NGRAM_EVAL_BUCKETS:-4194304}"
+      export NGRAM_EVAL_MAX_SECONDS="${NGRAM_EVAL_MAX_SECONDS:-0.0}"
       ;;
     ngram659_lamcool)
       export TTT_ENABLED="${TTT_ENABLED:-0}"

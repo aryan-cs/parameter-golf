@@ -89,13 +89,7 @@ run_candidate() {
       exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_ngram659.sh"
       ;;
     ngram674)
-      export NGRAM_CACHE_KIND="${NGRAM_CACHE_KIND:-hashed}"
-      export NGRAM_HASHED_BUCKETS="${NGRAM_HASHED_BUCKETS:-4194304}"
-      export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.20}"
-      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-1.0}"
-      export NGRAM_APPLY_MODE="${NGRAM_APPLY_MODE:-always}"
-      export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-2}"
-      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_ngram659.sh"
+      exec bash "$ROOT_DIR/scripts/h100_record_push_candidate.sh" baseline ngram674
       ;;
     ngram659_lamcool)
       export NGRAM_LAMBDA_SCHEDULE="${NGRAM_LAMBDA_SCHEDULE:-0.00:0.15,0.50:0.12,0.65:0.09,0.80:0.06}"
@@ -173,13 +167,8 @@ run_candidate() {
       exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_ngram659.sh"
       ;;
     warmup0_ngram674)
-      export NGRAM_CACHE_KIND="${NGRAM_CACHE_KIND:-hashed}"
-      export NGRAM_HASHED_BUCKETS="${NGRAM_HASHED_BUCKETS:-4194304}"
-      export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.20}"
-      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-1.0}"
-      export NGRAM_APPLY_MODE="${NGRAM_APPLY_MODE:-always}"
-      export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-2}"
-      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_ngram659.sh"
+      export WARMUP_STEPS="${WARMUP_STEPS:-0}"
+      exec bash "$ROOT_DIR/scripts/h100_record_push_candidate.sh" baseline ngram674
       ;;
     warmup0_ngram659_lamcool)
       export NGRAM_LAMBDA_SCHEDULE="${NGRAM_LAMBDA_SCHEDULE:-0.00:0.15,0.50:0.12,0.65:0.09,0.80:0.06}"
@@ -252,25 +241,14 @@ run_candidate() {
       exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_vr1_bg3072_ngram659.sh"
       ;;
     vr1_bg3072_ngram674)
-      export NGRAM_CACHE_KIND="${NGRAM_CACHE_KIND:-hashed}"
-      export NGRAM_HASHED_BUCKETS="${NGRAM_HASHED_BUCKETS:-4194304}"
-      export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.20}"
-      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-1.0}"
-      export NGRAM_APPLY_MODE="${NGRAM_APPLY_MODE:-always}"
-      export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-2}"
-      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_vr1_bg3072_ngram659.sh"
+      exec bash "$ROOT_DIR/scripts/h100_record_push_candidate.sh" vr1_bg3072 ngram674
       ;;
     warmup0_vr1_bg3072_ngram659)
       exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_vr1_bg3072_ngram659.sh"
       ;;
     warmup0_vr1_bg3072_ngram674)
-      export NGRAM_CACHE_KIND="${NGRAM_CACHE_KIND:-hashed}"
-      export NGRAM_HASHED_BUCKETS="${NGRAM_HASHED_BUCKETS:-4194304}"
-      export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.20}"
-      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-1.0}"
-      export NGRAM_APPLY_MODE="${NGRAM_APPLY_MODE:-always}"
-      export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-2}"
-      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_vr1_bg3072_ngram659.sh"
+      export WARMUP_STEPS="${WARMUP_STEPS:-0}"
+      exec bash "$ROOT_DIR/scripts/h100_record_push_candidate.sh" vr1_bg3072 ngram674
       ;;
     ngram659_adapt)
       exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_ngram659_adapt.sh"

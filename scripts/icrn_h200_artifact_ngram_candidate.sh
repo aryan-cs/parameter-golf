@@ -353,7 +353,7 @@ case "$CANDIDATE" in
     ;;
 esac
 
-if [[ "$SKIP_COMPLETED" == "1" && -f "$LOG_PATH" ]] && rg -q "final_ngram_eval_exact" "$LOG_PATH"; then
+if [[ "$SKIP_COMPLETED" == "1" && -f "$LOG_PATH" ]] && rg -q "final_ngram_eval_exact|final_int6_sliding_window_ngram[0-9]+_exact" "$LOG_PATH"; then
   echo "skipping completed ngram candidate '$CANDIDATE' at $LOG_PATH"
   exit 0
 fi

@@ -11,26 +11,34 @@ STEP_VAL_RE = re.compile(
     r"step:(?P<step>\d+)/(?P<iterations>\d+)\s+val_loss:(?P<val_loss>[0-9.]+)\s+val_bpb:(?P<val_bpb>[0-9.]+)"
 )
 FINAL_EXACT_RE = re.compile(
-    r"(?P<metric>final_int6_roundtrip_exact|final_int6_sliding_window_exact|final_int6_sliding_window_s64_exact|final_ngram_eval_exact|legal_ttt_exact|legal_ttt_ngram_exact)"
+    r"(?P<metric>final_int6_roundtrip_exact|final_int6_sliding_window_exact|final_int6_sliding_window_s64_exact|final_int6_sliding_window_ngram\d+_exact|final_ngram_eval_exact|legal_ttt_exact|legal_ttt_ngram_exact)"
     r"\s+val_loss:(?P<val_loss>[0-9.]+)\s+val_bpb:(?P<val_bpb>[0-9.]+)"
 )
 BYTES_RE = re.compile(r"Total submission size int6\+lzma:\s+(?P<bytes>\d+)\s+bytes")
-SUBMISSION_METRIC_PRIORITY = (
-    "legal_ttt_ngram_exact",
-    "legal_ttt_exact",
-    "final_ngram_eval_exact",
-    "final_int6_sliding_window_exact",
-    "final_int6_sliding_window_s64_exact",
-    "final_int6_roundtrip_exact",
-)
 
 
 def choose_submission_metric(finals: dict[str, dict[str, float]]) -> tuple[str, float] | tuple[None, None]:
-    available = [(metric, payload["val_bpb"]) for metric, payload in finals.items() if metric in SUBMISSION_METRIC_PRIORITY]
+    def metric_priority(metric: str) -> int:
+        if metric == "legal_ttt_ngram_exact":
+            return 0
+        if metric == "legal_ttt_exact":
+            return 1
+        if metric.startswith("final_int6_sliding_window_ngram") and metric.endswith("_exact"):
+            return 2
+        if metric == "final_ngram_eval_exact":
+            return 3
+        if metric == "final_int6_sliding_window_exact":
+            return 4
+        if metric == "final_int6_sliding_window_s64_exact":
+            return 5
+        if metric == "final_int6_roundtrip_exact":
+            return 6
+        return 999
+
+    available = [(metric, payload["val_bpb"]) for metric, payload in finals.items() if metric_priority(metric) < 999]
     if not available:
         return None, None
-    priority = {metric: idx for idx, metric in enumerate(SUBMISSION_METRIC_PRIORITY)}
-    metric, val_bpb = min(available, key=lambda item: (item[1], priority.get(item[0], len(priority))))
+    metric, val_bpb = min(available, key=lambda item: (item[1], metric_priority(item[0])))
     return metric, val_bpb
 
 

@@ -52,6 +52,8 @@ class Hyperparameters:
     model_dim = int(os.environ.get("MODEL_DIM", 512))
     num_heads = int(os.environ.get("NUM_HEADS", 8))
     mlp_mult = float(os.environ.get("MLP_MULT", 3.0))
+    mlp_act = os.environ.get("MLP_ACT", "relu_sq").lower()
+    mlp_leaky_slope = float(os.environ.get("MLP_LEAKY_SLOPE", 0.5))
     tie_embeddings = bool(int(os.environ.get("TIE_EMBEDDINGS", "1")))
     rope_base = float(os.environ.get("ROPE_BASE", 10000.0))
     logit_softcap = float(os.environ.get("LOGIT_SOFTCAP", 30.0))
@@ -114,6 +116,11 @@ class Hyperparameters:
     use_swiglu = bool(int(os.environ.get("USE_SWIGLU", "0")))
     swiglu_half_dim = int(os.environ.get("SWIGLU_HALF_DIM", 1024))
     extra_stride64_final_eval = bool(int(os.environ.get("EXTRA_STRIDE64_FINAL_EVAL", "1")))
+    ngram_eval_order = int(os.environ.get("NGRAM_EVAL_ORDER", 0))
+    ngram_eval_alpha = float(os.environ.get("NGRAM_EVAL_ALPHA", 0.20))
+    ngram_eval_min_count = int(os.environ.get("NGRAM_EVAL_MIN_COUNT", 2))
+    ngram_eval_buckets = int(os.environ.get("NGRAM_EVAL_BUCKETS", 4_194_304))
+    ngram_eval_max_seconds = float(os.environ.get("NGRAM_EVAL_MAX_SECONDS", 0.0))
     ngram_eval_enabled = bool(int(os.environ.get("NGRAM_EVAL_ENABLED", "0")))
     ngram_stride = int(os.environ.get("NGRAM_STRIDE", 128))
     ngram_batch_seqs = int(os.environ.get("NGRAM_BATCH_SEQS", 32))
@@ -783,16 +790,24 @@ class ValueEmbedding(nn.Module):
         return h * self.scale.to(dtype=h.dtype)
 
 class MLP(nn.Module):
-    def __init__(self, dim: int, mlp_mult: int):
+    def __init__(self, dim: int, mlp_mult: int, mlp_act: str = "relu_sq", mlp_leaky_slope: float = 0.5):
         super().__init__()
         # No CastedLinear -- weights come from banks
+        self.mlp_act = mlp_act
+        self.mlp_leaky_slope = mlp_leaky_slope
+        if self.mlp_act not in {"relu_sq", "leaky_relu_sq"}:
+            raise ValueError(f"Unsupported MLP_ACT '{self.mlp_act}'. Use 'relu_sq' or 'leaky_relu_sq'.")
     def forward(self, x: Tensor, up_w: Tensor, down_w: Tensor, use_swiglu: bool = False) -> Tensor:
         if use_swiglu:
             half = up_w.shape[0] // 2
             gate = F.silu(F.linear(x, up_w[:half].to(x.dtype)))
             up = F.linear(x, up_w[half:].to(x.dtype))
             return F.linear(gate * up, down_w.to(x.dtype))
-        x = F.leaky_relu(F.linear(x, up_w.to(x.dtype)), negative_slope=0.5)
+        x = F.linear(x, up_w.to(x.dtype))
+        if self.mlp_act == "leaky_relu_sq":
+            x = F.leaky_relu(x, negative_slope=self.mlp_leaky_slope)
+        else:
+            x = F.relu(x)
         return F.linear(x.square(), down_w.to(x.dtype))
 
 class Block(nn.Module):
@@ -807,6 +822,8 @@ class Block(nn.Module):
         layer_idx: int = 0,
         ln_scale: bool = False,
         dtg: bool = False,
+        mlp_act: str = "relu_sq",
+        mlp_leaky_slope: float = 0.5,
         gated_attention: bool = False,
         value_residual: bool = False,
     ):
@@ -815,7 +832,7 @@ class Block(nn.Module):
         self.mlp_norm = RMSNorm()
         self.attn = CausalSelfAttention(dim, num_heads, num_kv_heads, rope_base, qk_gain_init,
                                         gated_attention=gated_attention, value_residual=value_residual)
-        self.mlp = MLP(dim, mlp_mult)
+        self.mlp = MLP(dim, mlp_mult, mlp_act=mlp_act, mlp_leaky_slope=mlp_leaky_slope)
         self.attn_scale = nn.Parameter(torch.ones(dim, dtype=torch.float32))
         self.mlp_scale = nn.Parameter(torch.ones(dim, dtype=torch.float32))
         self.resid_mix = nn.Parameter(torch.stack((torch.ones(dim), torch.zeros(dim))).float())
@@ -864,6 +881,8 @@ class GPT(nn.Module):
         ve_enabled: bool = False,
         ve_dim: int = 128,
         ve_layers: str = "9,10",
+        mlp_act: str = "relu_sq",
+        mlp_leaky_slope: float = 0.5,
         gated_attention: bool = False,
         value_residual: bool = False,
         use_swiglu: bool = False,
@@ -913,6 +932,8 @@ class GPT(nn.Module):
                     layer_idx=i,
                     ln_scale=ln_scale,
                     dtg=dtg,
+                    mlp_act=mlp_act,
+                    mlp_leaky_slope=mlp_leaky_slope,
                     gated_attention=gated_attention,
                     value_residual=value_residual,
                 )
@@ -1534,6 +1555,7 @@ def build_quantized_eval_model(args: Hyperparameters, device: torch.device, deq_
         xsa_last_n=args.xsa_last_n,
         rope_dims=args.rope_dims, ln_scale=args.ln_scale, dtg=args.dtg_enabled,
         ve_enabled=args.ve_enabled, ve_dim=args.ve_dim, ve_layers=args.ve_layers,
+        mlp_act=args.mlp_act, mlp_leaky_slope=args.mlp_leaky_slope,
         gated_attention=args.gated_attention, value_residual=args.value_residual,
         use_swiglu=args.use_swiglu, swiglu_half_dim=args.swiglu_half_dim,
     ).to(device).bfloat16()
@@ -1619,6 +1641,174 @@ def eval_val_sliding(
     tokens_per_byte = token_count.item() / byte_count.item()
     base_model.train()
     return val_loss, bits_per_token * tokens_per_byte
+
+
+def eval_val_sliding_hashed_ngram_record(
+    args: Hyperparameters,
+    base_model: nn.Module,
+    rank: int,
+    world_size: int,
+    device: torch.device,
+    val_tokens: Tensor,
+    base_bytes_lut: Tensor,
+    has_leading_space_lut: Tensor,
+    is_boundary_token_lut: Tensor,
+    stride: int,
+    order: int,
+    alpha: float,
+    min_count: int,
+    buckets: int,
+    max_seconds: float = 0.0,
+    batch_seqs: int = 32,
+    eval_seq_len: int | None = None,
+) -> tuple[float, float, float]:
+    """Exact PR #674-style score-first hashed n-gram sliding eval."""
+    if order < 2:
+        raise ValueError(f"NGRAM_EVAL_ORDER must be >=2, got {order}")
+    if not (0.0 <= alpha <= 1.0):
+        raise ValueError(f"NGRAM_EVAL_ALPHA must be in [0, 1], got {alpha}")
+    if min_count < 1:
+        raise ValueError(f"NGRAM_EVAL_MIN_COUNT must be >=1, got {min_count}")
+    if buckets < 1024:
+        raise ValueError(f"NGRAM_EVAL_BUCKETS must be >=1024, got {buckets}")
+    if max_seconds < 0.0:
+        raise ValueError(f"NGRAM_EVAL_MAX_SECONDS must be >=0, got {max_seconds}")
+
+    seq_len = eval_seq_len or args.train_seq_len
+    total_tokens = val_tokens.numel() - 1
+    all_window_starts = [ws for ws in range(0, total_tokens, stride) if min(ws + seq_len, total_tokens) - ws >= 1]
+    total_scored_tokens = 0.0
+    for ws in all_window_starts:
+        end = min(ws + seq_len, total_tokens)
+        wlen = end - ws
+        s = 0 if ws == 0 else max(wlen - stride, 0)
+        total_scored_tokens += float(max(wlen - s, 0))
+
+    my_s = (len(all_window_starts) * rank) // world_size
+    my_e = (len(all_window_starts) * (rank + 1)) // world_size
+    window_starts = all_window_starts[my_s:my_e]
+
+    val_np = val_tokens.numpy()
+    ctx_table = np.zeros((buckets,), dtype=np.uint32)
+    full_table = np.zeros((buckets,), dtype=np.uint32)
+    mask = np.uint64(buckets - 1)
+    primes = np.array(
+        [np.uint64(36313), np.uint64(27191), np.uint64(51647), np.uint64(81929), np.uint64(131071)],
+        dtype=np.uint64,
+    )
+
+    loss_sum = 0.0
+    token_count = 0.0
+    byte_count = 0.0
+
+    base_model.eval()
+    compiled_logits = torch.compile(base_model.forward_logits, dynamic=False, fullgraph=True)
+    t0 = time.perf_counter()
+    deadline = (t0 + max_seconds) if max_seconds > 0.0 else None
+    cutoff_hit = False
+    with torch.inference_mode():
+        for bi in range(0, len(window_starts), batch_seqs):
+            if deadline is not None and time.perf_counter() >= deadline:
+                cutoff_hit = True
+                break
+            batch_ws = window_starts[bi : bi + batch_seqs]
+            bsz = len(batch_ws)
+            x_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
+            y_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
+            wlens: list[int] = []
+            for i, ws in enumerate(batch_ws):
+                end = min(ws + seq_len, total_tokens)
+                wlen = end - ws
+                wlens.append(wlen)
+                chunk = val_tokens[ws : end + 1].to(dtype=torch.int64, device=device)
+                x_batch[i, :wlen] = chunk[:-1]
+                y_batch[i, :wlen] = chunk[1:]
+
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                logits = compiled_logits(x_batch)
+            nll = F.cross_entropy(
+                logits.reshape(-1, logits.size(-1)).float(),
+                y_batch.reshape(-1),
+                reduction="none",
+            ).reshape(bsz, seq_len)
+
+            for i, ws in enumerate(batch_ws):
+                wlen = wlens[i]
+                s = 0 if ws == 0 else max(wlen - stride, 0)
+                seg_len = wlen - s
+                if seg_len <= 0:
+                    continue
+
+                seg_nll = nll[i, s:wlen].to(torch.float64).cpu().numpy()
+                seg_model_p = np.exp(-seg_nll)
+
+                global_j = np.arange(ws + s + 1, ws + wlen + 1, dtype=np.int64)
+                valid = global_j >= (order - 1)
+                if valid.any():
+                    v_idx = np.nonzero(valid)[0]
+                    jv = global_j[v_idx]
+                    ctx_hash = np.zeros((len(jv),), dtype=np.uint64)
+                    ctx_width = order - 1
+                    for k in range(ctx_width):
+                        tok = val_np[jv - (ctx_width - k)].astype(np.uint64)
+                        ctx_hash ^= tok * primes[k % len(primes)]
+                    ctx_key = (ctx_hash & mask).astype(np.int64)
+
+                    tgt_np = val_np[jv].astype(np.uint64)
+                    full_key = ((ctx_hash ^ (tgt_np * primes[ctx_width % len(primes)])) & mask).astype(np.int64)
+
+                    ctx_counts = ctx_table[ctx_key].astype(np.float64)
+                    full_counts = full_table[full_key].astype(np.float64)
+                    can_mix = ctx_counts >= float(min_count)
+                    if can_mix.any():
+                        p_ng = np.minimum(full_counts, ctx_counts) / np.maximum(ctx_counts, 1.0)
+                        p_ng = np.clip(p_ng, 0.0, 1.0)
+                        mixed = (1.0 - alpha) * seg_model_p[v_idx] + alpha * p_ng
+                        seg_model_p[v_idx[can_mix]] = mixed[can_mix]
+                    seg_nll = -np.log(np.clip(seg_model_p, 1e-12, 1.0))
+
+                    np.add.at(ctx_table, ctx_key, 1)
+                    np.add.at(full_table, full_key, 1)
+
+                loss_sum += float(seg_nll.sum())
+                token_count += float(seg_len)
+                tgt = y_batch[i, s:wlen]
+                prev = x_batch[i, s:wlen]
+                tb = base_bytes_lut[tgt].to(torch.float64)
+                tb += (has_leading_space_lut[tgt] & ~is_boundary_token_lut[prev]).to(torch.float64)
+                byte_count += float(tb.sum().item())
+
+            if (bi // batch_seqs) % 2000 == 0 and bi > 0:
+                elapsed = time.perf_counter() - t0
+                if elapsed > 0 and token_count > 0:
+                    done_tokens = token_count * world_size
+                    pct = 100.0 * done_tokens / max(total_scored_tokens, 1.0)
+                    eta = (elapsed / max(done_tokens, 1e-9)) * max(total_scored_tokens - done_tokens, 0.0)
+                    running_loss = loss_sum / max(token_count, 1e-9)
+                    running_bpb = (running_loss / math.log(2.0)) * (token_count / max(byte_count, 1e-9))
+                    if rank == 0:
+                        print(f"  hashed_ngram [{pct:5.1f}%] bpb={running_bpb:.6f} eta={eta/60:.1f}m")
+
+    if dist.is_available() and dist.is_initialized():
+        loss_sum_t = torch.tensor(loss_sum, device=device, dtype=torch.float64)
+        token_count_t = torch.tensor(token_count, device=device, dtype=torch.float64)
+        byte_count_t = torch.tensor(byte_count, device=device, dtype=torch.float64)
+        cutoff_t = torch.tensor(int(cutoff_hit), device=device, dtype=torch.int32)
+        dist.all_reduce(loss_sum_t, op=dist.ReduceOp.SUM)
+        dist.all_reduce(token_count_t, op=dist.ReduceOp.SUM)
+        dist.all_reduce(byte_count_t, op=dist.ReduceOp.SUM)
+        dist.all_reduce(cutoff_t, op=dist.ReduceOp.MAX)
+        loss_sum = float(loss_sum_t.item())
+        token_count = float(token_count_t.item())
+        byte_count = float(byte_count_t.item())
+        cutoff_hit = bool(cutoff_t.item())
+
+    val_loss = loss_sum / token_count
+    bits_per_token = val_loss / math.log(2.0)
+    tokens_per_byte = token_count / byte_count
+    coverage = token_count / max(total_scored_tokens, 1.0)
+    base_model.train()
+    return val_loss, bits_per_token * tokens_per_byte, coverage
 
 
 def eval_val_ngram(
@@ -2829,6 +3019,8 @@ def main() -> None:
         ve_enabled=args.ve_enabled,
         ve_dim=args.ve_dim,
         ve_layers=args.ve_layers,
+        mlp_act=args.mlp_act,
+        mlp_leaky_slope=args.mlp_leaky_slope,
         gated_attention=args.gated_attention,
         value_residual=args.value_residual,
         use_swiglu=args.use_swiglu,
@@ -2935,6 +3127,10 @@ def main() -> None:
     mtp_params = sum(p.numel() for p in base_model.mtp_heads.parameters())
     log0(f"model_params:{n_params}")
     log0(f"mtp_num_heads:{args.mtp_num_heads} mtp_loss_weight:{args.mtp_loss_weight} mtp_params:{mtp_params}")
+    log0(
+        f"mlp_act:{args.mlp_act} mlp_leaky_slope:{args.mlp_leaky_slope} "
+        f"use_swiglu:{int(args.use_swiglu)} swiglu_half_dim:{args.swiglu_half_dim}"
+    )
     xsa_layers = [i for i, b in enumerate(base_model.blocks) if b.attn.use_xsa]
     log0(f"XSA:last_{args.xsa_last_n} active_layers:{xsa_layers}")
     log0(f"world_size:{world_size} grad_accum_steps:{grad_accum_steps}")
@@ -2950,6 +3146,11 @@ def main() -> None:
         f"iterations:{args.iterations} warmup_steps:{args.warmup_steps} "
         f"max_wallclock_seconds:{args.max_wallclock_seconds:.3f}"
     )
+    if args.ngram_eval_order >= 2:
+        log0(
+            f"ngram_eval:order={args.ngram_eval_order} alpha={args.ngram_eval_alpha} "
+            f"min_count={args.ngram_eval_min_count} buckets={args.ngram_eval_buckets}"
+        )
     log0(f"seed:{args.seed}")
     train_loader = DistributedTokenLoader(args.train_files, rank, world_size, device)
     def zero_grad_all() -> None:
@@ -3204,6 +3405,52 @@ def main() -> None:
         )
         log0(f"final_int6_sliding_window_exact val_loss:{sw_val_loss:.8f} val_bpb:{sw_val_bpb:.8f}")
         log0(f"final_int8_zlib_roundtrip_exact val_loss:{sw_val_loss:.8f} val_bpb:{sw_val_bpb:.8f}")
+        if args.ngram_eval_order >= 2:
+            if distributed:
+                dist.barrier()
+            torch.cuda.synchronize()
+            t_ng = time.perf_counter()
+            ng_loss, ng_bpb, ng_coverage = eval_val_sliding_hashed_ngram_record(
+                args,
+                eval_model,
+                rank,
+                world_size,
+                device,
+                val_tokens,
+                base_bytes_lut,
+                has_leading_space_lut,
+                is_boundary_token_lut,
+                stride=args.eval_stride,
+                order=args.ngram_eval_order,
+                alpha=args.ngram_eval_alpha,
+                min_count=args.ngram_eval_min_count,
+                buckets=args.ngram_eval_buckets,
+                max_seconds=args.ngram_eval_max_seconds,
+                eval_seq_len=sw_seq_len,
+            )
+            if rank == 0:
+                torch.cuda.synchronize()
+                ng_eval_ms = 1000.0 * (time.perf_counter() - t_ng)
+                if ng_coverage >= 0.999999:
+                    log0(
+                        f"final_int6_sliding_window_ngram{args.ngram_eval_order} val_loss:{ng_loss:.4f} "
+                        f"val_bpb:{ng_bpb:.4f} eval_time:{ng_eval_ms:.0f}ms"
+                    )
+                    log0(
+                        f"final_int6_sliding_window_ngram{args.ngram_eval_order}_exact "
+                        f"val_loss:{ng_loss:.8f} val_bpb:{ng_bpb:.8f}"
+                    )
+                else:
+                    log0(
+                        f"final_int6_sliding_window_ngram{args.ngram_eval_order}_partial val_loss:{ng_loss:.4f} "
+                        f"val_bpb:{ng_bpb:.4f} coverage:{ng_coverage:.4f} eval_time:{ng_eval_ms:.0f}ms"
+                    )
+                    log0(
+                        f"final_int6_sliding_window_ngram{args.ngram_eval_order}_partial_exact "
+                        f"val_loss:{ng_loss:.8f} val_bpb:{ng_bpb:.8f} coverage:{ng_coverage:.8f}"
+                    )
+            if distributed:
+                dist.barrier()
     if args.extra_stride64_final_eval and args.eval_stride != 64 and 64 < sw_seq_len:
         torch.cuda.synchronize()
         t_slide64 = time.perf_counter()

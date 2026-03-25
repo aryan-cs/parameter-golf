@@ -238,6 +238,9 @@ LEGAL_TTT_NGRAM_RE = re.compile(
 FINAL_NGRAM_RE = re.compile(
     r"final_ngram_eval val_loss:(?P<val_loss>[0-9.]+)\s+val_bpb:(?P<val_bpb>[0-9.]+).*eval_time:(?P<eval_time_ms>\d+)ms"
 )
+FINAL_SLIDING_NGRAM_RE = re.compile(
+    r"final_int6_sliding_window_ngram(?P<order>\d+) val_loss:(?P<val_loss>[0-9.]+)\s+val_bpb:(?P<val_bpb>[0-9.]+)\s+eval_time:(?P<eval_time_ms>\d+)ms"
+)
 SLIDING_RE = re.compile(
     r"final_int6_sliding_window val_loss:(?P<val_loss>[0-9.]+)\s+val_bpb:(?P<val_bpb>[0-9.]+).*eval_time:(?P<eval_time_ms>\d+)ms"
 )
@@ -296,6 +299,7 @@ def parse_result(
         "legal_ttt_eval_time_ms": None,
         "legal_ttt_ngram_eval_time_ms": None,
         "final_ngram_eval_time_ms": None,
+        "final_sliding_ngram_eval_time_ms": None,
         "final_int6_sliding_window_exact": None,
         "final_int6_sliding_window_eval_time_ms": None,
         "last_step": None,
@@ -334,6 +338,10 @@ def parse_result(
         if match := FINAL_NGRAM_RE.search(line):
             result["final_ngram_eval_time_ms"] = int(match.group("eval_time_ms"))
             metric_eval_times["final_ngram_eval_exact"] = int(match.group("eval_time_ms"))
+        if match := FINAL_SLIDING_NGRAM_RE.search(line):
+            metric_name = f"final_int6_sliding_window_ngram{match.group('order')}_exact"
+            result["final_sliding_ngram_eval_time_ms"] = int(match.group("eval_time_ms"))
+            metric_eval_times[metric_name] = int(match.group("eval_time_ms"))
         if match := SLIDING_RE.search(line):
             result["final_int6_sliding_window_eval_time_ms"] = int(match.group("eval_time_ms"))
             metric_eval_times["final_int6_sliding_window_exact"] = int(match.group("eval_time_ms"))
@@ -346,8 +354,12 @@ def parse_result(
             result["last_train_time_ms"] = int(match.group("train_time_ms"))
 
     if source == "ngram":
-        if current_summary.get("submission_metric") == "final_ngram_eval_exact":
-            result["submission_metric"] = "final_ngram_eval_exact"
+        submission_metric = current_summary.get("submission_metric")
+        if isinstance(submission_metric, str) and (
+            submission_metric == "final_ngram_eval_exact"
+            or (submission_metric.startswith("final_int6_sliding_window_ngram") and submission_metric.endswith("_exact"))
+        ):
+            result["submission_metric"] = submission_metric
             result["submission_val_bpb"] = current_summary.get("submission_val_bpb")
         else:
             result["submission_metric"] = None
