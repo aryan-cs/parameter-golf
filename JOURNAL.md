@@ -4605,3 +4605,25 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
   - pure SGD `momentum=0` + `TTT_BATCH_SEQS=64`
 - Inserted both between the existing `sgd` probes and the epoch-cut probes in the exact PR688 queue.
 - Rationale: if pure SGD is stable enough, it should be the cheapest legal score-first optimizer path in the exact upstream family.
+
+## 2026-03-25 09:02 UTC - Stage PR698 as clean under-budget fallback family
+
+- Pulled upstream [PR #698](https://github.com/openai/parameter-golf/pull/698) locally into `/home/aryang9/parameter-golf-pr698-worktree`.
+- Verified the clean package is a real under-budget `track_10min_16mb` family:
+  - `train_time=580.213s`
+  - `eval_time=44.398s`
+  - `bytes_total=15,635,201`
+  - `final_int6_roundtrip_exact val_bpb=1.16417381`
+- Decision:
+  - do **not** spend current H200 queue slots on PR698 by default, because its clean score is far behind our best completed `1.08035892`
+  - do stage it as an exact-upstream fallback family for future H100 budget-fit testing
+- Added:
+  - [patch_pr698_compile_gate.py](/home/aryang9/parameter-golf/scripts/patch_pr698_compile_gate.py)
+  - [icrn_h200_upstream_pr698_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr698_proxy.sh)
+  - [h100_upstream_pr698_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr698_exact.sh)
+  - [h100_upstream_pr698_exact_3seed.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr698_exact_3seed.sh)
+- The new patch gates the trainer's `torch.compile(...)` calls with `COMPILE_ENABLED`, so PR698 can be probed on H200 without forcing compile-heavy startup cost.
+- Added portfolio / status support for:
+  - `upstream_pr698_exact`
+  - `upstream_pr698_timed_exact`
+  - `upstream_pr698_timed_nocompile_exact`

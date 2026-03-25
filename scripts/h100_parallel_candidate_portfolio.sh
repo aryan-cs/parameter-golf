@@ -117,6 +117,15 @@ run_candidate() {
     upstream_pr688_timed_nocompile_qttt_light_chunk256_stride64_skipsliding_exact)
       exec env TIMED_MODE=1 COMPILE_ENABLED=0 RUN_ID="${RUN_ID:-h100_upstream_pr688_timed_nocompile_qttt_light_chunk256_stride64_skipsliding_seed${SEED:-2045}}" bash "$ROOT_DIR/scripts/h100_upstream_pr688_qttt_light_chunk256_stride64_skipsliding_exact.sh"
       ;;
+    upstream_pr698_exact)
+      exec bash "$ROOT_DIR/scripts/h100_upstream_pr698_exact.sh"
+      ;;
+    upstream_pr698_timed_exact)
+      exec env TIMED_MODE=1 bash "$ROOT_DIR/scripts/h100_upstream_pr698_exact.sh"
+      ;;
+    upstream_pr698_timed_nocompile_exact)
+      exec env TIMED_MODE=1 COMPILE_ENABLED=0 bash "$ROOT_DIR/scripts/h100_upstream_pr698_exact.sh"
+      ;;
     upstream_pr674_crownq_exact)
       exec bash "$ROOT_DIR/scripts/h100_upstream_pr674_crownq_exact.sh"
       ;;
