@@ -14,6 +14,9 @@ NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.15}"
 NGRAM_MAX_N="${NGRAM_MAX_N:-5}"
 CONFIDENCE_THRESHOLD="${CONFIDENCE_THRESHOLD:-0.5}"
 MIN_COUNT="${MIN_COUNT:-3}"
+NGRAM_ADAPT_ENABLED="${NGRAM_ADAPT_ENABLED:-0}"
+NGRAM_ADAPT_LR="${NGRAM_ADAPT_LR:-0.0003}"
+NGRAM_ADAPT_DECAY="${NGRAM_ADAPT_DECAY:-0.001}"
 BATCH_SEQS="${BATCH_SEQS:-32}"
 BIGRAM_VOCAB_SIZE="${BIGRAM_VOCAB_SIZE:-1536}"
 VALUE_RESIDUAL="${VALUE_RESIDUAL:-0}"
@@ -47,6 +50,21 @@ case "$CANDIDATE" in
     VALUE_RESIDUAL="1"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_vr1_record659.txt}"
     ;;
+  record659_adapt_smoke)
+    MAX_WINDOWS="128"
+    NGRAM_ADAPT_ENABLED="1"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_adapt_smoke.txt}"
+    ;;
+  record659_adapt)
+    NGRAM_ADAPT_ENABLED="1"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_adapt.txt}"
+    ;;
+  lowrisk_adapt)
+    NGRAM_LAMBDA="0.05"
+    CONFIDENCE_THRESHOLD="0.7"
+    NGRAM_ADAPT_ENABLED="1"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_lowrisk_adapt.txt}"
+    ;;
   *)
     echo "unknown artifact ngram candidate: $CANDIDATE" >&2
     exit 1
@@ -66,4 +84,7 @@ exec python scripts/eval_ngram_cache_artifact.py \
   --ngram-max-n "$NGRAM_MAX_N" \
   --confidence-threshold "$CONFIDENCE_THRESHOLD" \
   --min-count "$MIN_COUNT" \
+  $( [[ "$NGRAM_ADAPT_ENABLED" == "1" ]] && printf '%s ' --ngram-adapt-enabled ) \
+  --ngram-adapt-lr "$NGRAM_ADAPT_LR" \
+  --ngram-adapt-decay "$NGRAM_ADAPT_DECAY" \
   --max-windows "$MAX_WINDOWS"

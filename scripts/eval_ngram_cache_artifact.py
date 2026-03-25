@@ -115,6 +115,9 @@ def eval_val_ngram(
     ngram_max_n: int = 5,
     confidence_threshold: float = 0.5,
     min_count: int = 3,
+    ngram_adapt_enabled: bool = False,
+    ngram_adapt_lr: float = 0.0003,
+    ngram_adapt_decay: float = 0.001,
     max_windows: int = 0,
     log=print,
 ) -> tuple[float, float]:
@@ -134,102 +137,137 @@ def eval_val_ngram(
     lam = ngram_lambda
     log_1_minus_lam = math.log(1.0 - lam)
     log_lam = math.log(lam)
+    ngram_adapt_optimizer = None
+    global_weights = None
 
-    base_model.eval()
+    if ngram_adapt_enabled:
+        base_model.train()
+        num_layers = len(base_model.blocks)
+        update_params = []
+        target_layers = list(range(max(0, num_layers - 3), num_layers))
+        for idx in target_layers:
+            for p in base_model.blocks[idx].parameters():
+                if p.requires_grad:
+                    update_params.append(p)
+        global_weights = {id(p): p.data.clone() for p in update_params}
+        ngram_adapt_optimizer = torch.optim.RMSprop(update_params, lr=ngram_adapt_lr, alpha=0.99, eps=1e-8)
+    else:
+        base_model.eval()
     compiled_logits = torch.compile(base_model.forward_logits, dynamic=False, fullgraph=True)
     log(
         "ngram_eval:start "
         f"stride={stride} lambda={ngram_lambda} max_n={ngram_max_n} "
-        f"confidence_threshold={confidence_threshold} min_count={min_count}"
+        f"confidence_threshold={confidence_threshold} min_count={min_count} "
+        f"adapt={int(ngram_adapt_enabled)}"
     )
-    with torch.inference_mode():
-        for bi in range(0, len(window_starts), batch_seqs):
-            batch_ws = window_starts[bi : bi + batch_seqs]
-            bsz = len(batch_ws)
-            x_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
-            y_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
-            wlens: list[int] = []
-            for i, ws in enumerate(batch_ws):
-                end = min(ws + seq_len, total_tokens)
-                wlen = end - ws
-                wlens.append(wlen)
-                chunk = val_tokens[ws : end + 1].to(dtype=torch.int64, device=device)
-                x_batch[i, :wlen] = chunk[:-1]
-                y_batch[i, :wlen] = chunk[1:]
+    for bi in range(0, len(window_starts), batch_seqs):
+        batch_ws = window_starts[bi : bi + batch_seqs]
+        bsz = len(batch_ws)
+        x_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
+        y_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
+        wlens: list[int] = []
+        for i, ws in enumerate(batch_ws):
+            end = min(ws + seq_len, total_tokens)
+            wlen = end - ws
+            wlens.append(wlen)
+            chunk = val_tokens[ws : end + 1].to(dtype=torch.int64, device=device)
+            x_batch[i, :wlen] = chunk[:-1]
+            y_batch[i, :wlen] = chunk[1:]
 
+        with torch.no_grad():
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
                 logits = compiled_logits(x_batch)
-            logits_f = logits.float()
-            nll = F.cross_entropy(
-                logits_f.reshape(-1, logits_f.size(-1)),
-                y_batch.reshape(-1),
-                reduction="none",
-            ).reshape(bsz, seq_len)
+        logits_f = logits.float()
+        nll = F.cross_entropy(
+            logits_f.reshape(-1, logits_f.size(-1)),
+            y_batch.reshape(-1),
+            reduction="none",
+        ).reshape(bsz, seq_len)
 
-            for i, ws in enumerate(batch_ws):
-                wlen = wlens[i]
-                s = 0 if ws == 0 else max(wlen - stride, 0)
-                scored_nll = nll[i, s:wlen].to(torch.float64).clone()
-                if ws > 0:
-                    log_sm = F.log_softmax(logits_f[i, s:wlen], dim=-1)
-                    max_logp_cpu = log_sm.max(dim=-1).values.cpu().tolist()
-                    x_cpu = x_batch[i, :wlen].cpu().tolist()
-                    y_cpu = y_batch[i, s:wlen].cpu().tolist()
-                    uncertain_indices: list[int] = []
-                    prev_contexts: list[list[int]] = []
-                    targets: list[int] = []
-                    n_scored = wlen - s
-                    for t_off in range(n_scored):
-                        if max_logp_cpu[t_off] > log_conf_thresh:
-                            ngram_skipped += 1
+        for i, ws in enumerate(batch_ws):
+            wlen = wlens[i]
+            s = 0 if ws == 0 else max(wlen - stride, 0)
+            scored_nll = nll[i, s:wlen].to(torch.float64).clone()
+            if ws > 0:
+                log_sm = F.log_softmax(logits_f[i, s:wlen], dim=-1)
+                max_logp_cpu = log_sm.max(dim=-1).values.cpu().tolist()
+                x_cpu = x_batch[i, :wlen].cpu().tolist()
+                y_cpu = y_batch[i, s:wlen].cpu().tolist()
+                uncertain_indices: list[int] = []
+                prev_contexts: list[list[int]] = []
+                targets: list[int] = []
+                n_scored = wlen - s
+                for t_off in range(n_scored):
+                    if max_logp_cpu[t_off] > log_conf_thresh:
+                        ngram_skipped += 1
+                        continue
+                    t_idx = s + t_off
+                    uncertain_indices.append(t_off)
+                    ctx_start = max(0, t_idx - ngram_max_n + 1)
+                    prev_contexts.append(x_cpu[ctx_start : t_idx + 1])
+                    targets.append(y_cpu[t_off])
+
+                if uncertain_indices:
+                    ng_logps = [ngram.logprob_target(ctx, tgt, min_count=min_count) for ctx, tgt in zip(prev_contexts, targets)]
+                    unc_idx_t = torch.tensor(uncertain_indices, dtype=torch.long, device=log_sm.device)
+                    tgt_t = torch.tensor(targets, dtype=torch.long, device=log_sm.device)
+                    model_logps = log_sm[unc_idx_t, tgt_t].cpu().tolist()
+                    for j, t_off in enumerate(uncertain_indices):
+                        ng_lp = ng_logps[j]
+                        if ng_lp is None:
                             continue
-                        t_idx = s + t_off
-                        uncertain_indices.append(t_off)
-                        ctx_start = max(0, t_idx - ngram_max_n + 1)
-                        prev_contexts.append(x_cpu[ctx_start : t_idx + 1])
-                        targets.append(y_cpu[t_off])
+                        ngram_attempts += 1
+                        model_lp = model_logps[j]
+                        a = log_1_minus_lam + model_lp
+                        b = log_lam + ng_lp
+                        mixed_lp = max(a, b) + math.log1p(math.exp(-abs(a - b)))
+                        new_nll = -mixed_lp
+                        old_nll = scored_nll[t_off].item()
+                        if new_nll < old_nll:
+                            scored_nll[t_off] = new_nll
+                            ngram_improvements += 1
 
-                    if uncertain_indices:
-                        ng_logps = [ngram.logprob_target(ctx, tgt, min_count=min_count) for ctx, tgt in zip(prev_contexts, targets)]
-                        unc_idx_t = torch.tensor(uncertain_indices, dtype=torch.long, device=log_sm.device)
-                        tgt_t = torch.tensor(targets, dtype=torch.long, device=log_sm.device)
-                        model_logps = log_sm[unc_idx_t, tgt_t].cpu().tolist()
-                        for j, t_off in enumerate(uncertain_indices):
-                            ng_lp = ng_logps[j]
-                            if ng_lp is None:
-                                continue
-                            ngram_attempts += 1
-                            model_lp = model_logps[j]
-                            a = log_1_minus_lam + model_lp
-                            b = log_lam + ng_lp
-                            mixed_lp = max(a, b) + math.log1p(math.exp(-abs(a - b)))
-                            new_nll = -mixed_lp
-                            old_nll = scored_nll[t_off].item()
-                            if new_nll < old_nll:
-                                scored_nll[t_off] = new_nll
-                                ngram_improvements += 1
+            loss_sum += scored_nll.sum()
+            token_count += float(wlen - s)
+            tgt = y_batch[i, s:wlen]
+            prev = x_batch[i, s:wlen]
+            tb = base_bytes_lut[tgt].to(torch.float64)
+            tb += (has_leading_space_lut[tgt] & ~is_boundary_token_lut[prev]).to(torch.float64)
+            byte_count += tb.sum()
 
-                loss_sum += scored_nll.sum()
-                token_count += float(wlen - s)
-                tgt = y_batch[i, s:wlen]
-                prev = x_batch[i, s:wlen]
-                tb = base_bytes_lut[tgt].to(torch.float64)
-                tb += (has_leading_space_lut[tgt] & ~is_boundary_token_lut[prev]).to(torch.float64)
-                byte_count += tb.sum()
+        for i in range(bsz):
+            wlen = wlens[i]
+            toks = x_batch[i, :wlen].cpu().tolist()
+            toks.append(y_batch[i, wlen - 1].item())
+            ngram.update_from_list(toks)
 
-            for i in range(bsz):
-                wlen = wlens[i]
-                toks = x_batch[i, :wlen].cpu().tolist()
-                toks.append(y_batch[i, wlen - 1].item())
-                ngram.update_from_list(toks)
+        if ngram_adapt_enabled and ngram_adapt_optimizer is not None:
+            last_wlen = wlens[-1]
+            last_s = 0 if batch_ws[-1] == 0 else max(last_wlen - stride, 0)
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                adapt_logits = compiled_logits(x_batch[-1:, :last_wlen])
+            adapt_loss = F.cross_entropy(
+                adapt_logits[0, last_s:last_wlen].float(),
+                y_batch[-1, last_s:last_wlen],
+            )
+            ngram_adapt_optimizer.zero_grad()
+            adapt_loss.backward()
+            ngram_adapt_optimizer.step()
+            if global_weights is not None:
+                with torch.no_grad():
+                    for p in ngram_adapt_optimizer.param_groups[0]["params"]:
+                        pid = id(p)
+                        if pid in global_weights:
+                            p.data.mul_(1.0 - ngram_adapt_decay).add_(global_weights[pid], alpha=ngram_adapt_decay)
 
-            if bi % (batch_seqs * 50) == 0 and token_count.item() > 0:
-                rl = loss_sum.item() / token_count.item()
-                rb = (rl / math.log(2.0)) * (token_count.item() / max(byte_count.item(), 1))
-                pct = 100.0 * bi / max(len(window_starts), 1)
-                hit = ngram_improvements / max(ngram_attempts, 1) * 100
-                skip = ngram_skipped / max(ngram_skipped + ngram_attempts + 1, 1) * 100
-                log(f"  ngram [{pct:5.1f}%] bpb={rb:.6f} hit={hit:.1f}% skip={skip:.0f}%")
+        if bi % (batch_seqs * 50) == 0 and token_count.item() > 0:
+            rl = loss_sum.item() / token_count.item()
+            rb = (rl / math.log(2.0)) * (token_count.item() / max(byte_count.item(), 1))
+            pct = 100.0 * bi / max(len(window_starts), 1)
+            hit = ngram_improvements / max(ngram_attempts, 1) * 100
+            skip = ngram_skipped / max(ngram_skipped + ngram_attempts + 1, 1) * 100
+            suffix = " +ngram_adapt" if ngram_adapt_enabled else ""
+            log(f"  ngram [{pct:5.1f}%] bpb={rb:.6f} hit={hit:.1f}% skip={skip:.0f}%{suffix}")
 
     val_loss = (loss_sum / token_count).item()
     bits_per_token = val_loss / math.log(2.0)
@@ -256,6 +294,9 @@ def main() -> None:
     parser.add_argument("--ngram-max-n", type=int, default=5)
     parser.add_argument("--confidence-threshold", type=float, default=0.5)
     parser.add_argument("--min-count", type=int, default=3)
+    parser.add_argument("--ngram-adapt-enabled", action="store_true")
+    parser.add_argument("--ngram-adapt-lr", type=float, default=0.0003)
+    parser.add_argument("--ngram-adapt-decay", type=float, default=0.001)
     parser.add_argument("--max-windows", type=int, default=0)
     args_ns = parser.parse_args()
 
@@ -308,6 +349,9 @@ def main() -> None:
                 "ngram_max_n": args_ns.ngram_max_n,
                 "confidence_threshold": args_ns.confidence_threshold,
                 "min_count": args_ns.min_count,
+                "ngram_adapt_enabled": int(args_ns.ngram_adapt_enabled),
+                "ngram_adapt_lr": args_ns.ngram_adapt_lr,
+                "ngram_adapt_decay": args_ns.ngram_adapt_decay,
                 "batch_seqs": args_ns.batch_seqs,
                 "bigram_vocab_size": args.bigram_vocab_size,
                 "value_residual": int(bool(args.value_residual)),
@@ -349,6 +393,9 @@ def main() -> None:
         ngram_max_n=args_ns.ngram_max_n,
         confidence_threshold=args_ns.confidence_threshold,
         min_count=args_ns.min_count,
+        ngram_adapt_enabled=args_ns.ngram_adapt_enabled,
+        ngram_adapt_lr=args_ns.ngram_adapt_lr,
+        ngram_adapt_decay=args_ns.ngram_adapt_decay,
         max_windows=args_ns.max_windows,
         log=log,
     )
