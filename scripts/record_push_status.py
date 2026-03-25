@@ -9,7 +9,8 @@ from pathlib import Path
 
 from prepare_submission_metadata import merge_summaries, parse_log
 
-CURRENT_PUBLIC_SOTA_BPB = 1.0781
+# Public frontier claim as of 2026-03-25 from PR #674 ("Podracing: 1.0461 BPB").
+CURRENT_PUBLIC_SOTA_BPB = 1.0461
 RECORD_DELTA_NAT = 0.005
 APPROX_BPB_PER_NAT = 0.5923
 PRACTICAL_WIN_GATE_BPB = CURRENT_PUBLIC_SOTA_BPB - RECORD_DELTA_NAT * APPROX_BPB_PER_NAT
@@ -56,6 +57,8 @@ NGRAM_ORDER = [
     "record659_latecool_conf07",
     "record659_latecool_conf07_lamtail_smoke",
     "record659_latecool_conf07_lamtail",
+    "record659_latecool_conf07_min4_smoke",
+    "record659_latecool_conf07_min4",
     "record659_conf07_lamcool_smoke",
     "record659_conf07_lamcool",
     "record659_conf07_proxy7185",
@@ -79,6 +82,9 @@ NGRAM_ORDER = [
     "record659_lam20_conf07",
     "record659_lam20_conf08_smoke",
     "record659_lam20_conf08",
+    "record674_smoke",
+    "record674",
+    "record674_proxy7185",
     "record659_warm_conf07_smoke",
     "record659_warm_conf07",
     "record659_orderlam_smoke",
@@ -104,6 +110,7 @@ TTT_NGRAM_ORDER = [
     "record659_adamw5e4_late2_smoke",
     "record659_adamw1e4_late2_smoke",
     "record659_adamw30ep_cosine_smoke",
+    "record659_adamw30ep_cosine_latecool_smoke",
     "record659_adamw30ep_cosine_lamcool_smoke",
     "record659_adamw30ep_cosine_lr3e4_smoke",
     "record659_adamw12ep_cosine_smoke",
@@ -113,6 +120,7 @@ TTT_NGRAM_ORDER = [
     "record659_adamw1e4_late2",
     "record659_adamw5e4_late2",
     "record659_adamw30ep_cosine",
+    "record659_adamw30ep_cosine_latecool",
     "record659_adamw30ep_cosine_lamcool",
     "record659_adamw30ep_cosine_lr3e4",
     "lowrisk_tttlr25",
@@ -145,6 +153,8 @@ NGRAM_LOG_NAMES = {
     "record659_latecool_conf07_smoke": "h200_artifact_ngram_record659_latecool_conf07_smoke.txt",
     "record659_latecool_conf07_lamtail": "h200_artifact_ngram_record659_latecool_conf07_lamtail.txt",
     "record659_latecool_conf07_lamtail_smoke": "h200_artifact_ngram_record659_latecool_conf07_lamtail_smoke.txt",
+    "record659_latecool_conf07_min4": "h200_artifact_ngram_record659_latecool_conf07_min4.txt",
+    "record659_latecool_conf07_min4_smoke": "h200_artifact_ngram_record659_latecool_conf07_min4_smoke.txt",
     "record659_conf07_lamcool": "h200_artifact_ngram_record659_conf07_lamcool.txt",
     "record659_conf07_lamcool_smoke": "h200_artifact_ngram_record659_conf07_lamcool_smoke.txt",
     "record659_conf07_proxy7185": "h200_artifact_ngram_record659_conf07_h100proxy7185_seed1337.txt",
@@ -168,6 +178,9 @@ NGRAM_LOG_NAMES = {
     "record659_lam20_conf07": "h200_artifact_ngram_record659_lam20_conf07.txt",
     "record659_lam20_conf08_smoke": "h200_artifact_ngram_record659_lam20_conf08_smoke.txt",
     "record659_lam20_conf08": "h200_artifact_ngram_record659_lam20_conf08.txt",
+    "record674_smoke": "h200_artifact_ngram_record674_smoke.txt",
+    "record674": "h200_artifact_ngram_record674.txt",
+    "record674_proxy7185": "h200_artifact_ngram_record674_h100proxy7185_seed1337.txt",
     "record659_warm_conf07": "h200_artifact_ngram_record659_warm_conf07.txt",
     "record659_warm_conf07_smoke": "h200_artifact_ngram_record659_warm_conf07_smoke.txt",
     "record659_orderlam": "h200_artifact_ngram_record659_orderlam.txt",
@@ -193,6 +206,7 @@ TTT_NGRAM_LOG_NAMES = {
     "record659_adamw5e4_late2_smoke": "h200_artifact_ttt_ngram_record659_adamw5e4_late2_smoke.txt",
     "record659_adamw1e4_late2_smoke": "h200_artifact_ttt_ngram_record659_adamw1e4_late2_smoke.txt",
     "record659_adamw30ep_cosine_smoke": "h200_artifact_ttt_ngram_record659_adamw30ep_cosine_smoke.txt",
+    "record659_adamw30ep_cosine_latecool_smoke": "h200_artifact_ttt_ngram_record659_adamw30ep_cosine_latecool_smoke.txt",
     "record659_adamw30ep_cosine_lamcool_smoke": "h200_artifact_ttt_ngram_record659_adamw30ep_cosine_lamcool_smoke.txt",
     "record659_adamw30ep_cosine_lr3e4_smoke": "h200_artifact_ttt_ngram_record659_adamw30ep_cosine_lr3e4_smoke.txt",
     "record659_adamw12ep_cosine_smoke": "h200_artifact_ttt_ngram_record659_adamw12ep_cosine_smoke.txt",
@@ -201,6 +215,7 @@ TTT_NGRAM_LOG_NAMES = {
     "record659_adamw1e4_late2": "h200_artifact_ttt_ngram_record659_adamw1e4_late2.txt",
     "record659_adamw5e4_late2": "h200_artifact_ttt_ngram_record659_adamw5e4_late2.txt",
     "record659_adamw30ep_cosine": "h200_artifact_ttt_ngram_record659_adamw30ep_cosine.txt",
+    "record659_adamw30ep_cosine_latecool": "h200_artifact_ttt_ngram_record659_adamw30ep_cosine_latecool.txt",
     "record659_adamw30ep_cosine_lamcool": "h200_artifact_ttt_ngram_record659_adamw30ep_cosine_lamcool.txt",
     "record659_adamw30ep_cosine_lr3e4": "h200_artifact_ttt_ngram_record659_adamw30ep_cosine_lr3e4.txt",
     "lowrisk_tttlr25_smoke": "h200_artifact_ttt_ngram_lowrisk_tttlr25_smoke.txt",
@@ -448,7 +463,7 @@ def build_status(root_dir: Path, seed: int) -> dict[str, object]:
     for candidate in NGRAM_ORDER:
         extra_log_paths = (
             (proxy_log_path(log_dir, "baseline", "baseline", seed),)
-            if candidate == "record659_conf07_proxy7185"
+            if candidate in {"record659_conf07_proxy7185", "record674_proxy7185"}
             else (recovered_train_log,)
         )
         result = parse_result(
@@ -460,8 +475,36 @@ def build_status(root_dir: Path, seed: int) -> dict[str, object]:
             ttt_candidate=(
                 "ngram659_conf06"
                 if candidate in {"record659_conf06", "record659_conf06_smoke"}
+                else "ngram659_latecool_conf07_lamtail"
+                if candidate in {"record659_latecool_conf07_lamtail", "record659_latecool_conf07_lamtail_smoke"}
+                else "ngram659_latecool_conf07_min4"
+                if candidate in {"record659_latecool_conf07_min4", "record659_latecool_conf07_min4_smoke"}
+                else "ngram659_latecool_conf07"
+                if candidate in {"record659_latecool_conf07", "record659_latecool_conf07_smoke"}
+                else "ngram659_conf07_lamcool"
+                if candidate in {"record659_conf07_lamcool", "record659_conf07_lamcool_smoke"}
+                else "ngram659_cool_conf07_lamcool"
+                if candidate in {"record659_cool_conf07_lamcool", "record659_cool_conf07_lamcool_smoke"}
+                else "ngram659_cool_conf07_min4"
+                if candidate in {"record659_cool_conf07_min4", "record659_cool_conf07_min4_smoke"}
+                else "ngram659_cool_conf07"
+                if candidate in {"record659_cool_conf07", "record659_cool_conf07_smoke"}
+                else "ngram659_conf08"
+                if candidate in {"record659_conf08", "record659_conf08_smoke"}
+                else "ngram659_conf07_min4"
+                if candidate in {"record659_conf07_min4", "record659_conf07_min4_smoke"}
+                else "ngram659_conf07_min5"
+                if candidate in {"record659_conf07_min5", "record659_conf07_min5_smoke"}
+                else "ngram659_conf07_lam20"
+                if candidate in {"record659_lam20_conf07", "record659_lam20_conf07_smoke"}
+                else "ngram659_tgate40_min4"
+                if candidate in {"record659_tgate40_min4", "record659_tgate40_min4_smoke"}
+                else "ngram659_lamcool"
+                if candidate in {"record659_lamcool", "record659_lamcool_smoke"}
                 else "ngram659_conf07"
                 if candidate in {"record659_conf07", "record659_conf07_smoke", "record659_conf07_proxy7185"}
+                else "ngram674"
+                if candidate in {"record674", "record674_smoke", "record674_proxy7185"}
                 else
                 "ngram659"
                 if candidate in {"record659", "record659_smoke", "vr1_record659"}
@@ -484,8 +527,14 @@ def build_status(root_dir: Path, seed: int) -> dict[str, object]:
             ttt_candidate=(
                 "ngram659_adamw30ep_cosine_lr3e4"
                 if candidate in {"record659_adamw30ep_cosine_lr3e4", "record659_adamw30ep_cosine_lr3e4_smoke"}
+                else "ngram659_adamw30ep_cosine_latecool"
+                if candidate in {"record659_adamw30ep_cosine_latecool", "record659_adamw30ep_cosine_latecool_smoke"}
+                else "ngram659_adamw30ep_cosine_lamcool"
+                if candidate in {"record659_adamw30ep_cosine_lamcool", "record659_adamw30ep_cosine_lamcool_smoke"}
                 else "ngram659_adamw30ep_cosine"
-                if candidate in {"record659_adamw30ep_cosine", "record659_adamw30ep_cosine_smoke", "record659_adamw12ep_cosine_smoke"}
+                if candidate in {"record659_adamw30ep_cosine", "record659_adamw30ep_cosine_smoke"}
+                else "ngram659_adamw12ep_cosine"
+                if candidate in {"record659_adamw12ep_cosine", "record659_adamw12ep_cosine_smoke"}
                 else
                 "ngram659_late2_adamw5e4"
                 if candidate in {"record659_adamw5e4_late2", "record659_adamw5e4_late2_smoke"}

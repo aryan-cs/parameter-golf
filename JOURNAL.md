@@ -2690,3 +2690,108 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
     - `record659_latecool_conf07_lamtail_smoke`
     - `record659_latecool_conf07_lamtail`
   - If the late-only branch beats the current pure winner, promote the matching `warmup0` H100 candidates ahead of the older early-cooldown slate.
+
+- Timestamp: 2026-03-25 04:16 UTC
+- Commit: `working tree`
+- Lane: pure n-gram frontier, heuristic-valid proxy recovery
+- Objective: Port the newest public score-first 5-gram idea into our local evaluator and chain it behind the in-budget proxy artifact path.
+- Research / observation:
+  - The live full `record659_conf07` run finished at:
+    - `final_ngram_eval_exact val_bpb = 1.08035892`
+    - `eval_time = 3,967,084ms`
+  - That is a real local improvement over the finished plain `record659` run (`1.08590477`), but it is still tied to the over-budget long-train artifact, so it does not satisfy our H200-side promotion heuristic.
+  - Latest public frontier as of today moved again:
+    - PR `#674` claims `5-gram BPB = 1.0461` (3-seed mean).
+    - The key semantic difference versus our local evaluator is not just “5-gram”; it is:
+      - fixed `alpha=0.20`
+      - `min_count=2`
+      - no confidence gate
+      - no per-token “only keep it if it helps” selection
+      - strictly score-first cache updates from already-scored tokens only
+  - PR `#672` remains a useful hedge on the TTT side (`1.0781` mean via `TTT_EPOCHS=30`), but PR `#674` is now the higher-upside eval-side target.
+- Code / ops:
+  - Updated `scripts/eval_ngram_cache_artifact.py` to support `--apply-mode {improve_only,always}`.
+    - `improve_only` preserves our old behavior.
+    - `always` matches the PR-`#674` style fixed interpolation rule.
+  - Added PR-`#674`-style candidates in `scripts/icrn_h200_artifact_ngram_candidate.sh`:
+    - `record674_smoke`
+    - `record674`
+    - `record674_proxy7185`
+  - Those candidates use:
+    - `lambda=0.20`
+    - `confidence_threshold=1.0` (effective no-gate mode in our evaluator)
+    - `min_count=2`
+    - `apply_mode=always`
+  - Added artifact/template override plumbing to `scripts/icrn_h200_artifact_ngram_candidate.sh` so we can target saved proxy artifacts directly instead of mutating the live run directory.
+  - Updated `scripts/icrn_h200_artifact_ngram_portfolio.sh` docs and `scripts/record_push_status.py` tracking for the new `record674*` lane.
+  - Added `scripts/after_proxy_conf07_run_record674.sh`:
+    - waits for `record659_conf07` on the saved proxy artifact to finish
+    - then runs the PR-`#674`-style `record674_proxy7185` eval on that same saved proxy artifact
+    - then refreshes `record_push_status.py`
+  - Current queue state:
+    - `after_conf07_run_budget_proxy_conf07.sh` has already rolled into the in-budget `7185`-step H200 proxy retrain
+    - the PR-`#674` proxy watcher is staged behind that result
+- Validation:
+  - `bash -n scripts/icrn_h200_artifact_ngram_candidate.sh scripts/icrn_h200_artifact_ngram_portfolio.sh scripts/after_proxy_conf07_run_record674.sh`
+  - `python -m py_compile scripts/eval_ngram_cache_artifact.py scripts/record_push_status.py`
+  - `python scripts/record_push_status.py --seed 1337`
+- Decision:
+  - Keep treating long-artifact wins as research only.
+  - Promote the proxy artifact as the next mandatory gate.
+  - Attack the public frontier directly with the PR-`#674` semantics instead of spending more time on weaker confidence/lambda micro-tweaks.
+- Next step:
+  - Let the in-budget `7185`-step proxy train finish.
+  - Finish `record659_conf07` on the saved proxy artifact.
+  - Immediately run `record674_proxy7185` on that same saved proxy artifact.
+  - If the PR-`#674` semantics transfer, use that as the main `8xH100` candidate family.
+
+- Timestamp: 2026-03-25 04:19 UTC
+- Commit: `working tree`
+- Lane: pure n-gram frontier, late-only cooling follow-up
+- Objective: Convert the finished `record659_conf07` signal into a sharper next branch instead of stopping at a strong-but-insufficient static gate.
+- Research / observation:
+  - The live full `record659_conf07` run finished at:
+    - `final_ngram_eval_exact val_bpb = 1.08035892`
+    - `eval_time = 3,967,084ms`
+  - That clearly beat the finished plain `record659` run (`1.08590477`), so the `conf=0.7` idea is real.
+  - But its shape confirms the weakness is late:
+    - best point: `71.3% -> 1.078684`
+    - finish: `1.08035892`
+  - So the next highest-signal pure follow-up is not broader cooldown from halfway through; it is preserving `conf=0.7` until the strong region is over, then backing off.
+- Code / ops:
+  - Added new pure late-only candidates:
+    - `record659_latecool_conf07`
+    - `record659_latecool_conf07_smoke`
+    - `record659_latecool_conf07_lamtail`
+    - `record659_latecool_conf07_lamtail_smoke`
+    - `record659_latecool_conf07_min4`
+    - `record659_latecool_conf07_min4_smoke`
+  - Added new PR-`#672` hybrid late-only hedge:
+    - `record659_adamw30ep_cosine_latecool`
+    - `record659_adamw30ep_cosine_latecool_smoke`
+  - Promoted these through:
+    - `scripts/icrn_h200_artifact_ngram_candidate.sh`
+    - `scripts/icrn_h200_artifact_ngram_portfolio.sh`
+    - `scripts/icrn_h200_artifact_ttt_ngram_candidate.sh`
+    - `scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh`
+    - `scripts/queue_h200_credit_prep.sh`
+    - `scripts/h100_parallel_candidate_portfolio.sh`
+    - `scripts/record_push_candidate_lib.sh`
+    - `scripts/record_push_status.py`
+  - Also fixed candidate-name mapping in the status/handoff tooling so these new branches point at the correct future `8xH100` launcher names.
+- Live state:
+  - The generic H200 watcher picked up the new queue immediately after `record659_conf07` exited.
+  - The current active run is now:
+    - `h200_artifact_ngram_record659_latecool_conf07.txt`
+    - config: `conf_schedule=0.00:0.70,0.72:0.65,0.80:0.60,0.90:0.55`
+- Decision:
+  - Keep pure-cache work on the main line.
+  - Treat late-only confidence backoff as the current best pure bet.
+  - Keep the new late-only cosine-TTT hybrid as the most relevant hedge behind it.
+- Next step:
+  - Let full `record659_latecool_conf07` finish.
+  - Then run:
+    - `record659_latecool_conf07_lamtail`
+    - `record659_latecool_conf07_min4`
+    - `record659_adamw30ep_cosine_latecool_smoke`
+    - `record659_adamw30ep_cosine_latecool`

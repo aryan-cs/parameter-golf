@@ -15,6 +15,7 @@ NGRAM_MAX_N="${NGRAM_MAX_N:-5}"
 CONFIDENCE_THRESHOLD="${CONFIDENCE_THRESHOLD:-0.5}"
 GATE_MODE="${GATE_MODE:-max}"
 MIN_COUNT="${MIN_COUNT:-3}"
+APPLY_MODE="${APPLY_MODE:-improve_only}"
 LAMBDA_SCHEDULE="${LAMBDA_SCHEDULE:-}"
 NGRAM_ADAPT_ENABLED="${NGRAM_ADAPT_ENABLED:-0}"
 NGRAM_ADAPT_LR="${NGRAM_ADAPT_LR:-0.0003}"
@@ -28,6 +29,9 @@ BIGRAM_VOCAB_SIZE="${BIGRAM_VOCAB_SIZE:-1536}"
 VALUE_RESIDUAL="${VALUE_RESIDUAL:-0}"
 MAX_WINDOWS="${MAX_WINDOWS:-0}"
 SKIP_COMPLETED="${SKIP_COMPLETED:-1}"
+ARTIFACT_PATH="${ARTIFACT_PATH:-}"
+TEMPLATE_PATH="${TEMPLATE_PATH:-}"
+TRAIN_GPT_PATH="${TRAIN_GPT_PATH:-}"
 
 case "$CANDIDATE" in
   record659)
@@ -87,6 +91,19 @@ case "$CANDIDATE" in
     CONFIDENCE_SCHEDULE="0.00:0.70,0.72:0.65,0.80:0.60,0.90:0.55"
     LAMBDA_SCHEDULE="0.00:0.15,0.72:0.12,0.80:0.09,0.90:0.06"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_latecool_conf07_lamtail.txt}"
+    ;;
+  record659_latecool_conf07_min4_smoke)
+    CONFIDENCE_THRESHOLD="0.7"
+    MIN_COUNT="4"
+    CONFIDENCE_SCHEDULE="0.00:0.70,0.72:0.65,0.80:0.60,0.90:0.55"
+    MAX_WINDOWS="128"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_latecool_conf07_min4_smoke.txt}"
+    ;;
+  record659_latecool_conf07_min4)
+    CONFIDENCE_THRESHOLD="0.7"
+    MIN_COUNT="4"
+    CONFIDENCE_SCHEDULE="0.00:0.70,0.72:0.65,0.80:0.60,0.90:0.55"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_latecool_conf07_min4.txt}"
     ;;
   record659_conf07_lamcool_smoke)
     CONFIDENCE_THRESHOLD="0.7"
@@ -214,6 +231,28 @@ case "$CANDIDATE" in
     CONFIDENCE_THRESHOLD="0.8"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_lam20_conf08.txt}"
     ;;
+  record674_smoke)
+    NGRAM_LAMBDA="0.20"
+    CONFIDENCE_THRESHOLD="1.0"
+    MIN_COUNT="2"
+    APPLY_MODE="always"
+    MAX_WINDOWS="128"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record674_smoke.txt}"
+    ;;
+  record674)
+    NGRAM_LAMBDA="0.20"
+    CONFIDENCE_THRESHOLD="1.0"
+    MIN_COUNT="2"
+    APPLY_MODE="always"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record674.txt}"
+    ;;
+  record674_proxy7185)
+    NGRAM_LAMBDA="0.20"
+    CONFIDENCE_THRESHOLD="1.0"
+    MIN_COUNT="2"
+    APPLY_MODE="always"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record674_h100proxy7185_seed1337.txt}"
+    ;;
   record659_warm_conf07)
     CONFIDENCE_SCHEDULE="0.00:0.50,0.20:0.60,0.40:0.70"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_warm_conf07.txt}"
@@ -313,24 +352,43 @@ fi
 
 rm -f "$LOG_PATH"
 
-exec python scripts/eval_ngram_cache_artifact.py \
-  --run-dir "$RUN_DIR" \
-  --log-path "$LOG_PATH" \
-  --batch-seqs "$BATCH_SEQS" \
-  --bigram-vocab-size "$BIGRAM_VOCAB_SIZE" \
-  --value-residual "$VALUE_RESIDUAL" \
-  --stride "$STRIDE" \
-  --ngram-lambda "$NGRAM_LAMBDA" \
-  --ngram-max-n "$NGRAM_MAX_N" \
-  --confidence-threshold "$CONFIDENCE_THRESHOLD" \
-  --gate-mode "$GATE_MODE" \
-  --min-count "$MIN_COUNT" \
-  --lambda-schedule "$LAMBDA_SCHEDULE" \
-  --confidence-schedule "$CONFIDENCE_SCHEDULE" \
-  --order-lambdas "$ORDER_LAMBDAS" \
-  $( [[ "$NGRAM_ADAPT_ENABLED" == "1" ]] && printf '%s ' --ngram-adapt-enabled ) \
-  $( [[ "$PACKED_CACHE" == "1" ]] && printf '%s ' --packed-cache ) \
-  --ngram-adapt-lr "$NGRAM_ADAPT_LR" \
-  --ngram-adapt-decay "$NGRAM_ADAPT_DECAY" \
-  --ngram-adapt-last-n-blocks "$NGRAM_ADAPT_LAST_N_BLOCKS" \
+args=(
+  scripts/eval_ngram_cache_artifact.py
+  --run-dir "$RUN_DIR"
+  --log-path "$LOG_PATH"
+  --batch-seqs "$BATCH_SEQS"
+  --bigram-vocab-size "$BIGRAM_VOCAB_SIZE"
+  --value-residual "$VALUE_RESIDUAL"
+  --stride "$STRIDE"
+  --ngram-lambda "$NGRAM_LAMBDA"
+  --ngram-max-n "$NGRAM_MAX_N"
+  --confidence-threshold "$CONFIDENCE_THRESHOLD"
+  --gate-mode "$GATE_MODE"
+  --min-count "$MIN_COUNT"
+  --apply-mode "$APPLY_MODE"
+  --lambda-schedule "$LAMBDA_SCHEDULE"
+  --confidence-schedule "$CONFIDENCE_SCHEDULE"
+  --order-lambdas "$ORDER_LAMBDAS"
+  --ngram-adapt-lr "$NGRAM_ADAPT_LR"
+  --ngram-adapt-decay "$NGRAM_ADAPT_DECAY"
+  --ngram-adapt-last-n-blocks "$NGRAM_ADAPT_LAST_N_BLOCKS"
   --max-windows "$MAX_WINDOWS"
+)
+
+if [[ "$NGRAM_ADAPT_ENABLED" == "1" ]]; then
+  args+=(--ngram-adapt-enabled)
+fi
+if [[ "$PACKED_CACHE" == "1" ]]; then
+  args+=(--packed-cache)
+fi
+if [[ -n "$ARTIFACT_PATH" ]]; then
+  args+=(--artifact-path "$ARTIFACT_PATH")
+fi
+if [[ -n "$TEMPLATE_PATH" ]]; then
+  args+=(--template-path "$TEMPLATE_PATH")
+fi
+if [[ -n "$TRAIN_GPT_PATH" ]]; then
+  args+=(--train-gpt-path "$TRAIN_GPT_PATH")
+fi
+
+exec python "${args[@]}"

@@ -24,6 +24,8 @@ Run one candidate at a time on the saved winning artifact by setting CANDIDATE:
   CANDIDATE=record659_latecool_conf07_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_latecool_conf07_lamtail bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_latecool_conf07_lamtail_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
+  CANDIDATE=record659_latecool_conf07_min4 bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
+  CANDIDATE=record659_latecool_conf07_min4_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_conf07_lamcool bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_conf07_lamcool_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_cool_conf07 bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
@@ -43,6 +45,9 @@ Run one candidate at a time on the saved winning artifact by setting CANDIDATE:
   CANDIDATE=record659_tgate40_min4_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_tgate40_min4 bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_lam20_conf07 bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
+  CANDIDATE=record674_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
+  CANDIDATE=record674 bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
+  CANDIDATE=record674_proxy7185 bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_warm_conf07 bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_warm_conf07_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_orderlam bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
@@ -76,6 +81,8 @@ Candidate meanings:
   record659_latecool_conf07_smoke late-only cooldown variant on first 128 windows only
   record659_latecool_conf07_lamtail late-only confidence cooldown plus late lambda taper
   record659_latecool_conf07_lamtail_smoke late-only cooldown + lambda taper on first 128 windows only
+  record659_latecool_conf07_min4 late-only cooldown plus min_count=4
+  record659_latecool_conf07_min4_smoke late-only cooldown + min_count=4 on first 128 windows only
   record659_conf07_lamcool conf=0.7 plus lambda taper from 0.15 to 0.06 late
   record659_conf07_lamcool_smoke conf=0.7 plus lambda taper on first 128 windows only
   record659_cool_conf07 conf=0.7 early, then cool to 0.65/0.60/0.55 late
@@ -95,6 +102,9 @@ Candidate meanings:
   record659_tgate40_min4_smoke target-prob gate at 0.4 with min_count=4 on first 128 windows only
   record659_tgate40_min4 target-prob gate at 0.4 with min_count=4 full run
   record659_lam20_conf07 lambda=0.20 with conf=0.7 full run
+  record674_smoke PR #674-inspired fixed alpha=0.20, min_count=2, no gate, always-apply mix on first 128 windows
+  record674 PR #674-inspired fixed alpha=0.20, min_count=2, no gate, always-apply mix full run
+  record674_proxy7185 same PR #674-inspired mix, intended for the saved proxy artifact via ARTIFACT_PATH/TEMPLATE_PATH
   record659_warm_conf07 staged confidence: 0.50 -> 0.60 -> 0.70 as cache warms up
   record659_warm_conf07_smoke staged-confidence variant on first 128 windows only
   record659_orderlam order-aware lambda ramp: 2:0.08, 3:0.12, 4:0.17, 5:0.22
@@ -113,4 +123,8 @@ Candidate meanings:
   record659_adapt_last4_smoke PR #659 settings plus RMSprop adapt on the last 4 blocks, first 128 windows
   record659_adapt_last4 PR #659 settings plus RMSprop adapt on the last 4 blocks
   lowrisk_adapt lowrisk n-gram mix plus RMSprop adapt
+
+Optional overrides:
+  ARTIFACT_PATH=/abs/path/to/final_model.int6.ptz TEMPLATE_PATH=/abs/path/to/final_model.pt \
+    CANDIDATE=record674_proxy7185 bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
 EOF

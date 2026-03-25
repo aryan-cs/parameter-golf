@@ -266,6 +266,7 @@ def eval_val_ngram(
     confidence_threshold: float = 0.5,
     gate_mode: str = "max",
     min_count: int = 3,
+    apply_mode: str = "improve_only",
     ngram_adapt_enabled: bool = False,
     ngram_adapt_lr: float = 0.0003,
     ngram_adapt_decay: float = 0.001,
@@ -286,7 +287,10 @@ def eval_val_ngram(
     token_count = torch.zeros((), device=device, dtype=torch.float64)
     byte_count = torch.zeros((), device=device, dtype=torch.float64)
     ngram = build_ngram_cache(args.vocab_size, ngram_max_n, packed=packed_cache)
-    ngram_improvements = 0
+    if apply_mode not in {"improve_only", "always"}:
+        raise ValueError(f"apply_mode must be one of improve_only/always, got {apply_mode}")
+    ngram_applied = 0
+    ngram_better = 0
     ngram_attempts = 0
     ngram_skipped = 0
     lambda_schedule = parse_lambda_schedule(lambda_schedule_spec, ngram_lambda)
@@ -316,6 +320,7 @@ def eval_val_ngram(
         "ngram_eval:start "
         f"stride={stride} lambda={ngram_lambda} max_n={ngram_max_n} "
         f"confidence_threshold={confidence_threshold} gate_mode={gate_mode} min_count={min_count} "
+        f"apply_mode={apply_mode} "
         f"adapt={int(ngram_adapt_enabled)} packed={int(packed_cache)} "
         f"lambda_schedule={format_lambda_schedule(lambda_schedule)} "
         f"confidence_schedule={format_confidence_schedule(confidence_schedule)} "
@@ -397,9 +402,11 @@ def eval_val_ngram(
                         mixed_lp = max(a, b) + math.log1p(math.exp(-abs(a - b)))
                         new_nll = -mixed_lp
                         old_nll = scored_nll[t_off].item()
-                        if new_nll < old_nll:
+                        if apply_mode == "always" or new_nll < old_nll:
                             scored_nll[t_off] = new_nll
-                            ngram_improvements += 1
+                            ngram_applied += 1
+                        if new_nll < old_nll:
+                            ngram_better += 1
 
             loss_sum += scored_nll.sum()
             token_count += float(wlen - s)
@@ -438,18 +445,20 @@ def eval_val_ngram(
             rl = loss_sum.item() / token_count.item()
             rb = (rl / math.log(2.0)) * (token_count.item() / max(byte_count.item(), 1))
             pct = 100.0 * bi / max(len(window_starts), 1)
-            hit = ngram_improvements / max(ngram_attempts, 1) * 100
+            apply_rate = ngram_applied / max(ngram_attempts, 1) * 100
+            better_rate = ngram_better / max(ngram_attempts, 1) * 100
             skip = ngram_skipped / max(ngram_skipped + ngram_attempts + 1, 1) * 100
             suffix = " +ngram_adapt" if ngram_adapt_enabled else ""
             log(
-                f"  ngram [{pct:5.1f}%] bpb={rb:.6f} hit={hit:.1f}% skip={skip:.0f}% "
-                f"conf={batch_confidence_threshold:.2f} lam={batch_lambda:.3f}{suffix}"
+                f"  ngram [{pct:5.1f}%] bpb={rb:.6f} apply={apply_rate:.1f}% better={better_rate:.1f}% "
+                f"skip={skip:.0f}% conf={batch_confidence_threshold:.2f} lam={batch_lambda:.3f} "
+                f"mode={apply_mode}{suffix}"
             )
 
     val_loss = (loss_sum / token_count).item()
     bits_per_token = val_loss / math.log(2.0)
     tokens_per_byte = token_count.item() / byte_count.item()
-    log(f"  ngram: {ngram_improvements}/{ngram_attempts} improved, {ngram_skipped} skipped")
+    log(f"  ngram: {ngram_applied}/{ngram_attempts} applied, {ngram_better} better, {ngram_skipped} skipped")
     return val_loss, bits_per_token * tokens_per_byte
 
 
@@ -472,6 +481,7 @@ def main() -> None:
     parser.add_argument("--confidence-threshold", type=float, default=0.5)
     parser.add_argument("--gate-mode", choices=["max", "target"], default="max")
     parser.add_argument("--min-count", type=int, default=3)
+    parser.add_argument("--apply-mode", choices=["improve_only", "always"], default="improve_only")
     parser.add_argument("--ngram-adapt-enabled", action="store_true")
     parser.add_argument("--ngram-adapt-lr", type=float, default=0.0003)
     parser.add_argument("--ngram-adapt-decay", type=float, default=0.001)
@@ -533,6 +543,7 @@ def main() -> None:
                 "confidence_threshold": args_ns.confidence_threshold,
                 "gate_mode": args_ns.gate_mode,
                 "min_count": args_ns.min_count,
+                "apply_mode": args_ns.apply_mode,
                 "ngram_adapt_enabled": int(args_ns.ngram_adapt_enabled),
                 "ngram_adapt_lr": args_ns.ngram_adapt_lr,
                 "ngram_adapt_decay": args_ns.ngram_adapt_decay,
@@ -582,6 +593,7 @@ def main() -> None:
         confidence_threshold=args_ns.confidence_threshold,
         gate_mode=args_ns.gate_mode,
         min_count=args_ns.min_count,
+        apply_mode=args_ns.apply_mode,
         ngram_adapt_enabled=args_ns.ngram_adapt_enabled,
         ngram_adapt_lr=args_ns.ngram_adapt_lr,
         ngram_adapt_decay=args_ns.ngram_adapt_decay,
