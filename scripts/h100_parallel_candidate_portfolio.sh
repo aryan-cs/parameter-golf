@@ -24,6 +24,12 @@ run_candidate() {
     vr1_bg3072_tttlr25)
       exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_vr1_bg3072_tttlr25.sh"
       ;;
+    swiglu_ngram674)
+      exec bash "$ROOT_DIR/scripts/h100_record_push_candidate.sh" swiglu ngram674
+      ;;
+    swiglu_ngram659_conf07)
+      exec bash "$ROOT_DIR/scripts/h100_record_push_candidate.sh" swiglu ngram659_conf07
+      ;;
     warmup0)
       exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0.sh"
       ;;
@@ -347,6 +353,8 @@ Run one candidate on each 8xH100 node by setting CANDIDATE:
   CANDIDATE=vr1_bg3072 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=tttlr25 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=vr1_bg3072_tttlr25 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=swiglu_ngram674 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=swiglu_ngram659_conf07 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0_vr1_bg3072_tttlr25 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=ngram659 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
@@ -412,6 +420,9 @@ Candidate meanings:
   vr1_bg3072           baseline + VALUE_RESIDUAL=1 + BIGRAM_VOCAB_SIZE=3072
   tttlr25              baseline + TTT_LR=0.0025
   vr1_bg3072_tttlr25   combo bet on all three high-signal knobs
+  swiglu_ngram674      SwiGLU architecture hedge plus PR #674 hashed eval semantics
+  swiglu_ngram659_conf07
+                       SwiGLU hedge plus the best completed PR #659-style conf07 exact-cache lane
   warmup0              baseline + WARMUP_STEPS=0 to claw back timed-run headroom
   warmup0_vr1_bg3072_tttlr25
                        combo bet plus WARMUP_STEPS=0 for score and compliance

@@ -3043,3 +3043,20 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
   - Let the current proxy retrain reach export.
   - Compare hashed `record674` vs proxy `conf07` on the same proxy artifact.
   - If the baseline architecture still stalls above the real frontier, use the already-staged SwiGLU proxy chain as the next architecture bet.
+
+- Timestamp: 2026-03-25 04:33 UTC
+- Commit: `working tree`
+- Lane: `8xH100` portfolio usability, explicit SwiGLU handoff
+- Objective: Make the next real multi-node credit window easier to launch under pressure by exposing the strongest architecture hedge as first-class portfolio entries instead of forcing a manual arch/TTT composition step.
+- Code / ops:
+  - Added explicit H100 portfolio candidates in `scripts/h100_parallel_candidate_portfolio.sh`:
+    - `swiglu_ngram674`
+    - `swiglu_ngram659_conf07`
+  - These call the generic `scripts/h100_record_push_candidate.sh`, so they stay aligned with:
+    - `ARCH_CANDIDATE=swiglu`
+    - `TTT_CANDIDATE=ngram674` or `ngram659_conf07`
+- Validation:
+  - `bash -n scripts/h100_parallel_candidate_portfolio.sh`
+- Decision:
+  - Keep the credit-window fanout explicit.
+  - Treat `swiglu_ngram674` as the cleanest architecture hedge behind the baseline hashed family.
