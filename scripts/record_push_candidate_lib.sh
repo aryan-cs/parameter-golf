@@ -96,6 +96,46 @@ record_push_apply_ttt_candidate() {
       export NGRAM_PACKED_CACHE="${NGRAM_PACKED_CACHE:-1}"
       export NGRAM_GLOBAL_CACHE="${NGRAM_GLOBAL_CACHE:-1}"
       ;;
+    ngram659_warm_conf07)
+      export TTT_ENABLED="${TTT_ENABLED:-0}"
+      export NGRAM_EVAL_ENABLED="${NGRAM_EVAL_ENABLED:-1}"
+      export NGRAM_STRIDE="${NGRAM_STRIDE:-128}"
+      export NGRAM_BATCH_SEQS="${NGRAM_BATCH_SEQS:-32}"
+      export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.15}"
+      export NGRAM_MAX_N="${NGRAM_MAX_N:-5}"
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.5}"
+      export NGRAM_CONFIDENCE_SCHEDULE="${NGRAM_CONFIDENCE_SCHEDULE:-0.00:0.50,0.20:0.60,0.40:0.70}"
+      export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-3}"
+      export NGRAM_PACKED_CACHE="${NGRAM_PACKED_CACHE:-1}"
+      export NGRAM_GLOBAL_CACHE="${NGRAM_GLOBAL_CACHE:-1}"
+      ;;
+    ngram659_orderlam)
+      export TTT_ENABLED="${TTT_ENABLED:-0}"
+      export NGRAM_EVAL_ENABLED="${NGRAM_EVAL_ENABLED:-1}"
+      export NGRAM_STRIDE="${NGRAM_STRIDE:-128}"
+      export NGRAM_BATCH_SEQS="${NGRAM_BATCH_SEQS:-32}"
+      export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.15}"
+      export NGRAM_MAX_N="${NGRAM_MAX_N:-5}"
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.5}"
+      export NGRAM_ORDER_LAMBDAS="${NGRAM_ORDER_LAMBDAS:-2:0.08,3:0.12,4:0.17,5:0.22}"
+      export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-3}"
+      export NGRAM_PACKED_CACHE="${NGRAM_PACKED_CACHE:-1}"
+      export NGRAM_GLOBAL_CACHE="${NGRAM_GLOBAL_CACHE:-1}"
+      ;;
+    ngram659_warm_conf07_orderlam)
+      export TTT_ENABLED="${TTT_ENABLED:-0}"
+      export NGRAM_EVAL_ENABLED="${NGRAM_EVAL_ENABLED:-1}"
+      export NGRAM_STRIDE="${NGRAM_STRIDE:-128}"
+      export NGRAM_BATCH_SEQS="${NGRAM_BATCH_SEQS:-32}"
+      export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.15}"
+      export NGRAM_MAX_N="${NGRAM_MAX_N:-5}"
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.5}"
+      export NGRAM_CONFIDENCE_SCHEDULE="${NGRAM_CONFIDENCE_SCHEDULE:-0.00:0.50,0.20:0.60,0.40:0.70}"
+      export NGRAM_ORDER_LAMBDAS="${NGRAM_ORDER_LAMBDAS:-2:0.08,3:0.12,4:0.17,5:0.22}"
+      export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-3}"
+      export NGRAM_PACKED_CACHE="${NGRAM_PACKED_CACHE:-1}"
+      export NGRAM_GLOBAL_CACHE="${NGRAM_GLOBAL_CACHE:-1}"
+      ;;
     lowrisk_ngram)
       export TTT_ENABLED="${TTT_ENABLED:-0}"
       export NGRAM_EVAL_ENABLED="${NGRAM_EVAL_ENABLED:-1}"
@@ -144,6 +184,7 @@ record_push_apply_ttt_candidate() {
       export NGRAM_MAX_N="${NGRAM_MAX_N:-5}"
       export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.5}"
       export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-3}"
+      export NGRAM_PACKED_CACHE="${NGRAM_PACKED_CACHE:-1}"
       export NGRAM_GLOBAL_CACHE="${NGRAM_GLOBAL_CACHE:-1}"
       export NGRAM_ADAPT_ENABLED="${NGRAM_ADAPT_ENABLED:-1}"
       export NGRAM_ADAPT_LR="${NGRAM_ADAPT_LR:-0.0003}"
@@ -159,6 +200,7 @@ record_push_apply_ttt_candidate() {
       export NGRAM_MAX_N="${NGRAM_MAX_N:-5}"
       export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.5}"
       export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-3}"
+      export NGRAM_PACKED_CACHE="${NGRAM_PACKED_CACHE:-1}"
       export NGRAM_GLOBAL_CACHE="${NGRAM_GLOBAL_CACHE:-1}"
       export NGRAM_ADAPT_ENABLED="${NGRAM_ADAPT_ENABLED:-1}"
       export NGRAM_ADAPT_LR="${NGRAM_ADAPT_LR:-0.0003}"
@@ -330,6 +372,15 @@ record_push_artifact_log_path() {
     ngram659_conf07)
       printf '%s\n' "$log_dir/h200_artifact_ngram_record659_conf07.txt"
       ;;
+    ngram659_warm_conf07)
+      printf '%s\n' "$log_dir/h200_artifact_ngram_record659_warm_conf07.txt"
+      ;;
+    ngram659_orderlam)
+      printf '%s\n' "$log_dir/h200_artifact_ngram_record659_orderlam.txt"
+      ;;
+    ngram659_warm_conf07_orderlam)
+      printf '%s\n' "$log_dir/h200_artifact_ngram_record659_warm_conf07_orderlam.txt"
+      ;;
     lowrisk_ngram)
       printf '%s\n' "$log_dir/h200_artifact_ngram_lowrisk.txt"
       ;;
@@ -352,13 +403,13 @@ record_push_artifact_log_path() {
       printf '%s\n' "$log_dir/h200_artifact_ttt_ngram_record659_tttlr25.txt"
       ;;
     ngram659_late2_tttlr25)
-      printf '%s\n' "$log_dir/h200_artifact_ttt_ngram_record659_late2_tttlr25_smoke.txt"
+      printf '%s\n' "$log_dir/h200_artifact_ttt_ngram_record659_late2_tttlr25.txt"
       ;;
     ngram659_late2_adamw5e4)
       printf '%s\n' "$log_dir/h200_artifact_ttt_ngram_record659_adamw5e4_late2.txt"
       ;;
     ngram659_late2_adamw1e4)
-      printf '%s\n' "$log_dir/h200_artifact_ttt_ngram_record659_adamw1e4_late2_smoke.txt"
+      printf '%s\n' "$log_dir/h200_artifact_ttt_ngram_record659_adamw1e4_late2.txt"
       ;;
     lowrisk_ngram_tttlr25)
       printf '%s\n' "$log_dir/h200_artifact_ttt_ngram_lowrisk_tttlr25.txt"

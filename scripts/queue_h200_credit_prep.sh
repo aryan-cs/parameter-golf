@@ -15,27 +15,33 @@ CANDIDATE="${CANDIDATE_NGRAM_3:-record659_conf06_smoke}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh"
 CANDIDATE="${CANDIDATE_NGRAM_4:-record659_conf07_smoke}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh"
-CANDIDATE="${CANDIDATE_NGRAM_5:-record659_adapt_smoke}" \
+CANDIDATE="${CANDIDATE_NGRAM_5:-record659_warm_conf07_smoke}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh"
-CANDIDATE="${CANDIDATE_NGRAM_6:-record659_adapt}" \
+CANDIDATE="${CANDIDATE_NGRAM_6:-record659_orderlam_smoke}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh"
-CANDIDATE="${CANDIDATE_NGRAM_7:-record659_adapt_last2_smoke}" \
+CANDIDATE="${CANDIDATE_NGRAM_7:-record659_warm_conf07_orderlam_smoke}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh"
-CANDIDATE="${CANDIDATE_NGRAM_8:-record659_adapt_last2}" \
+CANDIDATE="${CANDIDATE_NGRAM_8:-record659_adapt_smoke}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh"
-CANDIDATE="${CANDIDATE_NGRAM_9:-record659_adapt_last4_smoke}" \
+CANDIDATE="${CANDIDATE_NGRAM_9:-record659_adapt}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh"
-CANDIDATE="${CANDIDATE_NGRAM_10:-record659_adapt_last4}" \
+CANDIDATE="${CANDIDATE_NGRAM_10:-record659_adapt_last2_smoke}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh"
-CANDIDATE="${CANDIDATE_NGRAM_11:-lowrisk_smoke}" \
+CANDIDATE="${CANDIDATE_NGRAM_11:-record659_adapt_last2}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh"
-CANDIDATE="${CANDIDATE_NGRAM_12:-lowrisk}" \
+CANDIDATE="${CANDIDATE_NGRAM_12:-record659_adapt_last4_smoke}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh"
-CANDIDATE="${CANDIDATE_NGRAM_13:-lowrisk_adapt}" \
+CANDIDATE="${CANDIDATE_NGRAM_13:-record659_adapt_last4}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh"
-CANDIDATE="${CANDIDATE_NGRAM_14:-lam10_conf05}" \
+CANDIDATE="${CANDIDATE_NGRAM_14:-lowrisk_smoke}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh"
-CANDIDATE="${CANDIDATE_NGRAM_15:-vr1_record659}" \
+CANDIDATE="${CANDIDATE_NGRAM_15:-lowrisk}" \
+  bash "$ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh"
+CANDIDATE="${CANDIDATE_NGRAM_16:-lowrisk_adapt}" \
+  bash "$ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh"
+CANDIDATE="${CANDIDATE_NGRAM_17:-lam10_conf05}" \
+  bash "$ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh"
+CANDIDATE="${CANDIDATE_NGRAM_18:-vr1_record659}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh"
 
 # 1b. Combine backward-looking n-gram scoring with legal TTT on the artifact.

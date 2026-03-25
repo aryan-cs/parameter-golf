@@ -118,6 +118,8 @@ class Hyperparameters:
     ngram_adapt_lr = float(os.environ.get("NGRAM_ADAPT_LR", 0.0003))
     ngram_adapt_decay = float(os.environ.get("NGRAM_ADAPT_DECAY", 0.001))
     ngram_adapt_last_n_blocks = int(os.environ.get("NGRAM_ADAPT_LAST_N_BLOCKS", 3))
+    ngram_confidence_schedule = os.environ.get("NGRAM_CONFIDENCE_SCHEDULE", "")
+    ngram_order_lambdas = os.environ.get("NGRAM_ORDER_LAMBDAS", "")
     ngram_packed_cache = bool(int(os.environ.get("NGRAM_PACKED_CACHE", "0")))
     ngram_global_cache = bool(int(os.environ.get("NGRAM_GLOBAL_CACHE", "1")))
     ngram_ttt_enabled = bool(int(os.environ.get("NGRAM_TTT_ENABLED", "0")))
@@ -1063,7 +1065,7 @@ class OnlineNgramCache:
                     self.counts[n][ctx] = d
                 d[token] = d.get(token, 0) + 1
 
-    def logprob_target(self, context: list[int], target: int, min_count: int = 3) -> float | None:
+    def lookup_target(self, context: list[int], target: int, min_count: int = 3) -> tuple[float, int, int] | None:
         for n in range(min(self.max_n, len(context) + 1), 1, -1):
             ctx = tuple(context[-(n - 1) :]) if n > 1 else ()
             d = self.counts[n].get(ctx)
@@ -1074,8 +1076,12 @@ class OnlineNgramCache:
                 continue
             cnt = d.get(target, 0)
             if cnt > 0:
-                return math.log(cnt / total)
+                return math.log(cnt / total), n, total
         return None
+
+    def logprob_target(self, context: list[int], target: int, min_count: int = 3) -> float | None:
+        lookup = self.lookup_target(context, target, min_count=min_count)
+        return None if lookup is None else lookup[0]
 
 
 class PackedOnlineNgramCache:
@@ -1110,7 +1116,7 @@ class PackedOnlineNgramCache:
                 joint = self._append_token(ctx_code, token)
                 counts_n[joint] = counts_n.get(joint, 0) + 1
 
-    def logprob_target(self, context: list[int], target: int, min_count: int = 3) -> float | None:
+    def lookup_target(self, context: list[int], target: int, min_count: int = 3) -> tuple[float, int, int] | None:
         for n in range(min(self.max_n, len(context) + 1), 1, -1):
             ctx_code = self._encode_context(context, len(context) - (n - 1), len(context))
             total = self.totals[n].get(ctx_code, 0)
@@ -1118,14 +1124,76 @@ class PackedOnlineNgramCache:
                 continue
             cnt = self.counts[n].get(self._append_token(ctx_code, target), 0)
             if cnt > 0:
-                return math.log(cnt / total)
+                return math.log(cnt / total), n, total
         return None
+
+    def logprob_target(self, context: list[int], target: int, min_count: int = 3) -> float | None:
+        lookup = self.lookup_target(context, target, min_count=min_count)
+        return None if lookup is None else lookup[0]
 
 
 def build_ngram_cache(vocab_size: int, max_n: int, *, packed: bool) -> OnlineNgramCache | PackedOnlineNgramCache:
     if packed:
         return PackedOnlineNgramCache(vocab_size, max_n=max_n)
     return OnlineNgramCache(vocab_size, max_n=max_n)
+
+
+def parse_confidence_schedule(spec: str, default_threshold: float) -> list[tuple[float, float]]:
+    schedule = [(0.0, default_threshold)]
+    if not spec.strip():
+        return schedule
+    parsed: list[tuple[float, float]] = []
+    for item in spec.split(","):
+        frac_s, value_s = item.strip().split(":", 1)
+        frac = min(max(float(frac_s), 0.0), 1.0)
+        value = min(max(float(value_s), 0.0), 1.0)
+        parsed.append((frac, value))
+    parsed.sort()
+    if parsed[0][0] > 0.0:
+        parsed.insert(0, (0.0, default_threshold))
+    return parsed
+
+
+def confidence_for_progress(schedule: list[tuple[float, float]], progress: float) -> float:
+    current = schedule[0][1]
+    for frac, value in schedule:
+        if progress + 1e-12 >= frac:
+            current = value
+        else:
+            break
+    return current
+
+
+def confidence_to_log_threshold(confidence_threshold: float) -> float:
+    if confidence_threshold <= 0.0:
+        return float("-inf")
+    if confidence_threshold >= 1.0:
+        return 0.0
+    return math.log(confidence_threshold)
+
+
+def parse_order_lambdas(spec: str, max_n: int, default_lambda: float) -> dict[int, float]:
+    order_lambdas = {n: default_lambda for n in range(2, max_n + 1)}
+    if not spec.strip():
+        return order_lambdas
+    for item in spec.split(","):
+        order_s, value_s = item.strip().split(":", 1)
+        order = int(order_s)
+        value = float(value_s)
+        if order < 2 or order > max_n:
+            continue
+        if not (0.0 < value < 1.0):
+            raise ValueError(f"order lambda must lie in (0, 1), got {value} for n={order}")
+        order_lambdas[order] = value
+    return order_lambdas
+
+
+def format_confidence_schedule(schedule: list[tuple[float, float]]) -> str:
+    return ",".join(f"{frac:.2f}:{value:.2f}" for frac, value in schedule)
+
+
+def format_order_lambdas(order_lambdas: dict[int, float]) -> str:
+    return ",".join(f"{order}:{order_lambdas[order]:.3f}" for order in sorted(order_lambdas))
 
 
 def _ttt_selected_layers(args: Hyperparameters, num_layers: int) -> set[int]:
@@ -1383,12 +1451,13 @@ def eval_val_ngram(
     ngram_adapt_lr: float = 0.0003,
     ngram_adapt_decay: float = 0.001,
     ngram_global_cache: bool = True,
+    confidence_schedule_spec: str = "",
+    order_lambdas_spec: str = "",
     log0=print,
 ) -> tuple[float, float]:
     """Backward-looking n-gram cache with safety-gated log-prob mixing."""
     seq_len = eval_seq_len or args.train_seq_len
     total_tokens = val_tokens.numel() - 1
-    log_conf_thresh = math.log(confidence_threshold) if confidence_threshold < 1.0 else 0.0
     window_starts = [ws for ws in range(0, total_tokens, stride) if min(ws + seq_len, total_tokens) - ws >= 1]
     total_windows = len(window_starts)
     loss_sum = torch.zeros((), device=device, dtype=torch.float64)
@@ -1398,8 +1467,9 @@ def eval_val_ngram(
     ngram_improvements = 0
     ngram_attempts = 0
     ngram_skipped = 0
-    log_1_minus_lam = math.log(1.0 - ngram_lambda)
-    log_lam = math.log(ngram_lambda)
+    confidence_schedule = parse_confidence_schedule(confidence_schedule_spec, confidence_threshold)
+    order_lambdas = parse_order_lambdas(order_lambdas_spec, ngram_max_n, ngram_lambda)
+    order_log_lambdas = {n: (math.log(1.0 - lam), math.log(lam)) for n, lam in order_lambdas.items()}
     ngram_adapt_optimizer = None
     global_weights: dict[int, Tensor] | None = None
 
@@ -1430,13 +1500,18 @@ def eval_val_ngram(
             f"stride={stride} lambda={ngram_lambda} max_n={ngram_max_n} "
             f"confidence_threshold={confidence_threshold} min_count={min_count} "
             f"adapt={int(ngram_adapt_enabled)} packed={int(args.ngram_packed_cache)} "
-            f"global_cache={int(use_global_cache)}"
+            f"global_cache={int(use_global_cache)} "
+            f"confidence_schedule={format_confidence_schedule(confidence_schedule)} "
+            f"order_lambdas={format_order_lambdas(order_lambdas)}"
         )
 
     if use_global_cache:
         windows_per_round = batch_seqs * world_size
         for bi in range(0, total_windows, windows_per_round):
             global_batch_ws = window_starts[bi : bi + windows_per_round]
+            batch_progress = bi / max(total_windows, 1)
+            batch_confidence_threshold = confidence_for_progress(confidence_schedule, batch_progress)
+            log_conf_thresh = confidence_to_log_threshold(batch_confidence_threshold)
             rank_batch_ws = global_batch_ws[rank * batch_seqs : (rank + 1) * batch_seqs]
             local_bsz = len(rank_batch_ws)
             x_batch = torch.zeros(max(local_bsz, 1), seq_len, dtype=torch.int64, device=device)
@@ -1515,9 +1590,11 @@ def eval_val_ngram(
                             if ws > 0 and float(window_max_logps[t_off].item()) <= log_conf_thresh:
                                 ctx_start = max(0, token_pos - ngram_max_n + 1)
                                 ctx = val_tokens[ctx_start : token_pos + 1].cpu().tolist()
-                                ng_lp = ngram.logprob_target(ctx, tgt_tok, min_count=min_count) if ngram is not None else None
-                                if ng_lp is not None:
+                                ng_lookup = ngram.lookup_target(ctx, tgt_tok, min_count=min_count) if ngram is not None else None
+                                if ng_lookup is not None:
+                                    ng_lp, ng_order, _ = ng_lookup
                                     ngram_attempts += 1
+                                    log_1_minus_lam, log_lam = order_log_lambdas[ng_order]
                                     a = log_1_minus_lam + model_lp
                                     b = log_lam + ng_lp
                                     mixed_lp = max(a, b) + math.log1p(math.exp(-abs(a - b)))
@@ -1552,7 +1629,10 @@ def eval_val_ngram(
                     hit = 100.0 * ngram_improvements / max(ngram_attempts, 1)
                     skip = 100.0 * ngram_skipped / max(ngram_skipped + ngram_attempts + 1, 1)
                     suffix = " +ngram_adapt" if ngram_adapt_enabled else ""
-                    log0(f"  ngram [{pct:5.1f}%] bpb={running_bpb:.6f} hit={hit:.1f}% skip={skip:.0f}%{suffix}")
+                    log0(
+                        f"  ngram [{pct:5.1f}%] bpb={running_bpb:.6f} hit={hit:.1f}% skip={skip:.0f}% "
+                        f"conf={batch_confidence_threshold:.2f}{suffix}"
+                    )
 
             if ngram_adapt_enabled and ngram_adapt_optimizer is not None and local_bsz > 0:
                 last_wlen = local_wlens[-1]
@@ -1595,6 +1675,9 @@ def eval_val_ngram(
         for bi in range(0, len(my_windows), batch_seqs):
             batch_ws = my_windows[bi : bi + batch_seqs]
             bsz = len(batch_ws)
+            batch_progress = (my_s + bi) / max(total_windows, 1)
+            batch_confidence_threshold = confidence_for_progress(confidence_schedule, batch_progress)
+            log_conf_thresh = confidence_to_log_threshold(batch_confidence_threshold)
             x_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
             y_batch = torch.zeros(bsz, seq_len, dtype=torch.int64, device=device)
             wlens: list[int] = []
@@ -1640,16 +1723,18 @@ def eval_val_ngram(
                         targets.append(y_cpu[t_off])
 
                     if uncertain_indices:
-                        ng_logps = [ngram.logprob_target(ctx, tgt, min_count=min_count) for ctx, tgt in zip(prev_contexts, targets)]
+                        ng_lookups = [ngram.lookup_target(ctx, tgt, min_count=min_count) for ctx, tgt in zip(prev_contexts, targets)]
                         unc_idx_t = torch.tensor(uncertain_indices, dtype=torch.long, device=log_sm.device)
                         tgt_t = torch.tensor(targets, dtype=torch.long, device=log_sm.device)
                         model_logps = log_sm[unc_idx_t, tgt_t].cpu().tolist()
                         for j, t_off in enumerate(uncertain_indices):
-                            ng_lp = ng_logps[j]
-                            if ng_lp is None:
+                            ng_lookup = ng_lookups[j]
+                            if ng_lookup is None:
                                 continue
+                            ng_lp, ng_order, _ = ng_lookup
                             ngram_attempts += 1
                             model_lp = model_logps[j]
+                            log_1_minus_lam, log_lam = order_log_lambdas[ng_order]
                             a = log_1_minus_lam + model_lp
                             b = log_lam + ng_lp
                             mixed_lp = max(a, b) + math.log1p(math.exp(-abs(a - b)))
@@ -1700,7 +1785,10 @@ def eval_val_ngram(
                 hit = 100.0 * ngram_improvements / max(ngram_attempts, 1)
                 skip = 100.0 * ngram_skipped / max(ngram_skipped + ngram_attempts + 1, 1)
                 suffix = " +ngram_adapt" if ngram_adapt_enabled else ""
-                log0(f"  ngram [{pct:5.1f}%] bpb={running_bpb:.6f} hit={hit:.1f}% skip={skip:.0f}%{suffix}")
+                log0(
+                    f"  ngram [{pct:5.1f}%] bpb={running_bpb:.6f} hit={hit:.1f}% skip={skip:.0f}% "
+                    f"conf={batch_confidence_threshold:.2f}{suffix}"
+                )
 
         if dist.is_available() and dist.is_initialized():
             counts = torch.tensor([float(ngram_improvements), float(ngram_attempts), float(ngram_skipped)], device=device, dtype=torch.float64)
@@ -1868,15 +1956,16 @@ def eval_val_sliding_ttt_ngram(
     has_leading_space_lut: Tensor, is_boundary_token_lut: Tensor,
     stride: int, batch_seqs: int = 32,
     ngram_lambda: float = 0.15, ngram_max_n: int = 5,
-    confidence_threshold: float = 0.5, min_count: int = 3, log0=print,
+    confidence_threshold: float = 0.5, min_count: int = 3,
+    confidence_schedule_spec: str = "", order_lambdas_spec: str = "", log0=print,
 ) -> tuple[float, float]:
     """Legal score-first TTT with backward-looking n-gram cache during scoring."""
     seq_len = args.train_seq_len
     total_tokens = val_tokens.numel() - 1
     ttt_chunk = args.ttt_chunk_tokens
-    log_conf_thresh = math.log(confidence_threshold) if confidence_threshold < 1.0 else 0.0
-    log_1_minus_lam = math.log(1.0 - ngram_lambda)
-    log_lam = math.log(ngram_lambda)
+    confidence_schedule = parse_confidence_schedule(confidence_schedule_spec, confidence_threshold)
+    order_lambdas = parse_order_lambdas(order_lambdas_spec, ngram_max_n, ngram_lambda)
+    order_log_lambdas = {n: (math.log(1.0 - lam), math.log(lam)) for n, lam in order_lambdas.items()}
 
     window_starts = [ws for ws in range(0, total_tokens, stride)
                      if min(ws + seq_len, total_tokens) - ws >= stride or ws == 0]
@@ -1898,7 +1987,9 @@ def eval_val_sliding_ttt_ngram(
         f"last_n_blocks={args.ttt_last_n_blocks} "
         f"optimizer={args.ttt_optimizer} "
         f"ngram_lambda={ngram_lambda} ngram_max_n={ngram_max_n} "
-        f"confidence_threshold={confidence_threshold} packed={int(args.ngram_packed_cache)}"
+        f"confidence_threshold={confidence_threshold} packed={int(args.ngram_packed_cache)} "
+        f"confidence_schedule={format_confidence_schedule(confidence_schedule)} "
+        f"order_lambdas={format_order_lambdas(order_lambdas)}"
     )
 
     loss_sum = torch.zeros((), device=device, dtype=torch.float64)
@@ -1919,6 +2010,9 @@ def eval_val_sliding_ttt_ngram(
         windows = chunk_windows[ci]
         if not windows:
             continue
+        chunk_progress = ci / max(num_chunks, 1)
+        chunk_confidence_threshold = confidence_for_progress(confidence_schedule, chunk_progress)
+        log_conf_thresh = confidence_to_log_threshold(chunk_confidence_threshold)
         chunk_start = ci * ttt_chunk
         chunk_end = min((ci + 1) * ttt_chunk, total_tokens)
 
@@ -1974,16 +2068,18 @@ def eval_val_sliding_ttt_ngram(
                             prev_contexts.append(x_cpu[ctx_start : t_idx + 1])
                             targets.append(y_cpu[t_off])
                         if uncertain_indices:
-                            ng_logps = [ngram.logprob_target(ctx, tgt, min_count=min_count) for ctx, tgt in zip(prev_contexts, targets)]
+                            ng_lookups = [ngram.lookup_target(ctx, tgt, min_count=min_count) for ctx, tgt in zip(prev_contexts, targets)]
                             unc_idx_t = torch.tensor(uncertain_indices, dtype=torch.long, device=log_sm.device)
                             tgt_t = torch.tensor(targets, dtype=torch.long, device=log_sm.device)
                             model_logps = log_sm[unc_idx_t, tgt_t].cpu().tolist()
                             for j, t_off in enumerate(uncertain_indices):
-                                ng_lp = ng_logps[j]
-                                if ng_lp is None:
+                                ng_lookup = ng_lookups[j]
+                                if ng_lookup is None:
                                     continue
+                                ng_lp, ng_order, _ = ng_lookup
                                 ngram_attempts += 1
                                 model_lp = model_logps[j]
+                                log_1_minus_lam, log_lam = order_log_lambdas[ng_order]
                                 a = log_1_minus_lam + model_lp
                                 b = log_lam + ng_lp
                                 mixed_lp = max(a, b) + math.log1p(math.exp(-abs(a - b)))
@@ -2052,7 +2148,10 @@ def eval_val_sliding_ttt_ngram(
                 rbpb = total_loss.item() / total_tokens_scored.item() / math.log(2.0) * (total_tokens_scored.item() / max(total_bytes.item(), 1))
                 hit = counts[0].item() / max(counts[1].item(), 1.0) * 100.0
                 skip = counts[2].item() / max((counts[2] + counts[1]).item(), 1.0) * 100.0
-                log0(f"  ttt_ngram_chunk [{ci+1}/{num_chunks}] bpb={rbpb:.6f} hit={hit:.1f}% skip={skip:.0f}% time={time.perf_counter() - t0:.1f}s")
+                log0(
+                    f"  ttt_ngram_chunk [{ci+1}/{num_chunks}] bpb={rbpb:.6f} hit={hit:.1f}% skip={skip:.0f}% "
+                    f"conf={chunk_confidence_threshold:.2f} time={time.perf_counter() - t0:.1f}s"
+                )
 
     if dist.is_available() and dist.is_initialized():
         counts = torch.tensor([float(ngram_improvements), float(ngram_attempts), float(ngram_skipped)], device=device, dtype=torch.float64)
@@ -2730,6 +2829,8 @@ def main() -> None:
             ngram_adapt_lr=args.ngram_adapt_lr,
             ngram_adapt_decay=args.ngram_adapt_decay,
             ngram_global_cache=args.ngram_global_cache,
+            confidence_schedule_spec=args.ngram_confidence_schedule,
+            order_lambdas_spec=args.ngram_order_lambdas,
             log0=log0,
         )
         torch.cuda.synchronize()
@@ -2765,6 +2866,8 @@ def main() -> None:
             ngram_max_n=args.ngram_max_n,
             confidence_threshold=args.ngram_confidence_threshold,
             min_count=args.ngram_min_count,
+            confidence_schedule_spec=args.ngram_confidence_schedule,
+            order_lambdas_spec=args.ngram_order_lambdas,
             log0=log0,
         )
         torch.cuda.synchronize()

@@ -18,6 +18,8 @@ NGRAM_ADAPT_ENABLED="${NGRAM_ADAPT_ENABLED:-0}"
 NGRAM_ADAPT_LR="${NGRAM_ADAPT_LR:-0.0003}"
 NGRAM_ADAPT_DECAY="${NGRAM_ADAPT_DECAY:-0.001}"
 NGRAM_ADAPT_LAST_N_BLOCKS="${NGRAM_ADAPT_LAST_N_BLOCKS:-3}"
+CONFIDENCE_SCHEDULE="${CONFIDENCE_SCHEDULE:-}"
+ORDER_LAMBDAS="${ORDER_LAMBDAS:-}"
 PACKED_CACHE="${PACKED_CACHE:-1}"
 BATCH_SEQS="${BATCH_SEQS:-32}"
 BIGRAM_VOCAB_SIZE="${BIGRAM_VOCAB_SIZE:-1536}"
@@ -50,6 +52,35 @@ case "$CANDIDATE" in
     CONFIDENCE_THRESHOLD="0.7"
     MAX_WINDOWS="128"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_conf07_smoke.txt}"
+    ;;
+  record659_warm_conf07)
+    CONFIDENCE_SCHEDULE="0.00:0.50,0.20:0.60,0.40:0.70"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_warm_conf07.txt}"
+    ;;
+  record659_warm_conf07_smoke)
+    CONFIDENCE_SCHEDULE="0.00:0.50,0.20:0.60,0.40:0.70"
+    MAX_WINDOWS="128"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_warm_conf07_smoke.txt}"
+    ;;
+  record659_orderlam)
+    ORDER_LAMBDAS="2:0.08,3:0.12,4:0.17,5:0.22"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_orderlam.txt}"
+    ;;
+  record659_orderlam_smoke)
+    ORDER_LAMBDAS="2:0.08,3:0.12,4:0.17,5:0.22"
+    MAX_WINDOWS="128"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_orderlam_smoke.txt}"
+    ;;
+  record659_warm_conf07_orderlam)
+    CONFIDENCE_SCHEDULE="0.00:0.50,0.20:0.60,0.40:0.70"
+    ORDER_LAMBDAS="2:0.08,3:0.12,4:0.17,5:0.22"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_warm_conf07_orderlam.txt}"
+    ;;
+  record659_warm_conf07_orderlam_smoke)
+    CONFIDENCE_SCHEDULE="0.00:0.50,0.20:0.60,0.40:0.70"
+    ORDER_LAMBDAS="2:0.08,3:0.12,4:0.17,5:0.22"
+    MAX_WINDOWS="128"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_warm_conf07_orderlam_smoke.txt}"
     ;;
   lowrisk)
     NGRAM_LAMBDA="0.05"
@@ -132,6 +163,8 @@ exec python scripts/eval_ngram_cache_artifact.py \
   --ngram-max-n "$NGRAM_MAX_N" \
   --confidence-threshold "$CONFIDENCE_THRESHOLD" \
   --min-count "$MIN_COUNT" \
+  --confidence-schedule "$CONFIDENCE_SCHEDULE" \
+  --order-lambdas "$ORDER_LAMBDAS" \
   $( [[ "$NGRAM_ADAPT_ENABLED" == "1" ]] && printf '%s ' --ngram-adapt-enabled ) \
   $( [[ "$PACKED_CACHE" == "1" ]] && printf '%s ' --packed-cache ) \
   --ngram-adapt-lr "$NGRAM_ADAPT_LR" \

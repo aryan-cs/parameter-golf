@@ -2231,3 +2231,43 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
     - `records/.../train_gpt.py`
 - Decision: Keep pure `record659` as the main bet. The next legal challenger lane is now `record659_adapt_last2/last4`, not multi-pass TTT.
 - Next step: Let the current pure run finish. Then use the queued late-block adapt challengers to test whether constraining adaptive pure-n-gram updates to the last `2` or `4` blocks preserves the `1.084x` quality while improving stability and, later, `8xH100` eval practicality.
+
+- Timestamp: 2026-03-25 03:08 UTC
+- Commit: `working tree`
+- Lane: Pure `record659` completion + post-win smoke triage
+- Objective: Convert the best live signal into a completed result, then quickly test whether confidence schedules or order-specific n-gram weights improve the already-winning pure 5-gram lane before spending more H200 time on hybrids.
+- Research:
+  - Re-checked open PR `#668` (`11L GEPA + 30k Steps + Pure Int6 + Legal TTT`, reported `1.0920`). It is a strong long-compute result, but the writeup explicitly reports ~`4.2h` training wallclock, so it is not a realistic near-term `8xH100` record-track plan for us.
+  - Re-checked open PR `#670` (negative results on hardware alignment / quantization). The headline conclusion matches what we are seeing locally: once the fast path is working, the frontier is increasingly in **quantization/eval quality**, not another round of kernel heroics.
+  - Conclusion: stay focused on the pure `5`-gram frontier and legal fixed-rule follow-ups rather than reopening broad training-side architecture work.
+- Result:
+  - The full pure `record659` H200 artifact run finished at:
+    - `final_ngram_eval_exact = 1.08590477`
+    - `val_loss = 1.83350239`
+    - `eval_time = 2676354ms`
+    - artifact bytes remain `15,860,692`
+  - This is comfortably below the practical `~1.0890` record-claim line against the current upstream `1.0920` bar.
+  - Short post-win smoke results on the same artifact:
+    - `record659_conf06_smoke = 1.18589766`
+    - `record659_conf07_smoke = 1.18485308`
+    - `record659_warm_conf07_smoke = 1.18517406`
+    - `record659_orderlam_smoke = 1.19006976`
+    - `record659_warm_conf07_orderlam_smoke = 1.18853851`
+  - Interpretation: the new schedule/order tweaks are **not** obvious improvements on the short proxy. `conf07` remains the least-bad of those smoke-only challengers, but none of them justify dethroning pure `record659`.
+- Code / ops:
+  - Validated the standalone pure n-gram evaluator (`scripts/eval_ngram_cache_artifact.py`) after the confidence-schedule / order-lambda changes with `python -m py_compile`.
+  - Confirmed the candidate/queue plumbing still parses:
+    - `scripts/icrn_h200_artifact_ngram_candidate.sh`
+    - `scripts/queue_h200_credit_prep.sh`
+    - `scripts/h100_parallel_candidate_portfolio.sh`
+    - `scripts/record_push_candidate_lib.sh`
+    - `scripts/record_push_status.py`
+  - The original H200 queue went idle after the smoke block, so I restarted it with `skip-completed` enabled to keep the GPU occupied.
+- Decision:
+  - Promote pure `record659` to the new best **completed** H200 lane.
+  - Treat confidence schedules / order-lambda weighting as lower-priority exploratory tweaks for now.
+  - Spend the next H200 cycles on the more meaningful question: whether legal `TTT` still adds anything on top of the already-strong pure `5`-gram cache.
+- Next step:
+  - Let `record659_tttlr25_smoke` finish.
+  - If that smoke is promising, continue into the queued `record659_tttlr25` / late-2-block legal hybrid challengers.
+  - If it is flat or worse, keep pure `record659` as the `8xH100` lead and use the rest of the H200 queue for narrow legal adapt ablations only.
