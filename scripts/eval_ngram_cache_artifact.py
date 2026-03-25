@@ -297,6 +297,9 @@ def eval_val_ngram(
     lambda_schedule_spec: str = "",
     confidence_schedule_spec: str = "",
     order_lambdas_spec: str = "",
+    hedge_enabled: bool = False,
+    hedge_eta: float = 0.10,
+    hedge_neural_bias: float = 2.0,
     max_windows: int = 0,
     log=print,
 ) -> tuple[float, float]:
@@ -318,6 +321,7 @@ def eval_val_ngram(
     lambda_schedule = parse_lambda_schedule(lambda_schedule_spec, ngram_lambda)
     confidence_schedule = parse_confidence_schedule(confidence_schedule_spec, confidence_threshold)
     static_order_lambdas = parse_order_lambdas(order_lambdas_spec, ngram_max_n, ngram_lambda)
+    hedge_log_weights = np.array([hedge_neural_bias, 0.0], dtype=np.float64) if hedge_enabled else None
     ngram_adapt_optimizer = None
     global_weights = None
 
@@ -344,10 +348,13 @@ def eval_val_ngram(
         f"confidence_threshold={confidence_threshold} gate_mode={gate_mode} min_count={min_count} "
         f"apply_mode={apply_mode} "
         f"adapt={int(ngram_adapt_enabled)} packed={int(packed_cache)} "
+        f"hedge={int(hedge_enabled)} hedge_eta={hedge_eta:.4f} "
         f"lambda_schedule={format_lambda_schedule(lambda_schedule)} "
         f"confidence_schedule={format_confidence_schedule(confidence_schedule)} "
         f"order_lambdas={format_order_lambdas(static_order_lambdas)}"
     )
+    if hedge_enabled:
+        log(f"ngram_eval:hedge enabled eta={hedge_eta:.4f} neural_bias={hedge_neural_bias:.3f}")
     for bi in range(0, len(window_starts), batch_seqs):
         batch_ws = window_starts[bi : bi + batch_seqs]
         bsz = len(batch_ws)
@@ -411,6 +418,7 @@ def eval_val_ngram(
 
                 if uncertain_indices:
                     ng_lookups = [ngram.lookup_target(ctx, tgt, min_count=min_count) for ctx, tgt in zip(prev_contexts, targets)]
+                    hedge_window_losses: list[tuple[float, float]] = []
                     for j, t_off in enumerate(uncertain_indices):
                         ng_lookup = ng_lookups[j]
                         if ng_lookup is None:
@@ -422,13 +430,24 @@ def eval_val_ngram(
                         a = log_1_minus_lam + model_lp
                         b = log_lam + ng_lp
                         mixed_lp = max(a, b) + math.log1p(math.exp(-abs(a - b)))
-                        new_nll = -mixed_lp
+                        if hedge_enabled and hedge_log_weights is not None:
+                            norm = np.logaddexp.reduce(hedge_log_weights)
+                            hedge_lp = np.logaddexp(
+                                hedge_log_weights[0] - norm + model_lp,
+                                hedge_log_weights[1] - norm + mixed_lp,
+                            )
+                            new_nll = -hedge_lp
+                            hedge_window_losses.append((-model_lp, -mixed_lp))
+                        else:
+                            new_nll = -mixed_lp
                         old_nll = scored_nll[t_off].item()
                         if apply_mode == "always" or new_nll < old_nll:
                             scored_nll[t_off] = new_nll
                             ngram_applied += 1
                         if new_nll < old_nll:
                             ngram_better += 1
+                    if hedge_enabled and hedge_log_weights is not None and hedge_window_losses:
+                        hedge_log_weights -= hedge_eta * np.array(hedge_window_losses, dtype=np.float64).mean(axis=0)
 
             loss_sum += scored_nll.sum()
             token_count += float(wlen - s)
@@ -481,6 +500,9 @@ def eval_val_ngram(
     bits_per_token = val_loss / math.log(2.0)
     tokens_per_byte = token_count.item() / byte_count.item()
     log(f"  ngram: {ngram_applied}/{ngram_attempts} applied, {ngram_better} better, {ngram_skipped} skipped")
+    if hedge_enabled and hedge_log_weights is not None:
+        final_log_w = hedge_log_weights - np.logaddexp.reduce(hedge_log_weights)
+        log(f"ngram_eval:hedge_final neural={np.exp(final_log_w[0]):.6f} mixed={np.exp(final_log_w[1]):.6f}")
     return val_loss, bits_per_token * tokens_per_byte
 
 
@@ -501,6 +523,9 @@ def eval_val_hashed_ngram(
     ngram_max_n: int = 5,
     min_count: int = 2,
     hashed_buckets: int = 4_194_304,
+    hedge_enabled: bool = False,
+    hedge_eta: float = 0.10,
+    hedge_neural_bias: float = 2.0,
     log=print,
 ) -> tuple[float, float]:
     if ngram_max_n < 2:
@@ -519,6 +544,7 @@ def eval_val_hashed_ngram(
     val_np = val_tokens.cpu().numpy()
     ctx_table = np.zeros((hashed_buckets,), dtype=np.uint32)
     full_table = np.zeros((hashed_buckets,), dtype=np.uint32)
+    hedge_log_weights = np.array([hedge_neural_bias, 0.0], dtype=np.float64) if hedge_enabled else None
     primes = np.array(
         [np.uint64(36313), np.uint64(27191), np.uint64(51647), np.uint64(81929), np.uint64(131071)],
         dtype=np.uint64,
@@ -529,8 +555,11 @@ def eval_val_hashed_ngram(
     log(
         "hashed_ngram_eval:start "
         f"stride={stride} alpha={ngram_lambda} order={ngram_max_n} "
-        f"min_count={min_count} buckets={hashed_buckets}"
+        f"min_count={min_count} buckets={hashed_buckets} "
+        f"hedge={int(hedge_enabled)} hedge_eta={hedge_eta:.4f}"
     )
+    if hedge_enabled:
+        log(f"hashed_ngram_eval:hedge enabled eta={hedge_eta:.4f} neural_bias={hedge_neural_bias:.3f}")
     for bi in range(0, len(window_starts), batch_seqs):
         batch_ws = window_starts[bi : bi + batch_seqs]
         bsz = len(batch_ws)
@@ -582,8 +611,29 @@ def eval_val_hashed_ngram(
                     p_ng = np.minimum(full_counts, ctx_counts) / np.maximum(ctx_counts, 1.0)
                     p_ng = np.clip(p_ng, 0.0, 1.0)
                     v_idx = np.nonzero(valid)[0]
-                    mixed = (1.0 - ngram_lambda) * seg_model_p[v_idx] + ngram_lambda * p_ng
-                    seg_model_p[v_idx[can_mix]] = mixed[can_mix]
+                    mix_idx = v_idx[can_mix]
+                    p_model_mix = np.clip(seg_model_p[mix_idx], 1e-12, 1.0)
+                    p_fixed_mix = np.clip(
+                        (1.0 - ngram_lambda) * seg_model_p[mix_idx] + ngram_lambda * p_ng[can_mix],
+                        1e-12,
+                        1.0,
+                    )
+                    if hedge_enabled and hedge_log_weights is not None:
+                        norm = np.logaddexp.reduce(hedge_log_weights)
+                        log_mix = np.logaddexp(
+                            hedge_log_weights[0] - norm + np.log(p_model_mix),
+                            hedge_log_weights[1] - norm + np.log(p_fixed_mix),
+                        )
+                        seg_model_p[mix_idx] = np.exp(log_mix)
+                        hedge_log_weights -= hedge_eta * np.array(
+                            [
+                                float((-np.log(p_model_mix)).mean()),
+                                float((-np.log(p_fixed_mix)).mean()),
+                            ],
+                            dtype=np.float64,
+                        )
+                    else:
+                        seg_model_p[mix_idx] = p_fixed_mix
                 seg_nll = -np.log(np.clip(seg_model_p, 1e-12, 1.0))
                 np.add.at(ctx_table, ctx_key, 1)
                 np.add.at(full_table, full_key, 1)
@@ -606,6 +656,9 @@ def eval_val_hashed_ngram(
     val_loss = (loss_sum / token_count).item()
     bits_per_token = val_loss / math.log(2.0)
     tokens_per_byte = token_count.item() / byte_count.item()
+    if hedge_enabled and hedge_log_weights is not None:
+        final_log_w = hedge_log_weights - np.logaddexp.reduce(hedge_log_weights)
+        log(f"hashed_ngram_eval:hedge_final neural={np.exp(final_log_w[0]):.6f} mixed={np.exp(final_log_w[1]):.6f}")
     return val_loss, bits_per_token * tokens_per_byte
 
 
@@ -636,6 +689,9 @@ def main() -> None:
     parser.add_argument("--packed-cache", action="store_true")
     parser.add_argument("--cache-kind", choices=["exact", "hashed"], default="exact")
     parser.add_argument("--hashed-buckets", type=int, default=4_194_304)
+    parser.add_argument("--hedge-enabled", action="store_true")
+    parser.add_argument("--hedge-eta", type=float, default=0.10)
+    parser.add_argument("--hedge-neural-bias", type=float, default=2.0)
     parser.add_argument("--lambda-schedule", type=str, default="")
     parser.add_argument("--confidence-schedule", type=str, default="")
     parser.add_argument("--order-lambdas", type=str, default="")
@@ -700,6 +756,9 @@ def main() -> None:
                 "packed_cache": int(args_ns.packed_cache),
                 "cache_kind": args_ns.cache_kind,
                 "hashed_buckets": args_ns.hashed_buckets,
+                "hedge_enabled": int(args_ns.hedge_enabled),
+                "hedge_eta": args_ns.hedge_eta,
+                "hedge_neural_bias": args_ns.hedge_neural_bias,
                 "confidence_schedule": args_ns.confidence_schedule,
                 "order_lambdas": args_ns.order_lambdas,
                 "batch_seqs": args_ns.batch_seqs,
@@ -744,6 +803,9 @@ def main() -> None:
             ngram_max_n=args_ns.ngram_max_n,
             min_count=args_ns.min_count,
             hashed_buckets=args_ns.hashed_buckets,
+            hedge_enabled=args_ns.hedge_enabled,
+            hedge_eta=args_ns.hedge_eta,
+            hedge_neural_bias=args_ns.hedge_neural_bias,
             log=log,
         )
     else:
@@ -769,6 +831,9 @@ def main() -> None:
             ngram_adapt_lr=args_ns.ngram_adapt_lr,
             ngram_adapt_decay=args_ns.ngram_adapt_decay,
             ngram_adapt_last_n_blocks=args_ns.ngram_adapt_last_n_blocks,
+            hedge_enabled=args_ns.hedge_enabled,
+            hedge_eta=args_ns.hedge_eta,
+            hedge_neural_bias=args_ns.hedge_neural_bias,
             packed_cache=args_ns.packed_cache,
             lambda_schedule_spec=args_ns.lambda_schedule,
             confidence_schedule_spec=args_ns.confidence_schedule,

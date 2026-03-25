@@ -34,6 +34,9 @@ TEMPLATE_PATH="${TEMPLATE_PATH:-}"
 TRAIN_GPT_PATH="${TRAIN_GPT_PATH:-}"
 CACHE_KIND="${CACHE_KIND:-exact}"
 HASHED_BUCKETS="${HASHED_BUCKETS:-4194304}"
+HEDGE_ENABLED="${HEDGE_ENABLED:-0}"
+HEDGE_ETA="${HEDGE_ETA:-0.10}"
+HEDGE_NEURAL_BIAS="${HEDGE_NEURAL_BIAS:-2.0}"
 
 case "$CANDIDATE" in
   record659)
@@ -70,6 +73,16 @@ case "$CANDIDATE" in
     CACHE_KIND="exact"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_conf07.txt}"
     ;;
+  record659_conf07_hedge)
+    STRIDE="128"
+    NGRAM_LAMBDA="0.15"
+    CONFIDENCE_THRESHOLD="0.7"
+    MIN_COUNT="3"
+    APPLY_MODE="improve_only"
+    CACHE_KIND="exact"
+    HEDGE_ENABLED="1"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_conf07_hedge.txt}"
+    ;;
   record659_conf07_smoke)
     STRIDE="128"
     NGRAM_LAMBDA="0.15"
@@ -79,6 +92,41 @@ case "$CANDIDATE" in
     CACHE_KIND="exact"
     MAX_WINDOWS="128"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_conf07_smoke.txt}"
+    ;;
+  record659_conf07_hedge_smoke)
+    STRIDE="128"
+    NGRAM_LAMBDA="0.15"
+    CONFIDENCE_THRESHOLD="0.7"
+    MIN_COUNT="3"
+    APPLY_MODE="improve_only"
+    CACHE_KIND="exact"
+    HEDGE_ENABLED="1"
+    MAX_WINDOWS="128"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_conf07_hedge_smoke.txt}"
+    ;;
+  record659_conf07_hedge_eta05_smoke)
+    STRIDE="128"
+    NGRAM_LAMBDA="0.15"
+    CONFIDENCE_THRESHOLD="0.7"
+    MIN_COUNT="3"
+    APPLY_MODE="improve_only"
+    CACHE_KIND="exact"
+    HEDGE_ENABLED="1"
+    HEDGE_ETA="0.05"
+    MAX_WINDOWS="128"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_conf07_hedge_eta05_smoke.txt}"
+    ;;
+  record659_conf07_hedge_eta20_smoke)
+    STRIDE="128"
+    NGRAM_LAMBDA="0.15"
+    CONFIDENCE_THRESHOLD="0.7"
+    MIN_COUNT="3"
+    APPLY_MODE="improve_only"
+    CACHE_KIND="exact"
+    HEDGE_ENABLED="1"
+    HEDGE_ETA="0.20"
+    MAX_WINDOWS="128"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_conf07_hedge_eta20_smoke.txt}"
     ;;
   record659_latecool_conf07_smoke)
     CONFIDENCE_THRESHOLD="0.7"
@@ -262,6 +310,16 @@ case "$CANDIDATE" in
     CACHE_KIND="hashed"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record674.txt}"
     ;;
+  record674_hedge)
+    STRIDE="64"
+    NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.20}"
+    CONFIDENCE_THRESHOLD="1.0"
+    MIN_COUNT="${MIN_COUNT:-2}"
+    APPLY_MODE="always"
+    CACHE_KIND="hashed"
+    HEDGE_ENABLED="1"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record674_hedge.txt}"
+    ;;
   record674_proxy7185)
     STRIDE="64"
     NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.20}"
@@ -270,6 +328,27 @@ case "$CANDIDATE" in
     APPLY_MODE="always"
     CACHE_KIND="hashed"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record674_h100proxy7185_seed1337.txt}"
+    ;;
+  record674_hedge_smoke)
+    STRIDE="64"
+    NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.20}"
+    CONFIDENCE_THRESHOLD="1.0"
+    MIN_COUNT="${MIN_COUNT:-2}"
+    APPLY_MODE="always"
+    CACHE_KIND="hashed"
+    HEDGE_ENABLED="1"
+    MAX_WINDOWS="128"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record674_hedge_smoke.txt}"
+    ;;
+  record674_hedge_proxy7185)
+    STRIDE="64"
+    NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.20}"
+    CONFIDENCE_THRESHOLD="1.0"
+    MIN_COUNT="${MIN_COUNT:-2}"
+    APPLY_MODE="always"
+    CACHE_KIND="hashed"
+    HEDGE_ENABLED="1"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record674_hedge_h100proxy7185_seed1337.txt}"
     ;;
   record659_warm_conf07)
     CONFIDENCE_SCHEDULE="0.00:0.50,0.20:0.60,0.40:0.70"
@@ -386,6 +465,8 @@ args=(
   --apply-mode "$APPLY_MODE"
   --cache-kind "$CACHE_KIND"
   --hashed-buckets "$HASHED_BUCKETS"
+  --hedge-eta "$HEDGE_ETA"
+  --hedge-neural-bias "$HEDGE_NEURAL_BIAS"
   --lambda-schedule "$LAMBDA_SCHEDULE"
   --confidence-schedule "$CONFIDENCE_SCHEDULE"
   --order-lambdas "$ORDER_LAMBDAS"
@@ -397,6 +478,9 @@ args=(
 
 if [[ "$NGRAM_ADAPT_ENABLED" == "1" ]]; then
   args+=(--ngram-adapt-enabled)
+fi
+if [[ "$HEDGE_ENABLED" == "1" ]]; then
+  args+=(--hedge-enabled)
 fi
 if [[ "$PACKED_CACHE" == "1" ]]; then
   args+=(--packed-cache)

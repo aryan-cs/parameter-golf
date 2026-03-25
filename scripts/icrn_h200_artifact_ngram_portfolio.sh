@@ -20,6 +20,10 @@ Run one candidate at a time on the saved winning artifact by setting CANDIDATE:
   CANDIDATE=record659_conf06_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_conf07 bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_conf07_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
+  CANDIDATE=record659_conf07_hedge bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
+  CANDIDATE=record659_conf07_hedge_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
+  CANDIDATE=record659_conf07_hedge_eta05_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
+  CANDIDATE=record659_conf07_hedge_eta20_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_latecool_conf07 bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_latecool_conf07_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_latecool_conf07_lamtail bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
@@ -47,7 +51,10 @@ Run one candidate at a time on the saved winning artifact by setting CANDIDATE:
   CANDIDATE=record659_lam20_conf07 bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record674_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record674 bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
+  CANDIDATE=record674_hedge bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
+  CANDIDATE=record674_hedge_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record674_proxy7185 bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
+  CANDIDATE=record674_hedge_proxy7185 bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_warm_conf07 bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_warm_conf07_smoke bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
   CANDIDATE=record659_orderlam bash $ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh
@@ -77,6 +84,10 @@ Candidate meanings:
   record659_conf06_smoke conf=0.6 on first 128 windows only
   record659_conf07 PR #659 lambda with confidence threshold raised to 0.7
   record659_conf07_smoke conf=0.7 on first 128 windows only
+  record659_conf07_hedge conf=0.7 plus an online Hedge mixer between the base model and the PR #659 mixed expert
+  record659_conf07_hedge_smoke Hedge mixer on first 128 windows only
+  record659_conf07_hedge_eta05_smoke Hedge mixer smoke with slower adaptation (eta=0.05)
+  record659_conf07_hedge_eta20_smoke Hedge mixer smoke with faster adaptation (eta=0.20)
   record659_latecool_conf07 hold conf=0.7 through the strong early/mid regime, then cool to 0.55 in the final third
   record659_latecool_conf07_smoke late-only cooldown variant on first 128 windows only
   record659_latecool_conf07_lamtail late-only confidence cooldown plus late lambda taper
@@ -104,7 +115,10 @@ Candidate meanings:
   record659_lam20_conf07 lambda=0.20 with conf=0.7 full run
   record674_smoke PR #674-inspired hashed score-first eval: alpha=0.20, min_count=2, 5-gram, 4M buckets on first 128 windows
   record674 PR #674-inspired hashed score-first eval: alpha=0.20, min_count=2, 5-gram, 4M buckets full run
+  record674_hedge same hashed PR #674-inspired eval, but with an online Hedge mixer between neural and mixed experts
+  record674_hedge_smoke hashed Hedge mixer on first 128 windows only
   record674_proxy7185 same hashed PR #674-inspired eval, intended for the saved proxy artifact via ARTIFACT_PATH/TEMPLATE_PATH
+  record674_hedge_proxy7185 hashed Hedge mixer, intended for the saved proxy artifact via ARTIFACT_PATH/TEMPLATE_PATH
   record659_warm_conf07 staged confidence: 0.50 -> 0.60 -> 0.70 as cache warms up
   record659_warm_conf07_smoke staged-confidence variant on first 128 windows only
   record659_orderlam order-aware lambda ramp: 2:0.08, 3:0.12, 4:0.17, 5:0.22

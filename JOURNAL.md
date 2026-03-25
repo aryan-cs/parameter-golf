@@ -3730,3 +3730,54 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Decision:
   - Keep exact upstream `pr674` on the GPU.
   - Use the hardened queue to make the next free H200 slots answer the timing question first, not just the raw-score question.
+
+- Timestamp: 2026-03-25 07:05 UTC
+- Commit: uncommitted
+- Lane: Eval-side legal Hedge overlay on the best artifact path
+- Objective: Add a portable online Hedge mixer to the existing artifact evaluators so we can test a stronger legal score-side improvement on the already-best `1.08035892` artifact instead of waiting only on slow retrains.
+- Command or config:
+  - Added online Hedge support to [eval_ngram_cache_artifact.py](/home/aryang9/parameter-golf/scripts/eval_ngram_cache_artifact.py):
+    - new CLI flags:
+      - `--hedge-enabled`
+      - `--hedge-eta`
+      - `--hedge-neural-bias`
+    - exact-cache path now learns online weights between:
+      - expert 1: base model probability
+      - expert 2: existing PR-`#659` mixed expert
+    - hashed path now does the same between:
+      - expert 1: base model probability
+      - expert 2: existing PR-`#674` fixed hashed mix
+    - both paths now log:
+      - `ngram_eval:hedge enabled ...`
+      - `ngram_eval:hedge_final ...`
+      - `hashed_ngram_eval:hedge enabled ...`
+      - `hashed_ngram_eval:hedge_final ...`
+  - Added new artifact candidates in [icrn_h200_artifact_ngram_candidate.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_artifact_ngram_candidate.sh):
+    - `record659_conf07_hedge`
+    - `record659_conf07_hedge_smoke`
+    - `record659_conf07_hedge_eta05_smoke`
+    - `record659_conf07_hedge_eta20_smoke`
+    - `record674_hedge`
+    - `record674_hedge_smoke`
+    - `record674_hedge_proxy7185`
+  - Documented the new portfolio entries in [icrn_h200_artifact_ngram_portfolio.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_artifact_ngram_portfolio.sh).
+  - Added the new n-gram candidates to [record_push_status.py](/home/aryang9/parameter-golf/scripts/record_push_status.py) so status output can rank and parse them.
+  - Added [rearm_after_current_timed_nocompile_with_hedge.sh](/home/aryang9/parameter-golf/scripts/rearm_after_current_timed_nocompile_with_hedge.sh) to wait for the current live exact-upstream PR `#674` timed `nocompile` run, then launch:
+    - `record659_conf07_hedge_smoke`
+    - `record659_conf07_hedge`
+    - `upstream_pr674_hedgemix_timed_nocompile`
+  - Rearmed the watcher chain and verified `after_log_launch_script.sh` waiters are now live.
+  - Verified:
+    - `python -m py_compile scripts/eval_ngram_cache_artifact.py scripts/record_push_status.py`
+    - `bash -n scripts/icrn_h200_artifact_ngram_candidate.sh scripts/icrn_h200_artifact_ngram_portfolio.sh scripts/rearm_after_current_timed_nocompile_with_hedge.sh`
+- Result:
+  - The live H200 lane remains the exact-upstream PR `#674` timed `nocompile` proxy in [h200_upstream_pr674_proxy7185_timed_nocompile_seed1337.txt](/home/aryang9/parameter-golf/records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs/h200_upstream_pr674_proxy7185_timed_nocompile_seed1337.txt).
+  - Current live progress:
+    - `step:250/7185 train_loss:2.6152 train_time:371157ms step_avg:1484.63ms`
+  - The next free H200 slots are now aimed at a much cheaper and higher-upside question:
+    - whether a legal online Hedge overlay can improve our already-best `record659_conf07` artifact score
+  - This gives us a score-side frontier test without paying for another full retrain first.
+- Decision:
+  - Keep the live exact-upstream PR `#674` timed `nocompile` run on-GPU for now.
+  - Use the new queue to get immediate signal on `record659_conf07_hedge` as soon as the GPU frees up.
+  - If the Hedge smoke is good, port the same logic into the counted trainer path next instead of spending another full turn only on surrogate tuning.
