@@ -3839,3 +3839,55 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
     - `record659_conf07_hedge`
     - then `record688_mixer5`
   - If either wins, port the best mixer variant into a counted trainer path next instead of only deepening the retrain ladder.
+
+- Timestamp: 2026-03-25 07:27 UTC
+- Commit: uncommitted
+- Lane: exact-upstream PR `#674` mixer5 staging
+- Objective: Promote the PR-`#688` 5-expert mixer idea from the cheap artifact evaluator into the exact-upstream PR-`#674` trainer family so we can test a stronger legal frontier hedge without giving up PR-`#674` parity.
+- Sources:
+  - PR `#674` exact frontier family:
+    - https://github.com/openai/parameter-golf/pull/674
+  - PR `#688` Hedge Mixer:
+    - https://github.com/openai/parameter-golf/pull/688
+  - Open PR refresh via GitHub API:
+    - `#692`, `#691`, `#688`, `#686`, `#683`, `#682`, `#681`, `#680`, `#679`, `#678`, `#676`, `#675`
+- Command or config:
+  - Finished [patch_pr674_mixer5.py](/home/aryang9/parameter-golf/scripts/patch_pr674_mixer5.py), which injects:
+    - `NGRAM_MIXER5_ENABLED`
+    - `NGRAM_MIXER5_ETA`
+    - `NGRAM_MIXER5_NEURAL_BIAS`
+    - `NGRAM_MIXER5_TRIGRAM_BUCKETS`
+    - `NGRAM_MIXER5_WARMUP_TOKENS`
+  - The patched PR-`#674` eval now mixes five experts online:
+    - neural
+    - unigram
+    - bigram
+    - hashed trigram
+    - PR-`#674` hashed 5-gram expert
+  - Added new exact-upstream launchers:
+    - [icrn_h200_upstream_pr674_mixer5_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr674_mixer5_proxy.sh)
+    - [h100_upstream_pr674_mixer5_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr674_mixer5_exact.sh)
+    - [h100_upstream_pr674_mixer5_exact_3seed.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr674_mixer5_exact_3seed.sh)
+  - Added new portfolio/status entries:
+    - `upstream_pr674_mixer5_exact`
+    - `upstream_pr674_mixer5_timed_nocompile_exact`
+  - Updated [rearm_after_current_timed_nocompile_with_hedge.sh](/home/aryang9/parameter-golf/scripts/rearm_after_current_timed_nocompile_with_hedge.sh) so future rearms go:
+    - `record659_conf07_hedge_smoke`
+    - `record659_conf07_hedge`
+    - `record688_mixer5_smoke`
+    - `record688_mixer5`
+    - `upstream_pr674_mixer5_timed_nocompile`
+    - `upstream_pr674_hedgemix_timed_nocompile`
+  - Verification:
+    - temp-copy patch application against the real PR-`#674` worktree
+    - `python -m py_compile` on the patched temp trainer
+    - `bash -n` planned for the new launchers and queue helper
+- Result:
+  - Best completed score remains [h200_artifact_ngram_record659_conf07.txt](/home/aryang9/parameter-golf/records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs/h200_artifact_ngram_record659_conf07.txt) at `1.08035892`.
+  - Live H200 head lane is still [h200_upstream_pr674_proxy7185_timed_nocompile_seed1337.txt](/home/aryang9/parameter-golf/records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs/h200_upstream_pr674_proxy7185_timed_nocompile_seed1337.txt), latest seen at:
+    - `step:750/7185 train_loss:2.3074 train_time:1112798ms step_avg:1483.73ms`
+  - The stronger exact-upstream PR-`#674` mixer5 branch is now staged behind the cheap artifact-side Hedge and mixer checks instead of waiting for another separate coding pass.
+- Decision:
+  - Keep the live timed `nocompile` PR-`#674` run undisturbed.
+  - Use the next free H200 slots to test the cheaper artifact-side winners first, but now with a stronger exact-upstream PR-`#674` mixer5 branch armed right behind them.
+  - If `record688_mixer5` is good, compare it directly against the new exact-upstream `pr674_mixer5` lane rather than only against artifact-side improvements.
