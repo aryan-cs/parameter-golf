@@ -15,6 +15,27 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 
 ## Entries
 
+- Timestamp: 2026-03-25 09:10 UTC
+- Commit: uncommitted
+- Lane: exact-upstream PR688 / budget fit
+- Objective: Add pure-SGD momentum-zero PR688 hedges and repair the downstream watcher chain so the new optimizer probes launch in the right order.
+- Command or config: Patched [patch_pr688_compile_gate.py](/home/aryang9/parameter-golf/scripts/patch_pr688_compile_gate.py) so patched PR688 trainers now honor `TTT_MOMENTUM` in both exact TTT call sites, log `mom=...`, and keep the earlier `TTT_BATCH_SEQS` support. Added new exact-upstream launchers:
+  - `upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_exact`
+  - `upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_exact`
+  Both keep `TIMED_MODE=1`, `COMPILE_ENABLED=0`, `QTTT=1`, `USE_POLYAK=0`, `ADAPTIVE_LR=0`, `SKIP_SLIDING=1`, switch to `TTT_OPTIMIZER=sgd`, and set `TTT_MOMENTUM=0.0`, with the second also setting `TTT_BATCH_SEQS=64`. Repaired [rearm_after_current_timed_nocompile_with_hedge.sh](/home/aryang9/parameter-golf/scripts/rearm_after_current_timed_nocompile_with_hedge.sh) so the PR688 tail is linear again:
+  - `sgd`
+  - `sgd_nomom`
+  - `sgd_batch64`
+  - `sgd_nomom_batch64`
+  - then `ep2 -> ep1 -> last2 -> last1`
+  Validation:
+  - `bash -n` on the new launchers, portfolio, and queue helper
+  - `python -m py_compile` on the PR688 patcher and status tool
+  - temp-copy patch of the real PR688 trainer, confirming both `TTT_BATCH_SEQS` and `TTT_MOMENTUM` are threaded into `eval_val_sliding_ttt(...)`
+- Result: The next clean exact-upstream PR688 probes now include true pure-SGD momentum-zero lanes, and the watcher chain no longer skips or misthreads the optimizer-side budget ladder. The live PR674 timed `nocompile` head lane also continued improving in the background to `step:5000 val_bpb:1.1973`.
+- Decision: Test optimizer-state cuts before harsher score-risky PR688 cuts. Pure SGD with `momentum=0` is now the next clean budget probe after the existing `sgd` and `batch64` variants.
+- Next step: Rearm the watcher chain against the repaired queue, keep the live PR674 head run untouched, and commit the PR688 nomom batch once the queue is confirmed healthy.
+
 - Timestamp: 2026-03-25 19:25 UTC
 - Commit: uncommitted
 - Lane: exact-upstream PR688 / budget fit
@@ -4527,3 +4548,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
   - plain `sgd`
   - `sgd + batch64`
 - Rationale: SGD is a cleaner low-overhead hedge than harsher eval-sparsity cuts because it attacks optimizer cost directly while preserving the same score-first chunking and final exact path.
+
+## 2026-03-25 08:56 UTC - PR688 pure-SGD momentum-zero hedges
+
+- Extended the patched PR688 trainer overlay to honor `TTT_MOMENTUM` from env and log it in the TTT banner.
+- Added new exact-upstream PR688 budget variants:
+  - pure SGD `momentum=0`
+  - pure SGD `momentum=0` + `TTT_BATCH_SEQS=64`
+- Inserted both between the existing `sgd` probes and the epoch-cut probes in the exact PR688 queue.
+- Rationale: if pure SGD is stable enough, it should be the cheapest legal score-first optimizer path in the exact upstream family.

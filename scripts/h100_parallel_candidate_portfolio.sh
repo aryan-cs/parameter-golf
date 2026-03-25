@@ -75,8 +75,14 @@ run_candidate() {
     upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_exact)
       exec env TIMED_MODE=1 COMPILE_ENABLED=0 RUN_ID="${RUN_ID:-h100_upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_seed${SEED:-2045}}" bash "$ROOT_DIR/scripts/h100_upstream_pr688_qttt_light_skipsliding_sgd_exact.sh"
       ;;
+    upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_exact)
+      exec env TIMED_MODE=1 COMPILE_ENABLED=0 RUN_ID="${RUN_ID:-h100_upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_seed${SEED:-2045}}" bash "$ROOT_DIR/scripts/h100_upstream_pr688_qttt_light_skipsliding_sgd_nomom_exact.sh"
+      ;;
     upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_batch64_exact)
       exec env TIMED_MODE=1 COMPILE_ENABLED=0 RUN_ID="${RUN_ID:-h100_upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_batch64_seed${SEED:-2045}}" bash "$ROOT_DIR/scripts/h100_upstream_pr688_qttt_light_skipsliding_sgd_batch64_exact.sh"
+      ;;
+    upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_exact)
+      exec env TIMED_MODE=1 COMPILE_ENABLED=0 RUN_ID="${RUN_ID:-h100_upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_seed${SEED:-2045}}" bash "$ROOT_DIR/scripts/h100_upstream_pr688_qttt_light_skipsliding_sgd_nomom_batch64_exact.sh"
       ;;
     upstream_pr688_timed_nocompile_qttt_light_ep2_skipsliding_exact)
       exec env TIMED_MODE=1 COMPILE_ENABLED=0 RUN_ID="${RUN_ID:-h100_upstream_pr688_timed_nocompile_qttt_light_ep2_skipsliding_seed${SEED:-2045}}" bash "$ROOT_DIR/scripts/h100_upstream_pr688_qttt_light_ep2_skipsliding_exact.sh"
@@ -539,7 +545,9 @@ Run one candidate on each 8xH100 node by setting CANDIDATE:
   CANDIDATE=upstream_pr688_timed_nocompile_qttt_light_skipsliding_batch48_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr688_timed_nocompile_qttt_light_skipsliding_batch64_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_batch64_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr688_timed_nocompile_qttt_light_chunk256_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr688_timed_nocompile_qttt_light_stride64_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr688_timed_nocompile_qttt_light_chunk256_stride64_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
@@ -682,8 +690,12 @@ Candidate meanings:
                        timed PR #688 qTTT light + `SKIP_SLIDING=1` lane with `TTT_BATCH_SEQS=64`, probing the strongest clean microbatching gain inside the exact upstream trainer
   upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_exact
                        timed PR #688 qTTT light + `SKIP_SLIDING=1` lane with `TTT_OPTIMIZER=sgd`, probing whether cheaper score-first updates beat AdamW on the exact upstream budget path
+  upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_exact
+                       timed PR #688 qTTT light + `SKIP_SLIDING=1` lane with pure SGD (`TTT_OPTIMIZER=sgd`, `TTT_MOMENTUM=0`), testing the cheapest exact-upstream update rule before harsher score-risk cuts
   upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_batch64_exact
                        timed PR #688 qTTT light + `SKIP_SLIDING=1` lane with `TTT_OPTIMIZER=sgd` and `TTT_BATCH_SEQS=64`, combining the cleanest optimizer and microbatching cuts before harsher score-risky reductions
+  upstream_pr688_timed_nocompile_qttt_light_skipsliding_sgd_nomom_batch64_exact
+                       timed PR #688 qTTT light + `SKIP_SLIDING=1` lane with pure SGD and `TTT_BATCH_SEQS=64`, giving the lowest-overhead optimizer+microbatch probe inside the exact upstream family
   upstream_pr688_timed_nocompile_qttt_light_chunk256_exact
                        timed PR #688 qTTT light lane with `TTT_CHUNK_TOKENS=262144`, reducing legal adaptation phases to probe the lowest-overhead exact-upstream PR688 path
   upstream_pr688_timed_nocompile_qttt_light_stride64_exact

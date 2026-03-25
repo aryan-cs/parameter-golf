@@ -93,6 +93,40 @@ def main() -> None:
         '              f"freeze_first={ttt_freeze_blocks}")\n',
     )
 
+    text = replace_once(
+        text,
+        '        ttt_opt = os.environ.get("TTT_OPTIMIZER", "adamw")\n'
+        '        log0(f"TTT: epochs={ttt_epochs} lr={ttt_lr} freeze_first={ttt_freeze} chunk={ttt_chunk} opt={ttt_opt}")\n',
+        '        ttt_opt = os.environ.get("TTT_OPTIMIZER", "adamw")\n'
+        '        ttt_momentum = float(os.environ.get("TTT_MOMENTUM", "0.9"))\n'
+        '        log0(f"TTT: epochs={ttt_epochs} lr={ttt_lr} freeze_first={ttt_freeze} chunk={ttt_chunk} opt={ttt_opt} mom={ttt_momentum}")\n',
+    )
+
+    text = replace_once(
+        text,
+        '    ttt_opt = os.environ.get("TTT_OPTIMIZER", "adamw")\n'
+        '    log0(f"TTT: epochs={ttt_epochs} lr={ttt_lr} freeze_first={ttt_freeze} chunk={ttt_chunk} opt={ttt_opt}")\n',
+        '    ttt_opt = os.environ.get("TTT_OPTIMIZER", "adamw")\n'
+        '    ttt_momentum = float(os.environ.get("TTT_MOMENTUM", "0.9"))\n'
+        '    log0(f"TTT: epochs={ttt_epochs} lr={ttt_lr} freeze_first={ttt_freeze} chunk={ttt_chunk} opt={ttt_opt} mom={ttt_momentum}")\n',
+    )
+
+    text = replace_once(
+        text,
+        '            stride=args.eval_stride, ttt_epochs=ttt_epochs, ttt_lr=ttt_lr,\n'
+        '            ttt_freeze_blocks=ttt_freeze, eval_seq_len=sw_seq_len,\n',
+        '            stride=args.eval_stride, ttt_epochs=ttt_epochs, ttt_lr=ttt_lr,\n'
+        '            ttt_momentum=ttt_momentum, ttt_freeze_blocks=ttt_freeze, eval_seq_len=sw_seq_len,\n',
+    )
+
+    text = replace_once(
+        text,
+        '        stride=args.eval_stride, ttt_epochs=ttt_epochs, ttt_lr=ttt_lr,\n'
+        '        ttt_freeze_blocks=ttt_freeze, eval_seq_len=sw_seq_len,\n',
+        '        stride=args.eval_stride, ttt_epochs=ttt_epochs, ttt_lr=ttt_lr,\n'
+        '        ttt_momentum=ttt_momentum, ttt_freeze_blocks=ttt_freeze, eval_seq_len=sw_seq_len,\n',
+    )
+
     path.write_text(text)
 
 
