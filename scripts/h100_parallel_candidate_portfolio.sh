@@ -45,6 +45,12 @@ run_candidate() {
     upstream_pr688_exact)
       exec bash "$ROOT_DIR/scripts/h100_upstream_pr688_exact.sh"
       ;;
+    upstream_pr688_timed_exact)
+      exec env TIMED_MODE=1 bash "$ROOT_DIR/scripts/h100_upstream_pr688_exact.sh"
+      ;;
+    upstream_pr688_timed_nocompile_exact)
+      exec env TIMED_MODE=1 COMPILE_ENABLED=0 bash "$ROOT_DIR/scripts/h100_upstream_pr688_exact.sh"
+      ;;
     upstream_pr674_crownq_exact)
       exec bash "$ROOT_DIR/scripts/h100_upstream_pr674_crownq_exact.sh"
       ;;
@@ -472,6 +478,8 @@ Run one candidate on each 8xH100 node by setting CANDIDATE:
   CANDIDATE=upstream_pr674_enhattn_crownq_mixer5_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr674_enhattn_crownq_mixer5_timed_nocompile_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr688_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=upstream_pr688_timed_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=upstream_pr688_timed_nocompile_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr674_crownq_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr674_crownq_timed_nocompile_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr674_crownq_mixer5_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
@@ -591,6 +599,10 @@ Candidate meanings:
                        timed PR #674 enhattn + CROWN-Q + mixer5 lane with COMPILE_ENABLED=0 as the strongest all-in exact-upstream budget hedge
   upstream_pr688_exact
                        exact upstream PR #688 HedgeMixer + legal TTT record-folder lane, using the real FastPPM / ExactMatchCache expert family instead of our lighter local approximation
+  upstream_pr688_timed_exact
+                       exact upstream PR #688 HedgeMixer + legal TTT lane with warmup and periodic validation removed to make the budget path explicit
+  upstream_pr688_timed_nocompile_exact
+                       timed PR #688 lane with COMPILE_ENABLED=0, giving us a budget-first comparison against the PR674 timed nocompile family
   upstream_pr674_crownq_exact
                        exact upstream PR #674 plus PR #692-style CROWN-Q warmdown penalty to reduce quantization damage
   upstream_pr674_crownq_timed_nocompile_exact

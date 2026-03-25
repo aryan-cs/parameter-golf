@@ -4117,3 +4117,47 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Decision:
   - Keep the current exact-upstream PR674 timed `nocompile` head lane untouched.
   - Treat exact `pr688` as the first non-PR674 upstream family to compare directly on H200 once the stronger PR674 compounds finish.
+
+## 2026-03-25 19:00 UTC — Timed PR688 exact-upstream lane
+
+- Commit: uncommitted
+- Lane: exact-upstream PR `#688` HedgeMixer + legal TTT, budget-hardened
+- Objective: stop treating PR `#688` as only a full-fat exact lane and stage a real budget-first comparison against the PR674 timed family.
+- Sources:
+  - PR `#688` Hedge Mixer + TTT:
+    - https://github.com/openai/parameter-golf/pull/688
+  - PR `#674` Podracing baseline we are already proxying:
+    - https://github.com/openai/parameter-golf/pull/674
+- Command or config:
+  - Added env-gated compile patch:
+    - [patch_pr688_compile_gate.py](/home/aryang9/parameter-golf/scripts/patch_pr688_compile_gate.py)
+  - Updated launchers to patch a temp copy of the PR688 record folder before running:
+    - [icrn_h200_upstream_pr688_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr688_proxy.sh)
+    - [h100_upstream_pr688_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr688_exact.sh)
+    - [h100_upstream_pr688_exact_3seed.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr688_exact_3seed.sh)
+  - New launcher behavior:
+    - `TIMED_MODE=1` defaults:
+      - `WARMUP_STEPS=0`
+      - `VAL_LOSS_EVERY=0`
+      - `TRAIN_LOG_EVERY=1000`
+      - `MAX_WALLCLOCK_SECONDS=596`
+    - `COMPILE_ENABLED=0` now cleanly disables PR688's TTT-side `torch.compile` and dummy precompile on the temp copy only.
+  - Added status / handoff support for:
+    - `upstream_pr688_timed_exact`
+    - `upstream_pr688_timed_nocompile_exact`
+    - files:
+      - [record_push_status.py](/home/aryang9/parameter-golf/scripts/record_push_status.py)
+      - [h100_parallel_candidate_portfolio.sh](/home/aryang9/parameter-golf/scripts/h100_parallel_candidate_portfolio.sh)
+  - Reordered the downstream H200 queue to prefer `upstream_pr688_timed_nocompile_exact` instead of plain `upstream_pr688_exact`:
+    - [rearm_after_current_timed_nocompile_with_hedge.sh](/home/aryang9/parameter-golf/scripts/rearm_after_current_timed_nocompile_with_hedge.sh)
+- Result:
+  - Verified:
+    - `bash -n` on the updated PR688 launchers, portfolio, and queue helper
+    - `python -m py_compile` on the new patch script and status/metadata parsers
+    - patched temp-copy PR688 `train_gpt.py` compiles cleanly
+  - Current live head lane remains unchanged:
+    - [h200_upstream_pr674_proxy7185_timed_nocompile_seed1337.txt](/home/aryang9/parameter-golf/records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs/h200_upstream_pr674_proxy7185_timed_nocompile_seed1337.txt)
+    - latest checked point: `step:2000/7185 val_bpb:1.2576`
+- Decision:
+  - Keep the current PR674 timed `nocompile` run as the live background comparator.
+  - Use `pr688_timed_nocompile` as the first exact-upstream non-PR674 branch in the queue, because it is closer to the real 10-minute constraint than the earlier full-fat exact PR688 staging.
