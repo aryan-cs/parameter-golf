@@ -9,7 +9,7 @@ from pathlib import Path
 
 from prepare_submission_metadata import merge_summaries, parse_log
 
-CURRENT_PUBLIC_SOTA_BPB = 1.0920
+CURRENT_PUBLIC_SOTA_BPB = 1.0781
 RECORD_DELTA_NAT = 0.005
 APPROX_BPB_PER_NAT = 0.5923
 PRACTICAL_WIN_GATE_BPB = CURRENT_PUBLIC_SOTA_BPB - RECORD_DELTA_NAT * APPROX_BPB_PER_NAT

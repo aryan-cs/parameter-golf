@@ -2422,6 +2422,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Decision:
   - The main line stays pure `record659_conf07` until it finishes.
   - The next highest-signal hedge is now PR-`#672`-style cosine TTT on top of the pure `record659` cache, not more low-value hybrid microtuning.
+  - Local status tooling should now be read against the stricter `1.0781` open-frontier bar, not the older `1.0920` PR `#659` line.
 - Next step:
   - Let full `record659_conf07` finish.
   - Keep the pure `conf08` / `lam20` challengers immediately behind it.
