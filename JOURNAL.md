@@ -2022,6 +2022,18 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Decision: Use the new orchestration/report path as the default control surface for this push. Keep `warmup0` out of the H200 loop and reserve it for a later provider-specific `8xH100` timing adjustment only if needed.
 - Next step: Run the artifact-only TTT sweep through `scripts/icrn_h200_record_push.sh`, then let the status report decide whether a non-baseline proxy or combined candidate deserves the first exact `8xH100` attempt.
 
+- Timestamp: 2026-03-25 02:15 UTC
+- Commit: `working tree`
+- Lane: H200 eval frontier and exact-run handoff
+- Objective: Reorient the repo around the actual public frontier after the leaderboard moved, then capture the first concrete H200 sweep results without losing exact `8xH100` promotion readiness.
+- Command or config: Reviewed the latest public frontier on GitHub, especially PR `#659` (`5-gram Eval Cache + LeakyReLU² + Parallel Muon`, mean `val_bpb=1.0920`) and PR `#639` (`Full GPTQ + XSA-all + SWA/EMA`, mean `1.1163`). Verified that our recovered record lane's `train_gpt.py` already contains integrated `NGRAM_EVAL_ENABLED` support, then updated the local tooling so the repo can see and promote n-gram contenders instead of only TTT/proxy ones: `scripts/prepare_submission_metadata.py` now recognizes `legal_ttt_ngram_exact`; `scripts/record_push_status.py` now reports artifact-only n-gram and TTT+n-gram sections; `scripts/queue_h200_credit_prep.sh` and `scripts/queue_h200_followups_after_current.sh` now run the `5`-gram frontier first after the live artifact-TTT job clears; `scripts/record_push_candidate_lib.sh` now includes `lam10_conf05_ngram` alongside the existing `ngram659`/`lowrisk_ngram` exact-run env mappings.
+- Result: The live artifact-only `tttlr25` sweep finished cleanly at `legal_ttt_exact = 1.11366553`, beating the recovered baseline `1.11382777` by `-0.00016224` BPB with a faster eval (`1,830,158 ms` vs `2,046,863 ms`). This is a real improvement, but it is small; it does not change the fact that the biggest remaining upside is on the eval side, not the training side. The first two n-gram smokes also completed:
+  - `record659_smoke`: `final_ngram_eval_exact = 1.18709898` over the first `128` windows only
+  - `lowrisk_smoke`: `final_ngram_eval_exact = 1.19304536` over the first `128` windows only
+  These numbers are intentionally cold-start biased and much worse than full-sequence results because the cache has almost no history at the beginning of validation. They should be treated only as correctness/timing smokes, not as score estimates. After those completed, the queued full `record659` H200 artifact eval started automatically (`scripts/eval_ngram_cache_artifact.py ... --stride 128 --ngram-lambda 0.15 --confidence-threshold 0.5 --max-windows 0`).
+- Decision: Promote `tttlr25` to the current exact `8xH100` seed-1337 winner while the full n-gram run is still pending, but treat the running full `record659` pass as the highest-upside active experiment. Do not conclude anything from the smoke BPBs alone; the only meaningful n-gram decision point is the full-sequence H200 result.
+- Next step: Let the full `record659` run finish, inspect whether the H200 artifact reproduces the expected large full-sequence gain, and then either (1) promote the n-gram lane into the exact `8xH100` handoff path or (2) keep grinding the cheaper artifact-TTT variants if the n-gram effect fails to transfer.
+
 - Timestamp: 2026-03-25 02:08 UTC
 - Commit: `working tree`
 - Lane: Strict-FA3 + eval-side search for the next record push

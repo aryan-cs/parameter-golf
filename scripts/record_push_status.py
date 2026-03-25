@@ -32,6 +32,23 @@ PROXY_ORDER = [
     "vr1_bg3072",
 ]
 
+NGRAM_ORDER = [
+    "record659_smoke",
+    "lowrisk_smoke",
+    "record659",
+    "lowrisk",
+    "lam10_conf05",
+    "vr1_record659",
+]
+
+TTT_NGRAM_ORDER = [
+    "record659_tttlr25_smoke",
+    "lowrisk_tttlr25_smoke",
+    "record659_tttlr25",
+    "lowrisk_tttlr25",
+    "vr1_record659_tttlr25",
+]
+
 ARTIFACT_LOG_NAMES = {
     "baseline": "h200_artifact_ttt_baseline.txt",
     "tttlr25": "h200_artifact_ttt_tttlr25.txt",
@@ -45,8 +62,31 @@ ARTIFACT_LOG_NAMES = {
     "tttlr30": "h200_artifact_ttt_tttlr30.txt",
 }
 
+NGRAM_LOG_NAMES = {
+    "record659": "h200_artifact_ngram_record659.txt",
+    "record659_smoke": "h200_artifact_ngram_record659_smoke.txt",
+    "lowrisk": "h200_artifact_ngram_lowrisk.txt",
+    "lowrisk_smoke": "h200_artifact_ngram_lowrisk_smoke.txt",
+    "lam10_conf05": "h200_artifact_ngram_lam10_conf05.txt",
+    "vr1_record659": "h200_artifact_ngram_vr1_record659.txt",
+}
+
+TTT_NGRAM_LOG_NAMES = {
+    "record659_tttlr25_smoke": "h200_artifact_ttt_ngram_record659_tttlr25_smoke.txt",
+    "record659_tttlr25": "h200_artifact_ttt_ngram_record659_tttlr25.txt",
+    "lowrisk_tttlr25_smoke": "h200_artifact_ttt_ngram_lowrisk_tttlr25_smoke.txt",
+    "lowrisk_tttlr25": "h200_artifact_ttt_ngram_lowrisk_tttlr25.txt",
+    "vr1_record659_tttlr25": "h200_artifact_ttt_ngram_vr1_record659_tttlr25.txt",
+}
+
 LEGAL_TTT_RE = re.compile(
     r"legal_ttt val_loss:(?P<val_loss>[0-9.]+)\s+val_bpb:(?P<val_bpb>[0-9.]+)\s+eval_time:(?P<eval_time_ms>\d+)ms"
+)
+LEGAL_TTT_NGRAM_RE = re.compile(
+    r"legal_ttt_ngram val_loss:(?P<val_loss>[0-9.]+)\s+val_bpb:(?P<val_bpb>[0-9.]+)\s+eval_time:(?P<eval_time_ms>\d+)ms"
+)
+FINAL_NGRAM_RE = re.compile(
+    r"final_ngram_eval val_loss:(?P<val_loss>[0-9.]+)\s+val_bpb:(?P<val_bpb>[0-9.]+).*eval_time:(?P<eval_time_ms>\d+)ms"
 )
 SLIDING_RE = re.compile(
     r"final_int6_sliding_window val_loss:(?P<val_loss>[0-9.]+)\s+val_bpb:(?P<val_bpb>[0-9.]+).*eval_time:(?P<eval_time_ms>\d+)ms"
@@ -102,7 +142,10 @@ def parse_result(
         "submission_metric": None,
         "submission_val_bpb": None,
         "bytes_total": None,
+        "submission_eval_time_ms": None,
         "legal_ttt_eval_time_ms": None,
+        "legal_ttt_ngram_eval_time_ms": None,
+        "final_ngram_eval_time_ms": None,
         "final_int6_sliding_window_exact": None,
         "final_int6_sliding_window_eval_time_ms": None,
         "last_step": None,
@@ -120,6 +163,7 @@ def parse_result(
     result["submission_metric"] = summary.get("submission_metric")
     result["submission_val_bpb"] = summary.get("submission_val_bpb")
     result["last_step"] = summary.get("last_step")
+    metric_eval_times: dict[str, int] = {}
 
     finals = summary.get("final_metrics", {})
     if isinstance(finals, dict):
@@ -130,8 +174,16 @@ def parse_result(
     for line in text.splitlines():
         if match := LEGAL_TTT_RE.search(line):
             result["legal_ttt_eval_time_ms"] = int(match.group("eval_time_ms"))
+            metric_eval_times["legal_ttt_exact"] = int(match.group("eval_time_ms"))
+        if match := LEGAL_TTT_NGRAM_RE.search(line):
+            result["legal_ttt_ngram_eval_time_ms"] = int(match.group("eval_time_ms"))
+            metric_eval_times["legal_ttt_ngram_exact"] = int(match.group("eval_time_ms"))
+        if match := FINAL_NGRAM_RE.search(line):
+            result["final_ngram_eval_time_ms"] = int(match.group("eval_time_ms"))
+            metric_eval_times["final_ngram_eval_exact"] = int(match.group("eval_time_ms"))
         if match := SLIDING_RE.search(line):
             result["final_int6_sliding_window_eval_time_ms"] = int(match.group("eval_time_ms"))
+            metric_eval_times["final_int6_sliding_window_exact"] = int(match.group("eval_time_ms"))
         if match := STEP_RE.search(line):
             result["last_step"] = int(match.group("step"))
             result["last_train_time_ms"] = int(match.group("train_time_ms"))
@@ -140,6 +192,9 @@ def parse_result(
             result["last_step"] = int(match.group("step"))
             result["last_train_time_ms"] = int(match.group("train_time_ms"))
 
+    submission_metric = result.get("submission_metric")
+    if isinstance(submission_metric, str):
+        result["submission_eval_time_ms"] = metric_eval_times.get(submission_metric)
     result["completed"] = result["submission_val_bpb"] is not None
     return result
 
@@ -147,7 +202,7 @@ def parse_result(
 def artifact_rank_key(result: dict[str, object]) -> tuple[float, float, float]:
     return (
         float(result.get("submission_val_bpb") or math.inf),
-        float(result.get("legal_ttt_eval_time_ms") or math.inf),
+        float(result.get("submission_eval_time_ms") or math.inf),
         float(result.get("bytes_total") or math.inf),
     )
 
@@ -164,7 +219,7 @@ def promotion_rank_key(result: dict[str, object]) -> tuple[float, float, float, 
     return (
         float(result.get("submission_val_bpb") or math.inf),
         float(result.get("bytes_total") or math.inf),
-        float(result.get("legal_ttt_eval_time_ms") or math.inf),
+        float(result.get("submission_eval_time_ms") or math.inf),
         float(result.get("final_int6_sliding_window_exact") or math.inf),
     )
 
@@ -179,7 +234,11 @@ def choose_best(results: list[dict[str, object]], rank_key) -> dict[str, object]
 def choose_best_nonbaseline(results: list[dict[str, object]], rank_key, source: str) -> dict[str, object] | None:
     completed = [result for result in results if result.get("completed")]
     if source == "artifact":
-        filtered = [result for result in completed if result["ttt_candidate"] != "baseline"]
+        filtered = [
+            result
+            for result in completed
+            if result["ttt_candidate"] != "baseline" or result["arch_candidate"] != "baseline"
+        ]
     else:
         filtered = [result for result in completed if result["arch_candidate"] != "baseline"]
     if not filtered:
@@ -238,9 +297,45 @@ def build_status(root_dir: Path, seed: int) -> dict[str, object]:
         )
         for candidate in PROXY_ORDER
     ]
+    ngram_results = []
+    for candidate in NGRAM_ORDER:
+        result = parse_result(
+            log_path=log_dir / NGRAM_LOG_NAMES[candidate],
+            label=candidate,
+            source="ngram",
+            arch_candidate="baseline" if candidate != "vr1_record659" else "vr1",
+            ttt_candidate=(
+                "ngram659"
+                if candidate in {"record659", "record659_smoke", "vr1_record659"}
+                else "lowrisk_ngram"
+                if candidate in {"lowrisk", "lowrisk_smoke"}
+                else "lam10_conf05_ngram"
+            ),
+        )
+        if result.get("bytes_total") is None and recovered_bytes_total is not None:
+            result["bytes_total"] = recovered_bytes_total
+        ngram_results.append(result)
+    ttt_ngram_results = []
+    for candidate in TTT_NGRAM_ORDER:
+        result = parse_result(
+            log_path=log_dir / TTT_NGRAM_LOG_NAMES[candidate],
+            label=candidate,
+            source="ttt_ngram",
+            arch_candidate="baseline" if candidate != "vr1_record659_tttlr25" else "vr1",
+            ttt_candidate=(
+                "ngram659_tttlr25"
+                if candidate in {"record659_tttlr25", "record659_tttlr25_smoke", "vr1_record659_tttlr25"}
+                else "tttlr25"
+            ),
+        )
+        if result.get("bytes_total") is None and recovered_bytes_total is not None:
+            result["bytes_total"] = recovered_bytes_total
+        ttt_ngram_results.append(result)
 
     artifact_best = choose_best(artifact_results, artifact_rank_key)
     proxy_best = choose_best(proxy_results, proxy_rank_key)
+    ngram_best = choose_best(ngram_results, artifact_rank_key)
+    ttt_ngram_best = choose_best(ttt_ngram_results, artifact_rank_key)
     artifact_nonbaseline = choose_best_nonbaseline(artifact_results, artifact_rank_key, "artifact")
     proxy_nonbaseline = choose_best_nonbaseline(proxy_results, proxy_rank_key, "proxy")
 
@@ -268,7 +363,7 @@ def build_status(root_dir: Path, seed: int) -> dict[str, object]:
 
     promotion_pool = [
         candidate
-        for candidate in (artifact_best, proxy_best, combined_result)
+        for candidate in (artifact_best, ngram_best, proxy_best, combined_result)
         if candidate is not None and candidate.get("completed")
     ]
     ranked_promotion_pool = sorted(promotion_pool, key=promotion_rank_key)
@@ -309,12 +404,24 @@ def build_status(root_dir: Path, seed: int) -> dict[str, object]:
             [result for result in artifact_results if result.get("completed")],
             key=artifact_rank_key,
         ),
+        "ngram_results": ngram_results,
+        "ngram_ranked": sorted(
+            [result for result in ngram_results if result.get("completed")],
+            key=artifact_rank_key,
+        ),
+        "ttt_ngram_results": ttt_ngram_results,
+        "ttt_ngram_ranked": sorted(
+            [result for result in ttt_ngram_results if result.get("completed")],
+            key=artifact_rank_key,
+        ),
         "proxy_results": proxy_results,
         "proxy_ranked": sorted(
             [result for result in proxy_results if result.get("completed")],
             key=proxy_rank_key,
         ),
         "best_artifact": artifact_best,
+        "best_ngram": ngram_best,
+        "best_ttt_ngram": ttt_ngram_best,
         "best_artifact_nonbaseline": artifact_nonbaseline,
         "best_proxy": proxy_best,
         "best_proxy_nonbaseline": proxy_nonbaseline,
@@ -330,9 +437,10 @@ def print_ranked(title: str, results: list[dict[str, object]], *, secondary_key:
         print("  no completed logs yet")
         return
     for result in results:
+        metric_name = result.get("submission_metric")
         print(
             "  "
-            f"{result['label']}: legal_ttt_exact={result.get('submission_val_bpb')} "
+            f"{result['label']}: {metric_name}={result.get('submission_val_bpb')} "
             f"{secondary_key}={result.get(secondary_key)} "
             f"bytes={result.get('bytes_total')} "
             f"log={result.get('log_path')}"
@@ -368,6 +476,18 @@ def main() -> None:
         secondary_key="final_int6_sliding_window_exact",
     )
     print()
+    print_ranked(
+        "Artifact-only n-gram sweep",
+        status["ngram_ranked"],
+        secondary_key="submission_eval_time_ms",
+    )
+    print()
+    print_ranked(
+        "Artifact-only TTT + n-gram sweep",
+        status["ttt_ngram_ranked"],
+        secondary_key="submission_eval_time_ms",
+    )
+    print()
     combined = status.get("recommended_combined")
     if combined is None:
         print("Combined proxy candidate")
@@ -394,14 +514,14 @@ def main() -> None:
     winner = handoff["winner"]
     print(
         "  "
-        f"winner={winner['label']} legal_ttt_exact={winner.get('submission_val_bpb')} "
+        f"winner={winner['label']} {winner.get('submission_metric')}={winner.get('submission_val_bpb')} "
         f"bytes={winner.get('bytes_total')}"
     )
     runner_up = handoff.get("runner_up")
     if runner_up is not None:
         print(
             "  "
-            f"runner_up={runner_up['label']} legal_ttt_exact={runner_up.get('submission_val_bpb')} "
+            f"runner_up={runner_up['label']} {runner_up.get('submission_metric')}={runner_up.get('submission_val_bpb')} "
             f"bytes={runner_up.get('bytes_total')}"
         )
     print(f"  seed1337: {handoff['winner_seed1337_command']}")

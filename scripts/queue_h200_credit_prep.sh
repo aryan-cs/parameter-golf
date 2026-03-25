@@ -11,31 +11,32 @@ CANDIDATE="${CANDIDATE_NGRAM_1:-record659_smoke}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh"
 CANDIDATE="${CANDIDATE_NGRAM_2:-lowrisk_smoke}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh"
-
-# 1b. Combine backward-looking n-gram scoring with legal TTT on the artifact.
-CANDIDATE="${CANDIDATE_TTT_NGRAM_1:-record659_tttlr25_smoke}" \
-  bash "$ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh"
-
-# 1c. Cheap eval-side TTT search on the current best artifact.
-CANDIDATE="${CANDIDATE_ARTIFACT_1:-tttlr25}" \
-  bash "$ROOT_DIR/scripts/icrn_h200_artifact_ttt_portfolio.sh"
-CANDIDATE="${CANDIDATE_ARTIFACT_2:-tttlr25_batch48}" \
-  bash "$ROOT_DIR/scripts/icrn_h200_artifact_ttt_portfolio.sh"
-CANDIDATE="${CANDIDATE_ARTIFACT_3:-freeze2_epochs2_tttlr25}" \
-  bash "$ROOT_DIR/scripts/icrn_h200_artifact_ttt_portfolio.sh"
-
-# 1d. Full eval-only follow-ups after the smokes and cheap TTT variants.
 CANDIDATE="${CANDIDATE_NGRAM_3:-record659}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh"
 CANDIDATE="${CANDIDATE_NGRAM_4:-lowrisk}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh"
-CANDIDATE="${CANDIDATE_TTT_NGRAM_2:-record659_tttlr25}" \
+CANDIDATE="${CANDIDATE_NGRAM_5:-lam10_conf05}" \
+  bash "$ROOT_DIR/scripts/icrn_h200_artifact_ngram_portfolio.sh"
+
+# 1b. Combine backward-looking n-gram scoring with legal TTT on the artifact.
+CANDIDATE="${CANDIDATE_TTT_NGRAM_1:-record659_tttlr25_smoke}" \
+  bash "$ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh"
+CANDIDATE="${CANDIDATE_TTT_NGRAM_2:-lowrisk_tttlr25_smoke}" \
+  bash "$ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh"
+CANDIDATE="${CANDIDATE_TTT_NGRAM_3:-record659_tttlr25}" \
+  bash "$ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh"
+CANDIDATE="${CANDIDATE_TTT_NGRAM_4:-lowrisk_tttlr25}" \
+  bash "$ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh"
+CANDIDATE="${CANDIDATE_TTT_NGRAM_5:-vr1_record659_tttlr25}" \
   bash "$ROOT_DIR/scripts/icrn_h200_artifact_ttt_ngram_portfolio.sh"
 
-# 2. Stricter H100-proxy search on the H200 with FA3 required.
-RUN_ID="${RUN_ID_PROXY_1:-h200_ttt_h100proxy7185_warmup0_seed1337}" \
-  bash "$ROOT_DIR/scripts/icrn_h200_ttt_h100_proxy_warmup0.sh"
-RUN_ID="${RUN_ID_PROXY_2:-h200_ttt_h100proxy7185_vr1_bg3072_tttlr25_seed1337}" \
-  bash "$ROOT_DIR/scripts/icrn_h200_ttt_h100_proxy_vr1_bg3072_tttlr25.sh"
-RUN_ID="${RUN_ID_PROXY_3:-h200_ttt_h100proxy7185_warmup0_vr1_bg3072_tttlr25_seed1337}" \
-  bash "$ROOT_DIR/scripts/icrn_h200_ttt_h100_proxy_warmup0_vr1_bg3072_tttlr25.sh"
+# 1c. Remaining cheap eval-side TTT search on the same artifact.
+CANDIDATE="${CANDIDATE_ARTIFACT_1:-tttlr25_batch48}" \
+  bash "$ROOT_DIR/scripts/icrn_h200_artifact_ttt_portfolio.sh"
+CANDIDATE="${CANDIDATE_ARTIFACT_2:-freeze2_epochs2_tttlr25}" \
+  bash "$ROOT_DIR/scripts/icrn_h200_artifact_ttt_portfolio.sh"
+CANDIDATE="${CANDIDATE_ARTIFACT_3:-bg3072_tttlr25}" \
+  bash "$ROOT_DIR/scripts/icrn_h200_artifact_ttt_portfolio.sh"
+
+# 2. Resume the encoded proxy search without reopening warmup0 on H200.
+bash "$ROOT_DIR/scripts/icrn_h200_record_push.sh" proxy

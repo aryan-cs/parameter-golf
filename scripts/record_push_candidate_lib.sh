@@ -60,6 +60,47 @@ record_push_apply_ttt_candidate() {
       export BIGRAM_VOCAB_SIZE="${BIGRAM_VOCAB_SIZE:-3072}"
       export TTT_LR="${TTT_LR:-0.0025}"
       ;;
+    ngram659)
+      export TTT_ENABLED="${TTT_ENABLED:-0}"
+      export NGRAM_EVAL_ENABLED="${NGRAM_EVAL_ENABLED:-1}"
+      export NGRAM_STRIDE="${NGRAM_STRIDE:-128}"
+      export NGRAM_BATCH_SEQS="${NGRAM_BATCH_SEQS:-32}"
+      export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.15}"
+      export NGRAM_MAX_N="${NGRAM_MAX_N:-5}"
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.5}"
+      export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-3}"
+      ;;
+    lowrisk_ngram)
+      export TTT_ENABLED="${TTT_ENABLED:-0}"
+      export NGRAM_EVAL_ENABLED="${NGRAM_EVAL_ENABLED:-1}"
+      export NGRAM_STRIDE="${NGRAM_STRIDE:-128}"
+      export NGRAM_BATCH_SEQS="${NGRAM_BATCH_SEQS:-32}"
+      export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.05}"
+      export NGRAM_MAX_N="${NGRAM_MAX_N:-5}"
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.7}"
+      export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-3}"
+      ;;
+    lam10_conf05_ngram)
+      export TTT_ENABLED="${TTT_ENABLED:-0}"
+      export NGRAM_EVAL_ENABLED="${NGRAM_EVAL_ENABLED:-1}"
+      export NGRAM_STRIDE="${NGRAM_STRIDE:-128}"
+      export NGRAM_BATCH_SEQS="${NGRAM_BATCH_SEQS:-32}"
+      export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.10}"
+      export NGRAM_MAX_N="${NGRAM_MAX_N:-5}"
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.5}"
+      export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-3}"
+      ;;
+    ngram659_tttlr25)
+      export TTT_ENABLED="${TTT_ENABLED:-1}"
+      export TTT_LR="${TTT_LR:-0.0025}"
+      export NGRAM_EVAL_ENABLED="${NGRAM_EVAL_ENABLED:-1}"
+      export NGRAM_STRIDE="${NGRAM_STRIDE:-128}"
+      export NGRAM_BATCH_SEQS="${NGRAM_BATCH_SEQS:-32}"
+      export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.15}"
+      export NGRAM_MAX_N="${NGRAM_MAX_N:-5}"
+      export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.5}"
+      export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-3}"
+      ;;
     *)
       echo "unknown TTT candidate: $candidate" >&2
       return 1
@@ -124,6 +165,18 @@ record_push_artifact_log_path() {
     bg3072_tttlr25)
       printf '%s\n' "$log_dir/h200_artifact_ttt_bg3072_tttlr25.txt"
       ;;
+    ngram659)
+      printf '%s\n' "$log_dir/h200_artifact_ngram_record659.txt"
+      ;;
+    lowrisk_ngram)
+      printf '%s\n' "$log_dir/h200_artifact_ngram_lowrisk.txt"
+      ;;
+    lam10_conf05_ngram)
+      printf '%s\n' "$log_dir/h200_artifact_ngram_lam10_conf05.txt"
+      ;;
+    ngram659_tttlr25)
+      printf '%s\n' "$log_dir/h200_artifact_ttt_ngram_record659_tttlr25.txt"
+      ;;
     *)
       echo "unknown artifact TTT candidate: $candidate" >&2
       return 1
@@ -144,4 +197,61 @@ record_push_proxy_log_path() {
     return 0
   fi
   printf '%s\n' "$log_dir/h200_ttt_h100proxy7185_${slug}_seed${seed}.txt"
+}
+
+record_push_ngram_log_path() {
+  local root_dir="$1"
+  local candidate="$2"
+  local log_dir="$root_dir/records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs"
+  case "$candidate" in
+    record659)
+      printf '%s\n' "$log_dir/h200_artifact_ngram_record659.txt"
+      ;;
+    record659_smoke)
+      printf '%s\n' "$log_dir/h200_artifact_ngram_record659_smoke.txt"
+      ;;
+    lowrisk)
+      printf '%s\n' "$log_dir/h200_artifact_ngram_lowrisk.txt"
+      ;;
+    lowrisk_smoke)
+      printf '%s\n' "$log_dir/h200_artifact_ngram_lowrisk_smoke.txt"
+      ;;
+    lam10_conf05)
+      printf '%s\n' "$log_dir/h200_artifact_ngram_lam10_conf05.txt"
+      ;;
+    vr1_record659)
+      printf '%s\n' "$log_dir/h200_artifact_ngram_vr1_record659.txt"
+      ;;
+    *)
+      echo "unknown artifact n-gram candidate: $candidate" >&2
+      return 1
+      ;;
+  esac
+}
+
+record_push_ttt_ngram_log_path() {
+  local root_dir="$1"
+  local candidate="$2"
+  local log_dir="$root_dir/records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs"
+  case "$candidate" in
+    record659_tttlr25_smoke)
+      printf '%s\n' "$log_dir/h200_artifact_ttt_ngram_record659_tttlr25_smoke.txt"
+      ;;
+    record659_tttlr25)
+      printf '%s\n' "$log_dir/h200_artifact_ttt_ngram_record659_tttlr25.txt"
+      ;;
+    lowrisk_tttlr25_smoke)
+      printf '%s\n' "$log_dir/h200_artifact_ttt_ngram_lowrisk_tttlr25_smoke.txt"
+      ;;
+    lowrisk_tttlr25)
+      printf '%s\n' "$log_dir/h200_artifact_ttt_ngram_lowrisk_tttlr25.txt"
+      ;;
+    vr1_record659_tttlr25)
+      printf '%s\n' "$log_dir/h200_artifact_ttt_ngram_vr1_record659_tttlr25.txt"
+      ;;
+    *)
+      echo "unknown artifact TTT+n-gram candidate: $candidate" >&2
+      return 1
+      ;;
+  esac
 }

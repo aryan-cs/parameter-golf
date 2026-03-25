@@ -11,11 +11,12 @@ STEP_VAL_RE = re.compile(
     r"step:(?P<step>\d+)/(?P<iterations>\d+)\s+val_loss:(?P<val_loss>[0-9.]+)\s+val_bpb:(?P<val_bpb>[0-9.]+)"
 )
 FINAL_EXACT_RE = re.compile(
-    r"(?P<metric>final_int6_roundtrip_exact|final_int6_sliding_window_exact|final_int6_sliding_window_s64_exact|final_ngram_eval_exact|legal_ttt_exact)"
+    r"(?P<metric>final_int6_roundtrip_exact|final_int6_sliding_window_exact|final_int6_sliding_window_s64_exact|final_ngram_eval_exact|legal_ttt_exact|legal_ttt_ngram_exact)"
     r"\s+val_loss:(?P<val_loss>[0-9.]+)\s+val_bpb:(?P<val_bpb>[0-9.]+)"
 )
 BYTES_RE = re.compile(r"Total submission size int6\+lzma:\s+(?P<bytes>\d+)\s+bytes")
 SUBMISSION_METRIC_PRIORITY = (
+    "legal_ttt_ngram_exact",
     "legal_ttt_exact",
     "final_ngram_eval_exact",
     "final_int6_sliding_window_exact",
