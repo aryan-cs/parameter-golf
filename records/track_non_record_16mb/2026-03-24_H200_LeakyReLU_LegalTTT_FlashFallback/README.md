@@ -2,6 +2,17 @@
 
 **val_bpb: 1.1194** (3-seed mean, std 0.0006) | **~15.95 MB** | 8×H100 SXM
 
+## H200 Status
+
+This folder is our ICRN H200 reproduction and submission-prep copy of the public March 23 record stack. It is **not** itself an official record submission, but it now contains a strong under-cap local recovery of the lane:
+
+| Hardware | Lane | Metric | Value | Bytes | Notes |
+|----------|------|--------|-------|-------|-------|
+| 1×H200 NVL | Exact 80-shard run | `final_int6_sliding_window_exact` | `1.11623907` | `15,860,692` | Full train + quant + sliding eval completed |
+| 1×H200 NVL | Resumed legal TTT on saved artifact | `legal_ttt_exact` | `1.11382777` | `15,860,692` | TTT completed in a resumed eval-only pass |
+
+The `1.11382777` result is leaderboard-worthy numerically against the public `1.1194` score, but it is **not yet an officially valid record** under challenge rules because we still need the required `8xH100` reproduction and significance evidence.
+
 ## Results (8×H100 80GB SXM, PyTorch 2.9.1+cu128)
 
 | Seed | step_avg | steps | Pre-TTT bpb | **Post-TTT bpb** | TTT gain | TTT time | Artifact |
@@ -107,10 +118,28 @@ torchrun --standalone --nproc_per_node=8 train_gpt.py
 ## Repo Launch Helpers
 
 - H200 proxy reproduction: `scripts/icrn_h200_ttt_recordstack.sh`
+- H200 resumed legal-TTT recovery: `scripts/icrn_h200_resume_legal_ttt.sh`
+- H200 H100-step proxy: `scripts/icrn_h200_ttt_h100_proxy.sh`
 - 8xH100 repro/submit path: `scripts/h100_repro_leaky_ttt_parallel_muon.sh`
 - 8xH100 3-seed wrapper: `scripts/h100_repro_leaky_ttt_parallel_muon_3seed.sh`
 - Log-to-submission metadata: `scripts/prepare_submission_metadata.py`
 - Multi-run summary helper: `scripts/summarize_record_runs.py`
+
+You can package the recovered winning H200 lane with:
+
+```bash
+python scripts/prepare_submission_metadata.py \
+  records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs/h200_ttt_recordstack_80shard_seed1337.txt \
+  records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs/h200_ttt_recordstack_80shard_seed1337_resume_ttt.txt
+```
+
+or summarize it as one logical run with:
+
+```bash
+python scripts/summarize_record_runs.py --merge-logs \
+  records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs/h200_ttt_recordstack_80shard_seed1337.txt \
+  records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs/h200_ttt_recordstack_80shard_seed1337_resume_ttt.txt
+```
 
 The H200 copy of `train_gpt.py` in this folder is source-equivalent to the public record stack except for a safe attention fallback: if `flash_attn_interface` is installed it uses the original FA3 path, otherwise it falls back to PyTorch SDPA with GQA enabled. That lets us validate the exact stack on a single H200 now and later reuse the same folder on H100s without reconstructing the setup from scratch.
 

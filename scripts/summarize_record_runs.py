@@ -6,12 +6,17 @@ import json
 import statistics
 from pathlib import Path
 
-from prepare_submission_metadata import parse_log
+from prepare_submission_metadata import merge_summaries, parse_log
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Summarize a set of Parameter Golf run logs.")
     parser.add_argument("log_paths", nargs="+", type=Path)
+    parser.add_argument(
+        "--merge-logs",
+        action="store_true",
+        help="Treat all provided logs as parts of one logical run and merge metrics across them.",
+    )
     args = parser.parse_args()
 
     runs = []
@@ -19,9 +24,14 @@ def main() -> None:
     metric_name = None
     byte_values = []
 
-    for path in args.log_paths:
-        summary = parse_log(path)
-        runs.append(summary)
+    if args.merge_logs:
+        summaries = [parse_log(path) for path in args.log_paths]
+        runs = [merge_summaries(summaries)]
+    else:
+        for path in args.log_paths:
+            runs.append(parse_log(path))
+
+    for summary in runs:
         if summary.get("submission_val_bpb") is not None:
             metric_values.append(float(summary["submission_val_bpb"]))
             metric_name = str(summary.get("submission_metric", "submission_val_bpb"))

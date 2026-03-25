@@ -1940,3 +1940,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The merged summary now correctly reports `bytes_total: 15860692`, `final_int6_sliding_window_exact: 1.11623907`, and `legal_ttt_exact: 1.11382777`, with `submission_metric` automatically resolved to `legal_ttt_exact`. This gives us a clean one-command path to prepare submission metadata from the recovered winning lane instead of manually stitching values from separate logs.
 - Decision: Keep this merged-log path as the default packaging route for the recovered lane. It reduces human error and makes the eventual `8xH100` handoff cleaner.
 - Next step: Let the corrected H100-step proxy continue, and if it does not beat `1.11382777`, shift the H200 toward more evidence-gathering and handoff polish rather than another broad search.
+
+- Timestamp: 2026-03-25 00:44 UTC
+- Commit: `2fc258a`
+- Lane: Submission summary polish
+- Objective: Make the recovered `1.11382777` lane summarize correctly as one logical result instead of looking like two separate "runs" just because its training/eval was recovered from two logs.
+- Command or config: Updated `scripts/summarize_record_runs.py` with a `--merge-logs` mode and refreshed the H200 record-folder README with the recovered H200 results, packaging commands, and the exact caveat that the lane is numerically winning but not yet an official accepted record.
+- Result: `python scripts/summarize_record_runs.py --merge-logs ...` now reports a single logical run with `metric_name=legal_ttt_exact`, `metric_mean=1.11382777`, `bytes_total=15860692`, and the merged metric set from both logs. The README for `records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/` now reflects the actual H200 state instead of only mirroring the upstream 8xH100 writeup.
+- Decision: Keep the merged summary path and updated README as the default handoff surface for this lane. They make the current best result much easier to inspect, package, and defend later.
+- Next step: Continue the corrected H100-step proxy run and use it only if it beats the recovered `1.11382777`; otherwise prioritize evidence and handoff readiness over more broad H200 search.
