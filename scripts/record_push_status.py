@@ -362,10 +362,13 @@ def build_status(root_dir: Path, seed: int) -> dict[str, object]:
         }
 
     promotion_pool = [
-        candidate
-        for candidate in (artifact_best, ngram_best, ttt_ngram_best, proxy_best, combined_result)
-        if candidate is not None and candidate.get("completed")
+        *[result for result in artifact_results if result.get("completed")],
+        *[result for result in ngram_results if result.get("completed")],
+        *[result for result in ttt_ngram_results if result.get("completed")],
+        *[result for result in proxy_results if result.get("completed")],
     ]
+    if combined_result is not None and combined_result.get("completed"):
+        promotion_pool.append(combined_result)
     ranked_promotion_pool = sorted(promotion_pool, key=promotion_rank_key)
     promotion_pool = []
     seen_specs: set[tuple[str, str]] = set()

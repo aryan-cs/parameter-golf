@@ -2043,6 +2043,23 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Decision: Keep the dedicated one-off `h100_repro_*ngram*.sh` scripts as references, but treat the generic record-push handoff as the canonical control surface going forward.
 - Next step: Once the full `record659` run completes, verify that the status report promotes it correctly if its final BPB beats the current `tttlr25` winner.
 
+- Timestamp: 2026-03-25 02:20 UTC
+- Commit: `working tree`
+- Lane: Frontier monitoring and fallback correctness
+- Objective: Keep the local strategy synced to the newest public evidence while the long H200 `record659` eval is running, and fix any ranking bugs that would point the expensive exact-run fallback at the wrong candidate.
+- Command or config: Checked the live open PR list on the public `openai/parameter-golf` repo and reviewed the newest relevant public submissions:
+  - PR `#668` (`2026-03-25`): non-record unlimited-compute `11L GEPA + 30k steps + pure int6 + legal TTT`, reporting `val_bpb = 1.0920`
+  - PR `#662` (`2026-03-25`): non-record streaming legal TTT on the March 23 leader, reporting `legal_ttt_exact = 1.12082320`
+  Also fixed `scripts/record_push_status.py` so the `8xH100` fallback is selected from all completed candidates, not just one winner per bucket.
+- Result: Two strategic takeaways:
+  1. The public frontier still supports our current priorities. PR `#662` is a useful negative result: streaming late-block TTT trails the chunked all-block score-first protocol, so we should keep prioritizing chunked legal TTT and eval-cache hybrids instead of reopening streaming-TTT ideas.
+  2. PR `#668` reinforces that long warmdown and stronger base optimization remain high-value in the unlimited-compute regime, but those gains are not the fastest route for this H200-first `10min_16mb` push. The nearer-term upside is still eval-side leverage on top of a valid under-cap base.
+  The fallback fix matters immediately: before the patch, the report could choose the weaker H200 proxy baseline (`1.12011356`) as runner-up while omitting the stronger recovered artifact baseline (`1.11382777`). After the fix, the current handoff is now:
+  - winner: `tttlr25` at `1.11366553`
+  - runner-up: recovered artifact baseline at `1.11382777`
+- Decision: Keep the current search pointed at `5`-gram and `5`-gram+TTT. Do not open streaming-TTT work. Treat long-warmdown/pure-int6 ideas as background architectural guidance rather than the next immediate H200 experiment.
+- Next step: Let the full H200 `record659` pass continue, then decide whether to promote pure `5`-gram, hybrid `5`-gram+TTT, or stick with `tttlr25` as the exact-run winner.
+
 - Timestamp: 2026-03-25 02:08 UTC
 - Commit: `working tree`
 - Lane: Strict-FA3 + eval-side search for the next record push
