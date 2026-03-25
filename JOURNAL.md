@@ -1958,3 +1958,21 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The corrected proxy lane is still active and healthy on the H200, with `step:5000/7185 val_loss:2.0193 val_bpb:1.1959` and the next training checkpoint already advancing to `step:5250`. GPU telemetry shows `100%` utilization on the `NVIDIA H200 NVL` at about `25.4 GiB` used. The recovered best score remains `legal_ttt_exact = 1.11382777 @ 15,860,692 bytes`, and the repo remains ahead of `origin/master` by `19` commits with only the generated model artifacts left untracked.
 - Decision: Leave the corrected proxy lane alone and keep it running. It is healthy, but it is still behind the recovered winning artifact, so there is no reason to interrupt the queue.
 - Next step: Let the current proxy finish, then compare its final exact metrics against `1.11382777` before deciding whether to continue into the queued VR1/Bigram3072 variants or pivot entirely to `8xH100` handoff readiness.
+
+- Timestamp: 2026-03-25 00:12 UTC
+- Commit: `working tree`
+- Lane: Submission package readiness
+- Objective: Convert the recovered `1.11382777` H200 lane from "well-documented logs" into an actual on-disk submission package candidate so the later `8xH100` handoff requires less manual stitching.
+- Command or config: Ran `python scripts/prepare_submission_metadata.py` on the merged exact-run and resumed-TTT logs with `--write-submission-json`, using `github_id=aryan-cs` and a blurb that explicitly marks this as a recovered H200 lane awaiting official `8xH100` validation.
+- Result: Wrote `records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/submission.json` containing `val_bpb: 1.11382777`, `bytes_total: 15860692`, the lane name, date, and metadata. This gives us a concrete submission-shaped artifact for inspection and later promotion instead of leaving the winning lane only as logs plus helper scripts.
+- Decision: Keep the generated `submission.json` in the non-record folder as the canonical package candidate for this recovered lane. It is not yet an official record package, but it is the right packaging surface to carry forward.
+- Next step: Commit the new package metadata, keep the corrected proxy running, and continue prioritizing official-validation readiness over speculative new H200 rewrites.
+
+- Timestamp: 2026-03-25 00:14 UTC
+- Commit: `working tree`
+- Lane: H100 candidate portfolio
+- Objective: Turn the recovered winning stack into a small parallel search portfolio so that once `8xH100` access opens up, we can launch multiple high-signal alternatives immediately instead of improvising under time pressure.
+- Command or config: Added new H100 launchers `scripts/h100_repro_leaky_ttt_parallel_muon_vr1.sh`, `scripts/h100_repro_leaky_ttt_parallel_muon_bg3072.sh`, `scripts/h100_repro_leaky_ttt_parallel_muon_vr1_bg3072.sh`, `scripts/h100_repro_leaky_ttt_parallel_muon_tttlr25.sh`, and `scripts/h100_repro_leaky_ttt_parallel_muon_vr1_bg3072_tttlr25.sh`, all layered on top of the recovered winning base launcher. Added `scripts/h100_parallel_candidate_portfolio.sh` to print or run one named candidate per node, plus `scripts/h100_parallel_candidate_3seed.sh` for follow-up significance reruns. Updated the H200 record README to document the portfolio and its rationale.
+- Result: We now have a concrete six-lane H100 portfolio around the recovered winner: baseline, `VALUE_RESIDUAL=1`, `BIGRAM_VOCAB_SIZE=3072`, the VR1+BG3072 combo, `TTT_LR=0.0025`, and the three-knob combo. This is intentionally narrow and high-signal: it focuses on the few remaining ambiguities that plausibly beat `1.11382777` without throwing away the winning stack. In parallel, the live corrected H100-step H200 proxy advanced further to `step:5500/7185 val_loss:1.9998 val_bpb:1.1844`, continuing to improve while staying behind the recovered best artifact.
+- Decision: Keep the current H200 proxy untouched and use the new portfolio as the default playbook for the first `8xH100` window. The next push should be breadth across these variants, then significance seeds only for survivors.
+- Next step: Commit the portfolio scripts and README updates, then keep monitoring the live H200 proxy until it finishes or hands off to the queued follow-up variants.

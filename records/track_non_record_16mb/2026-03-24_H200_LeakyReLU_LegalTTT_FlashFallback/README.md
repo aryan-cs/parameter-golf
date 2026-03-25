@@ -122,8 +122,23 @@ torchrun --standalone --nproc_per_node=8 train_gpt.py
 - H200 H100-step proxy: `scripts/icrn_h200_ttt_h100_proxy.sh`
 - 8xH100 repro/submit path: `scripts/h100_repro_leaky_ttt_parallel_muon.sh`
 - 8xH100 3-seed wrapper: `scripts/h100_repro_leaky_ttt_parallel_muon_3seed.sh`
+- 8xH100 parallel portfolio selector: `scripts/h100_parallel_candidate_portfolio.sh`
+- 8xH100 parallel portfolio 3-seed wrapper: `scripts/h100_parallel_candidate_3seed.sh`
 - Log-to-submission metadata: `scripts/prepare_submission_metadata.py`
 - Multi-run summary helper: `scripts/summarize_record_runs.py`
+
+## Parallel H100 Portfolio
+
+When `8xH100` access is available, the fastest way to search beyond the recovered winner is to branch only on the highest-signal remaining ambiguities:
+
+- `baseline`: recovered winning stack
+- `vr1`: add `VALUE_RESIDUAL=1`
+- `bg3072`: raise `BIGRAM_VOCAB_SIZE` from `1536` to `3072`
+- `vr1_bg3072`: combine the two architecture changes
+- `tttlr25`: keep training fixed and increase `TTT_LR` from `0.002` to `0.0025`
+- `vr1_bg3072_tttlr25`: combo bet on all three knobs
+
+Each candidate has its own launcher under `scripts/`, and `scripts/h100_parallel_candidate_portfolio.sh` prints the one-command invocations for spreading them across multiple `8xH100` nodes in parallel.
 
 You can package the recovered winning H200 lane with:
 
