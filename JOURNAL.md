@@ -3614,3 +3614,36 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
   - Treat `powmean4` as the current best legal approximation to PR `#685`'s multi-pass best-of-token effect.
   - Keep `meanprob` and `phase1` behind it as progressively more conservative fallbacks.
   - Continue leaving the GPU on exact upstream `pr674` until it finishes or clearly fails.
+
+- Timestamp: 2026-03-25 06:2x UTC
+- Commit: uncommitted
+- Lane: Exact-upstream architecture hybrid
+- Objective: Stage a minimal PR `#674` hybrid that steals only the low-byte enhanced-attention knobs from PR `#684`, without dragging over Sidecar48 or its larger training recipe.
+- Command or config:
+  - Compared exact upstream `pr674` and `pr684` attention blocks directly.
+  - Confirmed the portable attention-only additions are:
+    - per-KV-head `k_gain`
+    - `k_shift_mix`
+    - `v_shift_mix`
+    - `local_v_mix`
+  - Added:
+    - [patch_pr674_enhattn.py](/home/aryang9/parameter-golf/scripts/patch_pr674_enhattn.py)
+    - [icrn_h200_upstream_pr674_enhattn_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr674_enhattn_proxy.sh)
+    - [h100_upstream_pr674_enhattn_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr674_enhattn_exact.sh)
+    - [h100_upstream_pr674_enhattn_exact_3seed.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr674_enhattn_exact_3seed.sh)
+  - Smoke-tested:
+    - patched temp copy compiles with `python -m py_compile`
+    - new launchers pass `bash -n`
+  - Wired `upstream_pr674_enhattn_exact` through:
+    - [h100_parallel_candidate_portfolio.sh](/home/aryang9/parameter-golf/scripts/h100_parallel_candidate_portfolio.sh)
+    - [record_push_status.py](/home/aryang9/parameter-golf/scripts/record_push_status.py)
+    - [rearm_proxy_record674_queue.sh](/home/aryang9/parameter-golf/scripts/rearm_proxy_record674_queue.sh)
+- Result:
+  - We now have the first serious exact-upstream hybrid candidate, not just whole-PR families:
+    - `upstream_pr674_enhattn_exact`
+  - Exact-upstream queue order is now:
+    - `pr674 -> pr674_enhattn -> pr676 -> pr685_powmean4 -> pr685_meanprob -> pr685_phase1 -> pr684`
+  - Live exact-upstream `pr674` is still healthy and has reached `step:1000/7185 val_bpb:1.3076`.
+- Decision:
+  - Prioritize `pr674_enhattn` ahead of the PR `#685` legal hedges because it is the cleanest low-byte architecture improvement on the current main line.
+  - Keep Sidecar48 itself out of the immediate queue until the tiny enhanced-attention hybrid is tested first.

@@ -40,6 +40,7 @@ ARTIFACT_ORDER = [
 PROXY_ORDER = [
     "baseline",
     "upstream_pr674_exact",
+    "upstream_pr674_enhattn_exact",
     "upstream_pr676_exact",
     "upstream_pr685_powmean4_exact",
     "upstream_pr685_meanprob_exact",
@@ -278,6 +279,8 @@ def candidate_spec(source: str, candidate: str) -> dict[str, str]:
 def proxy_log_path(log_dir: Path, arch_candidate: str, ttt_candidate: str, seed: int) -> Path:
     if arch_candidate == "upstream_pr674_exact":
         return log_dir / f"h200_upstream_pr674_proxy7185_seed{seed}.txt"
+    if arch_candidate == "upstream_pr674_enhattn_exact":
+        return log_dir / f"h200_upstream_pr674_enhattn_proxy7185_seed{seed}.txt"
     if arch_candidate == "upstream_pr676_exact":
         return log_dir / f"h200_upstream_pr676_proxy7185_seed{seed}.txt"
     if arch_candidate == "upstream_pr685_powmean4_exact":
@@ -457,6 +460,8 @@ def choose_best_nonbaseline(results: list[dict[str, object]], rank_key, source: 
 def h100_command(root_dir: Path, arch_candidate: str, ttt_candidate: str, seed: int = 1337) -> str:
     if arch_candidate == "upstream_pr674_exact":
         return f"SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr674_exact.sh'}"
+    if arch_candidate == "upstream_pr674_enhattn_exact":
+        return f"SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr674_enhattn_exact.sh'}"
     if arch_candidate == "upstream_pr676_exact":
         return f"SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr676_exact.sh'}"
     if arch_candidate == "upstream_pr685_powmean4_exact":
@@ -478,6 +483,8 @@ def h100_command(root_dir: Path, arch_candidate: str, ttt_candidate: str, seed: 
 def h100_three_seed_command(root_dir: Path, arch_candidate: str, ttt_candidate: str) -> str:
     if arch_candidate == "upstream_pr674_exact":
         return f"bash {root_dir / 'scripts/h100_upstream_pr674_exact_3seed.sh'}"
+    if arch_candidate == "upstream_pr674_enhattn_exact":
+        return f"bash {root_dir / 'scripts/h100_upstream_pr674_enhattn_exact_3seed.sh'}"
     if arch_candidate == "upstream_pr676_exact":
         return f"bash {root_dir / 'scripts/h100_upstream_pr676_exact_3seed.sh'}"
     if arch_candidate == "upstream_pr685_powmean4_exact":

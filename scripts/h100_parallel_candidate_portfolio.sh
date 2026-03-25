@@ -12,6 +12,9 @@ run_candidate() {
     upstream_pr674_exact)
       exec bash "$ROOT_DIR/scripts/h100_upstream_pr674_exact.sh"
       ;;
+    upstream_pr674_enhattn_exact)
+      exec bash "$ROOT_DIR/scripts/h100_upstream_pr674_enhattn_exact.sh"
+      ;;
     upstream_pr676_exact)
       exec bash "$ROOT_DIR/scripts/h100_upstream_pr676_exact.sh"
       ;;
@@ -401,6 +404,7 @@ Run one candidate on each 8xH100 node by setting CANDIDATE:
 
   CANDIDATE=baseline bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr674_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=upstream_pr674_enhattn_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr676_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr685_powmean4_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr685_meanprob_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
@@ -489,6 +493,8 @@ Run one candidate on each 8xH100 node by setting CANDIDATE:
 Candidate meanings:
   baseline             recovered winning stack
   upstream_pr674_exact exact upstream PR #674 root-trainer frontier run via worktree
+  upstream_pr674_enhattn_exact
+                       exact upstream PR #674 plus PR #684-style k/v shift mixing, per-KV k_gain, and local value residual
   upstream_pr676_exact exact upstream PR #676 record-folder SwiGLU run via worktree
   upstream_pr685_powmean4_exact
                        exact upstream PR #685 record-folder code with legal 4-power probability aggregation across passes
