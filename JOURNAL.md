@@ -4639,3 +4639,43 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
   - exact PR688 budget-fit ladder
   - exact PR674 base and overlays
   - PR698 only as an under-budget fallback family
+
+## 2026-03-25 09:15 UTC - Stage post-training GPTQ re-quant sweep on best artifact family
+
+- Confirmed the best completed `1.08035892` run finished at `2026-03-25 04:15 UTC`, before the later proxy artifact overwrite.
+- Verified by hash/timestamp that the preserved best-artifact family is:
+  - [final_model_longartifact_seed1337.pt](/home/aryang9/parameter-golf/records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/final_model_longartifact_seed1337.pt)
+  - [final_model_longartifact_seed1337.int6.ptz](/home/aryang9/parameter-golf/records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/final_model_longartifact_seed1337.int6.ptz)
+- New idea:
+  - run a post-training GPTQ-lite int6 re-quantization sweep on the saved FP checkpoint, then reevaluate the strongest `record659_conf07` exact-cache path
+- Why this is worth queue priority:
+  - the expanded clip grid is a strict superset of the current per-row int6 search, so per-tensor quantization MSE can only improve or stay equal
+  - this targets our strongest finished score family directly instead of weaker exact-upstream bases
+- Added:
+  - [requantize_artifact_gptq.py](/home/aryang9/parameter-golf/scripts/requantize_artifact_gptq.py)
+  - [icrn_h200_artifact_requant_conf07_candidate.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_artifact_requant_conf07_candidate.sh)
+- Added first queued candidates:
+  - `record659_conf07_requant_plus_smoke`
+  - `record659_conf07_requant_plus`
+- Queue decision:
+  - place the re-quantized `record659_conf07` branch ahead of the weaker downstream artifact hedges and the exact PR688 budget ladder
+
+## 2026-03-25 09:52 UTC - De-queue mismatched longartifact re-quant branch
+
+- Objective:
+  - Validate the new post-training re-quant sweep before spending the next free H200 slot on it.
+- Findings:
+  - The live exact-upstream PR674 timed `nocompile` lane stayed healthy during validation and had already reached `step:6000/7185 val_bpb:1.1799`.
+  - The preserved `longartifact` FP and int6 files are **not** a matched pair:
+    - `final_model_longartifact_seed1337.pt` has `bigram.embed.weight` shape `(2048, 128)` and `skip_weights` mean `1.0`
+    - `final_model_longartifact_seed1337.int6.ptz` has `bigram.embed.weight.q` shape `(1536, 128)` and `skip_weights` mean about `0.2015`
+  - So the earlier assumption was wrong: we cannot safely use that `longartifact` FP checkpoint to re-quantize the finished `1.08035892` artifact lane.
+  - The first smoke on that mismatched pair produced an implausibly tiny `4.49 MB` artifact; after checking the tensor layouts, that is now treated as a symptom of the mismatch, not a trusted improvement.
+- Code / ops:
+  - Added a reference/template compatibility guard to [scripts/requantize_artifact_gptq.py](/home/aryang9/parameter-golf/scripts/requantize_artifact_gptq.py) so future bad pairs fail fast before quantization work starts.
+  - Retargeted [scripts/icrn_h200_artifact_requant_conf07_candidate.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_artifact_requant_conf07_candidate.sh) to default to the currently matched generic `final_model.*` pair instead of the broken `longartifact` pair.
+  - Removed the staged `record659_conf07_requant_plus(_smoke)` slots from [scripts/record_push_status.py](/home/aryang9/parameter-golf/scripts/record_push_status.py) and from the live queue helper [scripts/rearm_after_current_timed_nocompile_with_hedge.sh](/home/aryang9/parameter-golf/scripts/rearm_after_current_timed_nocompile_with_hedge.sh).
+  - Tightened the live rearm helper further so the automatic handoff now goes straight from the current PR674 head run into the exact PR688 budget ladder, instead of routing through artifact-side hedges that now point at a drifting generic `final_model.*` pair.
+- Decision:
+  - Do **not** spend the next H200 slot on longartifact re-quantization unless we recover a true paired FP/int6 snapshot of the finished `record659_conf07` lane.
+  - Keep the exact PR688 budget ladder and PR674 overlays ahead of any future artifact re-quant experiments.
