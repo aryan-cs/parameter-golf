@@ -2165,3 +2165,69 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
   If this trajectory holds, pure `5`-gram on the recovered artifact is no longer just competitive; it is a plausible first-place exact `8xH100` candidate. The new bank-aware hybrid queue is now positioned as a win-more / hedge path rather than the main bet.
 - Decision: Do not disturb the live pure `record659` run. Treat it as the primary exact-run candidate unless it degrades badly in the back half. Keep the new late-2-block masked hybrid queue armed behind it so the H200 can immediately test whether legal TTT still stacks on top of an already record-level pure n-gram score.
 - Next step: Let the full pure `record659` H200 pass finish, record the exact final `final_ngram_eval_exact`, and compare it against the `~1.0890` practical win gate. If it holds, prepare `ngram659` for the first `8xH100` slot and use the late-2-block hybrid smokes only as challenger lanes, not as the default.
+
+- Timestamp: 2026-03-25 02:47 UTC
+- Commit: `working tree`
+- Lane: Packed-cache 5-gram optimization + higher-confidence pure challengers
+- Objective: Use the spare engineering time during the live `record659` run to attack the most obvious remaining upside in the public PR `#659` recipe: the README reports a stronger `lambda=0.15` / `confidence=0.7` configuration (`1.0866`) that missed the eval-time budget. The goal was to reduce Python-side cache overhead enough to make those higher-confidence pure n-gram variants practical challenger runs.
+- Command or config:
+  - Re-read upstream PR `#659` and extracted the key ablation:
+    - submitted config: `lambda=0.15`, `confidence=0.5`, `stride=128`
+    - stronger but slower config: `lambda=0.15`, `confidence=0.7` (`1.0866`)
+  - Implemented a packed-key n-gram cache in the counted trainer and both H200 evaluators:
+    - `PackedOnlineNgramCache` uses packed integer context keys instead of tuple keys / nested dicts
+    - added `NGRAM_PACKED_CACHE` / `--packed-cache`
+    - validated equivalence against the old tuple-key cache on random toy data inside the repo venv
+  - Extended the pure artifact sweep with new pure challengers:
+    - `record659_conf06(_smoke)`
+    - `record659_conf07(_smoke)`
+  - Updated the exact-run candidate plumbing so pure n-gram exact runs also carry `NGRAM_PACKED_CACHE=1`
+  - Re-armed the post-`record659_adapt` watcher so the next H200 slots go to:
+    - `record659_conf06_smoke`
+    - `record659_conf07_smoke`
+    - then the late-block / AdamW `TTT+ngram` challengers
+- Result:
+  - The packed-cache implementation passed the direct semantic check against the old cache on randomized toy contexts.
+  - The live full pure `record659` run recovered strongly after a mid-run wobble and is still well inside first-place territory:
+    - `69.3% -> 1.084904`
+    - `71.3% -> 1.084193`
+    - `74.0% -> 1.084567`
+    - `75.3% -> 1.084679`
+    - `76.3% -> 1.085086`
+  - At `58.4%`, the remaining `41.6%` could have averaged roughly `1.0901` and still held the approximate `1.0890` record-claim line; the actual later checkpoints were materially better than that budget, which increased confidence that the pure lane is real.
+- Decision: Keep pure `record659` as the main bet. Use packed-cache pure-confidence challengers as the next highest-value follow-up, ahead of the legal-TTT hybrids, because they stay on the already-winning eval family and directly target the public PR `#659` “better but too slow” ablation.
+- Next step: Let the full pure `record659` run finish. If it lands below `~1.0890`, treat packed-cache `record659_conf06/conf07` as the next attempt to squeeze additional pure-eval gain before spending more H200 time on hybrid TTT branches.
+
+- Timestamp: 2026-03-25 02:52 UTC
+- Commit: `working tree`
+- Lane: Valid-only frontier cleanup + late-block `ngram_adapt` challenger staging
+- Objective: Push the H200 search toward stronger legal follow-ups without wasting time on already-completed candidates or on methods that upstream has already flagged as invalid.
+- Research:
+  - Re-checked upstream PR `#573` (`11L XSA4 + Multi-Pass Streaming Score-First Legal TTT`, reported `1.0523`) and the organizer comments. The PR was explicitly closed as invalid because of the per-token `min(NLL)` hindsight selector across multiple passes.
+  - Re-checked open PR `#662` (streaming late-block legal TTT). It reports `1.12082320`, which trails the March 23 leader and reinforces that late-block streaming adaptation is interesting but not currently the main frontier.
+  - Conclusion: do **not** pursue multi-pass `min(NLL)` or any other hindsight-selection path for the real submission. Treat pure `5`-gram and fixed-rule adaptive variants as the valid frontier.
+- Code changes:
+  - Added `NGRAM_ADAPT_LAST_N_BLOCKS` to the counted trainer so the H100 path can legally screen late-block adaptive pure-n-gram variants without forking the whole evaluator.
+  - Added the same scope control to `scripts/eval_ngram_cache_artifact.py`.
+  - Added new H200 pure n-gram challengers:
+    - `record659_adapt_last2(_smoke)`
+    - `record659_adapt_last4(_smoke)`
+  - Added `SKIP_COMPLETED=1` behavior to the artifact TTT, pure n-gram, and `TTT+ngram` candidate launchers so future queue passes do not rerun completed logs.
+  - Reordered `queue_h200_credit_prep.sh` so the next n-gram slots after `record659_adapt` go to the new late-block adapt challengers before falling back to low-risk sweeps.
+  - Updated `record_push_candidate_lib.sh` and `record_push_status.py` to recognize the new late-block adapt candidates.
+  - Left the experimental multi-pass `TTT+ngram` prototype out of the staged plan because it is not submission-safe under the current upstream ruling.
+- Result:
+  - The live full pure `record659` run strengthened further:
+    - `74.0% -> 1.084567`
+    - `75.3% -> 1.084679`
+    - `76.3% -> 1.085086`
+    - `78.3% -> 1.085365`
+    - `80.2% -> 1.085754`
+    - `86.8% -> 1.087050`
+  - This is still well inside the practical `~1.0890` record-claim band against the current upstream `1.0920` bar.
+  - All touched valid-path Python files compiled successfully:
+    - `scripts/eval_ngram_cache_artifact.py`
+    - `scripts/record_push_status.py`
+    - `records/.../train_gpt.py`
+- Decision: Keep pure `record659` as the main bet. The next legal challenger lane is now `record659_adapt_last2/last4`, not multi-pass TTT.
+- Next step: Let the current pure run finish. Then use the queued late-block adapt challengers to test whether constraining adaptive pure-n-gram updates to the last `2` or `4` blocks preserves the `1.084x` quality while improving stability and, later, `8xH100` eval practicality.

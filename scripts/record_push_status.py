@@ -38,8 +38,16 @@ PROXY_ORDER = [
 NGRAM_ORDER = [
     "record659_smoke",
     "record659",
+    "record659_conf06_smoke",
+    "record659_conf06",
+    "record659_conf07_smoke",
+    "record659_conf07",
     "record659_adapt_smoke",
     "record659_adapt",
+    "record659_adapt_last2_smoke",
+    "record659_adapt_last2",
+    "record659_adapt_last4_smoke",
+    "record659_adapt_last4",
     "lowrisk_smoke",
     "lowrisk",
     "lowrisk_adapt",
@@ -75,8 +83,16 @@ ARTIFACT_LOG_NAMES = {
 NGRAM_LOG_NAMES = {
     "record659": "h200_artifact_ngram_record659.txt",
     "record659_smoke": "h200_artifact_ngram_record659_smoke.txt",
+    "record659_conf06": "h200_artifact_ngram_record659_conf06.txt",
+    "record659_conf06_smoke": "h200_artifact_ngram_record659_conf06_smoke.txt",
+    "record659_conf07": "h200_artifact_ngram_record659_conf07.txt",
+    "record659_conf07_smoke": "h200_artifact_ngram_record659_conf07_smoke.txt",
     "record659_adapt_smoke": "h200_artifact_ngram_record659_adapt_smoke.txt",
     "record659_adapt": "h200_artifact_ngram_record659_adapt.txt",
+    "record659_adapt_last2_smoke": "h200_artifact_ngram_record659_adapt_last2_smoke.txt",
+    "record659_adapt_last2": "h200_artifact_ngram_record659_adapt_last2.txt",
+    "record659_adapt_last4_smoke": "h200_artifact_ngram_record659_adapt_last4_smoke.txt",
+    "record659_adapt_last4": "h200_artifact_ngram_record659_adapt_last4.txt",
     "lowrisk": "h200_artifact_ngram_lowrisk.txt",
     "lowrisk_smoke": "h200_artifact_ngram_lowrisk_smoke.txt",
     "lowrisk_adapt": "h200_artifact_ngram_lowrisk_adapt.txt",
@@ -322,6 +338,11 @@ def build_status(root_dir: Path, seed: int) -> dict[str, object]:
             source="ngram",
             arch_candidate="baseline" if candidate != "vr1_record659" else "vr1",
             ttt_candidate=(
+                "ngram659_conf06"
+                if candidate in {"record659_conf06", "record659_conf06_smoke"}
+                else "ngram659_conf07"
+                if candidate in {"record659_conf07", "record659_conf07_smoke"}
+                else
                 "ngram659"
                 if candidate in {"record659", "record659_smoke", "vr1_record659"}
                 else "lowrisk_ngram"

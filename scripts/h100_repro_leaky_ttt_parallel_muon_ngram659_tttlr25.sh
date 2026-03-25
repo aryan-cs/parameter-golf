@@ -10,6 +10,7 @@ export NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.15}"
 export NGRAM_MAX_N="${NGRAM_MAX_N:-5}"
 export NGRAM_CONFIDENCE_THRESHOLD="${NGRAM_CONFIDENCE_THRESHOLD:-0.5}"
 export NGRAM_MIN_COUNT="${NGRAM_MIN_COUNT:-3}"
+export NGRAM_PACKED_CACHE="${NGRAM_PACKED_CACHE:-1}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon.sh"

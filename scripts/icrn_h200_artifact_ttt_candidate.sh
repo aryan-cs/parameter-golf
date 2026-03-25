@@ -17,6 +17,7 @@ TTT_CHUNK_TOKENS="${TTT_CHUNK_TOKENS:-32768}"
 TTT_MOMENTUM="${TTT_MOMENTUM:-0.9}"
 TTT_GRAD_CLIP="${TTT_GRAD_CLIP:-1.0}"
 TTT_BATCH_SEQS="${TTT_BATCH_SEQS:-32}"
+SKIP_COMPLETED="${SKIP_COMPLETED:-1}"
 
 case "$CANDIDATE" in
   baseline)
@@ -69,6 +70,11 @@ case "$CANDIDATE" in
     exit 1
     ;;
 esac
+
+if [[ "$SKIP_COMPLETED" == "1" && -f "$LOG_PATH" ]] && rg -q "legal_ttt_exact" "$LOG_PATH"; then
+  echo "skipping completed artifact TTT candidate '$CANDIDATE' at $LOG_PATH"
+  exit 0
+fi
 
 rm -f "$LOG_PATH"
 

@@ -45,7 +45,23 @@ run_candidate() {
     ngram659_adapt)
       exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_ngram659_adapt.sh"
       ;;
+    ngram659_adapt_last2)
+      export NGRAM_ADAPT_LAST_N_BLOCKS="${NGRAM_ADAPT_LAST_N_BLOCKS:-2}"
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_ngram659_adapt.sh"
+      ;;
+    ngram659_adapt_last4)
+      export NGRAM_ADAPT_LAST_N_BLOCKS="${NGRAM_ADAPT_LAST_N_BLOCKS:-4}"
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_ngram659_adapt.sh"
+      ;;
     warmup0_ngram659_adapt)
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_ngram659_adapt.sh"
+      ;;
+    warmup0_ngram659_adapt_last2)
+      export NGRAM_ADAPT_LAST_N_BLOCKS="${NGRAM_ADAPT_LAST_N_BLOCKS:-2}"
+      exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_ngram659_adapt.sh"
+      ;;
+    warmup0_ngram659_adapt_last4)
+      export NGRAM_ADAPT_LAST_N_BLOCKS="${NGRAM_ADAPT_LAST_N_BLOCKS:-4}"
       exec bash "$ROOT_DIR/scripts/h100_repro_leaky_ttt_parallel_muon_warmup0_ngram659_adapt.sh"
       ;;
     vr1_bg3072_ngram659_adapt)
@@ -95,7 +111,11 @@ Run one candidate on each 8xH100 node by setting CANDIDATE:
   CANDIDATE=vr1_bg3072_ngram659 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0_vr1_bg3072_ngram659 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=ngram659_adapt bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=ngram659_adapt_last2 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=ngram659_adapt_last4 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0_ngram659_adapt bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=warmup0_ngram659_adapt_last2 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=warmup0_ngram659_adapt_last4 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=vr1_bg3072_ngram659_adapt bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=warmup0_vr1_bg3072_ngram659_adapt bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=ngram659_tttlr25 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
@@ -119,8 +139,14 @@ Candidate meanings:
   warmup0_vr1_bg3072_ngram659
                        architecture knobs plus PR #659 eval cache plus WARMUP_STEPS=0
   ngram659_adapt       PR #659 eval cache plus RMSprop ngram adaptation
+  ngram659_adapt_last2 PR #659 eval cache plus RMSprop adaptation on the last 2 blocks
+  ngram659_adapt_last4 PR #659 eval cache plus RMSprop adaptation on the last 4 blocks
   warmup0_ngram659_adapt
                        ngram659_adapt plus WARMUP_STEPS=0 for timing headroom
+  warmup0_ngram659_adapt_last2
+                       last-2-block ngram adaptation plus WARMUP_STEPS=0
+  warmup0_ngram659_adapt_last4
+                       last-4-block ngram adaptation plus WARMUP_STEPS=0
   vr1_bg3072_ngram659_adapt
                        architecture knobs plus PR #659 eval cache plus RMSprop adaptation
   warmup0_vr1_bg3072_ngram659_adapt

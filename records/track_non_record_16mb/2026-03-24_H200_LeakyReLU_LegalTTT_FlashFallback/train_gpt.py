@@ -117,6 +117,8 @@ class Hyperparameters:
     ngram_adapt_enabled = bool(int(os.environ.get("NGRAM_ADAPT_ENABLED", "0")))
     ngram_adapt_lr = float(os.environ.get("NGRAM_ADAPT_LR", 0.0003))
     ngram_adapt_decay = float(os.environ.get("NGRAM_ADAPT_DECAY", 0.001))
+    ngram_adapt_last_n_blocks = int(os.environ.get("NGRAM_ADAPT_LAST_N_BLOCKS", 3))
+    ngram_packed_cache = bool(int(os.environ.get("NGRAM_PACKED_CACHE", "0")))
     ngram_global_cache = bool(int(os.environ.get("NGRAM_GLOBAL_CACHE", "1")))
     ngram_ttt_enabled = bool(int(os.environ.get("NGRAM_TTT_ENABLED", "0")))
     ngram_ttt_stride = int(os.environ.get("NGRAM_TTT_STRIDE", os.environ.get("EVAL_STRIDE", "64")))
@@ -1076,6 +1078,56 @@ class OnlineNgramCache:
         return None
 
 
+class PackedOnlineNgramCache:
+    """Same semantics as OnlineNgramCache, but with packed integer keys."""
+
+    def __init__(self, vocab_size: int, max_n: int = 5):
+        self.vocab_size = vocab_size
+        self.max_n = max_n
+        self.token_bits = max(1, int(vocab_size - 1).bit_length())
+        self.use_bitpack = (1 << self.token_bits) == vocab_size
+        self.totals: list[dict[int, int]] = [{} for _ in range(max_n + 1)]
+        self.counts: list[dict[int, int]] = [{} for _ in range(max_n + 1)]
+
+    def _append_token(self, code: int, token: int) -> int:
+        if self.use_bitpack:
+            return (code << self.token_bits) | int(token)
+        return code * self.vocab_size + int(token)
+
+    def _encode_context(self, token_ids: list[int], start: int, end: int) -> int:
+        code = 0
+        for i in range(start, end):
+            code = self._append_token(code, token_ids[i])
+        return code
+
+    def update_from_list(self, token_ids: list[int]) -> None:
+        for i, token in enumerate(token_ids):
+            for n in range(2, min(self.max_n + 1, i + 2)):
+                ctx_code = self._encode_context(token_ids, i - n + 1, i)
+                totals_n = self.totals[n]
+                counts_n = self.counts[n]
+                totals_n[ctx_code] = totals_n.get(ctx_code, 0) + 1
+                joint = self._append_token(ctx_code, token)
+                counts_n[joint] = counts_n.get(joint, 0) + 1
+
+    def logprob_target(self, context: list[int], target: int, min_count: int = 3) -> float | None:
+        for n in range(min(self.max_n, len(context) + 1), 1, -1):
+            ctx_code = self._encode_context(context, len(context) - (n - 1), len(context))
+            total = self.totals[n].get(ctx_code, 0)
+            if total < min_count:
+                continue
+            cnt = self.counts[n].get(self._append_token(ctx_code, target), 0)
+            if cnt > 0:
+                return math.log(cnt / total)
+        return None
+
+
+def build_ngram_cache(vocab_size: int, max_n: int, *, packed: bool) -> OnlineNgramCache | PackedOnlineNgramCache:
+    if packed:
+        return PackedOnlineNgramCache(vocab_size, max_n=max_n)
+    return OnlineNgramCache(vocab_size, max_n=max_n)
+
+
 def _ttt_selected_layers(args: Hyperparameters, num_layers: int) -> set[int]:
     if args.ttt_last_n_blocks > 0:
         start = max(0, num_layers - min(args.ttt_last_n_blocks, num_layers))
@@ -1342,7 +1394,7 @@ def eval_val_ngram(
     loss_sum = torch.zeros((), device=device, dtype=torch.float64)
     token_count = torch.zeros((), device=device, dtype=torch.float64)
     byte_count = torch.zeros((), device=device, dtype=torch.float64)
-    ngram = OnlineNgramCache(args.vocab_size, max_n=ngram_max_n) if rank == 0 else None
+    ngram = build_ngram_cache(args.vocab_size, ngram_max_n, packed=args.ngram_packed_cache) if rank == 0 else None
     ngram_improvements = 0
     ngram_attempts = 0
     ngram_skipped = 0
@@ -1355,7 +1407,10 @@ def eval_val_ngram(
         base_model.train()
         num_layers = len(base_model.blocks)
         update_params = []
-        target_layers = list(range(max(0, num_layers - 3), num_layers))
+        if args.ngram_adapt_last_n_blocks > 0:
+            target_layers = list(range(max(0, num_layers - args.ngram_adapt_last_n_blocks), num_layers))
+        else:
+            target_layers = list(range(num_layers))
         for idx in target_layers:
             for p in base_model.blocks[idx].parameters():
                 if p.requires_grad:
@@ -1369,6 +1424,14 @@ def eval_val_ngram(
     base_bytes_lut_cpu = base_bytes_lut.cpu() if rank == 0 else None
     has_leading_space_lut_cpu = has_leading_space_lut.cpu() if rank == 0 else None
     is_boundary_token_lut_cpu = is_boundary_token_lut.cpu() if rank == 0 else None
+    if rank == 0:
+        log0(
+            "ngram_eval:start "
+            f"stride={stride} lambda={ngram_lambda} max_n={ngram_max_n} "
+            f"confidence_threshold={confidence_threshold} min_count={min_count} "
+            f"adapt={int(ngram_adapt_enabled)} packed={int(args.ngram_packed_cache)} "
+            f"global_cache={int(use_global_cache)}"
+        )
 
     if use_global_cache:
         windows_per_round = batch_seqs * world_size
@@ -1835,13 +1898,13 @@ def eval_val_sliding_ttt_ngram(
         f"last_n_blocks={args.ttt_last_n_blocks} "
         f"optimizer={args.ttt_optimizer} "
         f"ngram_lambda={ngram_lambda} ngram_max_n={ngram_max_n} "
-        f"confidence_threshold={confidence_threshold}"
+        f"confidence_threshold={confidence_threshold} packed={int(args.ngram_packed_cache)}"
     )
 
     loss_sum = torch.zeros((), device=device, dtype=torch.float64)
     token_count = torch.zeros((), device=device, dtype=torch.float64)
     byte_count = torch.zeros((), device=device, dtype=torch.float64)
-    ngram = OnlineNgramCache(args.vocab_size, max_n=ngram_max_n)
+    ngram = build_ngram_cache(args.vocab_size, ngram_max_n, packed=args.ngram_packed_cache)
     ngram_improvements = 0
     ngram_attempts = 0
     ngram_skipped = 0

@@ -28,7 +28,9 @@ NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.15}"
 NGRAM_MAX_N="${NGRAM_MAX_N:-5}"
 CONFIDENCE_THRESHOLD="${CONFIDENCE_THRESHOLD:-0.5}"
 MIN_COUNT="${MIN_COUNT:-3}"
+PACKED_CACHE="${PACKED_CACHE:-1}"
 MAX_CHUNKS="${MAX_CHUNKS:-0}"
+SKIP_COMPLETED="${SKIP_COMPLETED:-1}"
 
 case "$CANDIDATE" in
   record659_tttlr25_smoke)
@@ -84,6 +86,11 @@ case "$CANDIDATE" in
     ;;
 esac
 
+if [[ "$SKIP_COMPLETED" == "1" && -f "$LOG_PATH" ]] && rg -q "legal_ttt_ngram_exact" "$LOG_PATH"; then
+  echo "skipping completed TTT+ngram candidate '$CANDIDATE' at $LOG_PATH"
+  exit 0
+fi
+
 rm -f "$LOG_PATH"
 
 exec python scripts/eval_ngram_ttt_artifact.py \
@@ -108,4 +115,5 @@ exec python scripts/eval_ngram_ttt_artifact.py \
   --ngram-max-n "$NGRAM_MAX_N" \
   --confidence-threshold "$CONFIDENCE_THRESHOLD" \
   --min-count "$MIN_COUNT" \
+  $( [[ "$PACKED_CACHE" == "1" ]] && printf '%s ' --packed-cache ) \
   --max-chunks "$MAX_CHUNKS"

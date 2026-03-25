@@ -98,6 +98,54 @@ class OnlineNgramCache:
         return None
 
 
+class PackedOnlineNgramCache:
+    def __init__(self, vocab_size: int, max_n: int = 5) -> None:
+        self.vocab_size = vocab_size
+        self.max_n = max_n
+        self.token_bits = max(1, int(vocab_size - 1).bit_length())
+        self.use_bitpack = (1 << self.token_bits) == vocab_size
+        self.totals: list[dict[int, int]] = [{} for _ in range(max_n + 1)]
+        self.counts: list[dict[int, int]] = [{} for _ in range(max_n + 1)]
+
+    def _append_token(self, code: int, token: int) -> int:
+        if self.use_bitpack:
+            return (code << self.token_bits) | int(token)
+        return code * self.vocab_size + int(token)
+
+    def _encode_context(self, token_ids: list[int], start: int, end: int) -> int:
+        code = 0
+        for i in range(start, end):
+            code = self._append_token(code, token_ids[i])
+        return code
+
+    def update_from_list(self, token_ids: list[int]) -> None:
+        for i, token in enumerate(token_ids):
+            for n in range(2, min(self.max_n + 1, i + 2)):
+                ctx_code = self._encode_context(token_ids, i - n + 1, i)
+                totals_n = self.totals[n]
+                counts_n = self.counts[n]
+                totals_n[ctx_code] = totals_n.get(ctx_code, 0) + 1
+                joint = self._append_token(ctx_code, token)
+                counts_n[joint] = counts_n.get(joint, 0) + 1
+
+    def logprob_target(self, context: list[int], target: int, min_count: int = 3) -> float | None:
+        for n in range(min(self.max_n, len(context) + 1), 1, -1):
+            ctx_code = self._encode_context(context, len(context) - (n - 1), len(context))
+            total = self.totals[n].get(ctx_code, 0)
+            if total < min_count:
+                continue
+            cnt = self.counts[n].get(self._append_token(ctx_code, target), 0)
+            if cnt > 0:
+                return math.log(cnt / total)
+        return None
+
+
+def build_ngram_cache(vocab_size: int, max_n: int, *, packed: bool) -> OnlineNgramCache | PackedOnlineNgramCache:
+    if packed:
+        return PackedOnlineNgramCache(vocab_size, max_n=max_n)
+    return OnlineNgramCache(vocab_size, max_n=max_n)
+
+
 def eval_val_ngram(
     mod,
     args,
@@ -118,6 +166,8 @@ def eval_val_ngram(
     ngram_adapt_enabled: bool = False,
     ngram_adapt_lr: float = 0.0003,
     ngram_adapt_decay: float = 0.001,
+    packed_cache: bool = False,
+    ngram_adapt_last_n_blocks: int = 3,
     max_windows: int = 0,
     log=print,
 ) -> tuple[float, float]:
@@ -130,7 +180,7 @@ def eval_val_ngram(
     loss_sum = torch.zeros((), device=device, dtype=torch.float64)
     token_count = torch.zeros((), device=device, dtype=torch.float64)
     byte_count = torch.zeros((), device=device, dtype=torch.float64)
-    ngram = OnlineNgramCache(args.vocab_size, max_n=ngram_max_n)
+    ngram = build_ngram_cache(args.vocab_size, ngram_max_n, packed=packed_cache)
     ngram_improvements = 0
     ngram_attempts = 0
     ngram_skipped = 0
@@ -144,7 +194,10 @@ def eval_val_ngram(
         base_model.train()
         num_layers = len(base_model.blocks)
         update_params = []
-        target_layers = list(range(max(0, num_layers - 3), num_layers))
+        if ngram_adapt_last_n_blocks > 0:
+            target_layers = list(range(max(0, num_layers - ngram_adapt_last_n_blocks), num_layers))
+        else:
+            target_layers = list(range(num_layers))
         for idx in target_layers:
             for p in base_model.blocks[idx].parameters():
                 if p.requires_grad:
@@ -158,7 +211,7 @@ def eval_val_ngram(
         "ngram_eval:start "
         f"stride={stride} lambda={ngram_lambda} max_n={ngram_max_n} "
         f"confidence_threshold={confidence_threshold} min_count={min_count} "
-        f"adapt={int(ngram_adapt_enabled)}"
+        f"adapt={int(ngram_adapt_enabled)} packed={int(packed_cache)}"
     )
     for bi in range(0, len(window_starts), batch_seqs):
         batch_ws = window_starts[bi : bi + batch_seqs]
@@ -297,6 +350,8 @@ def main() -> None:
     parser.add_argument("--ngram-adapt-enabled", action="store_true")
     parser.add_argument("--ngram-adapt-lr", type=float, default=0.0003)
     parser.add_argument("--ngram-adapt-decay", type=float, default=0.001)
+    parser.add_argument("--ngram-adapt-last-n-blocks", type=int, default=3)
+    parser.add_argument("--packed-cache", action="store_true")
     parser.add_argument("--max-windows", type=int, default=0)
     args_ns = parser.parse_args()
 
@@ -352,6 +407,8 @@ def main() -> None:
                 "ngram_adapt_enabled": int(args_ns.ngram_adapt_enabled),
                 "ngram_adapt_lr": args_ns.ngram_adapt_lr,
                 "ngram_adapt_decay": args_ns.ngram_adapt_decay,
+                "ngram_adapt_last_n_blocks": args_ns.ngram_adapt_last_n_blocks,
+                "packed_cache": int(args_ns.packed_cache),
                 "batch_seqs": args_ns.batch_seqs,
                 "bigram_vocab_size": args.bigram_vocab_size,
                 "value_residual": int(bool(args.value_residual)),
@@ -396,6 +453,8 @@ def main() -> None:
         ngram_adapt_enabled=args_ns.ngram_adapt_enabled,
         ngram_adapt_lr=args_ns.ngram_adapt_lr,
         ngram_adapt_decay=args_ns.ngram_adapt_decay,
+        ngram_adapt_last_n_blocks=args_ns.ngram_adapt_last_n_blocks,
+        packed_cache=args_ns.packed_cache,
         max_windows=args_ns.max_windows,
         log=log,
     )

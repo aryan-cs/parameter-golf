@@ -17,10 +17,13 @@ MIN_COUNT="${MIN_COUNT:-3}"
 NGRAM_ADAPT_ENABLED="${NGRAM_ADAPT_ENABLED:-0}"
 NGRAM_ADAPT_LR="${NGRAM_ADAPT_LR:-0.0003}"
 NGRAM_ADAPT_DECAY="${NGRAM_ADAPT_DECAY:-0.001}"
+NGRAM_ADAPT_LAST_N_BLOCKS="${NGRAM_ADAPT_LAST_N_BLOCKS:-3}"
+PACKED_CACHE="${PACKED_CACHE:-1}"
 BATCH_SEQS="${BATCH_SEQS:-32}"
 BIGRAM_VOCAB_SIZE="${BIGRAM_VOCAB_SIZE:-1536}"
 VALUE_RESIDUAL="${VALUE_RESIDUAL:-0}"
 MAX_WINDOWS="${MAX_WINDOWS:-0}"
+SKIP_COMPLETED="${SKIP_COMPLETED:-1}"
 
 case "$CANDIDATE" in
   record659)
@@ -29,6 +32,24 @@ case "$CANDIDATE" in
   record659_smoke)
     MAX_WINDOWS="128"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_smoke.txt}"
+    ;;
+  record659_conf06)
+    CONFIDENCE_THRESHOLD="0.6"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_conf06.txt}"
+    ;;
+  record659_conf06_smoke)
+    CONFIDENCE_THRESHOLD="0.6"
+    MAX_WINDOWS="128"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_conf06_smoke.txt}"
+    ;;
+  record659_conf07)
+    CONFIDENCE_THRESHOLD="0.7"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_conf07.txt}"
+    ;;
+  record659_conf07_smoke)
+    CONFIDENCE_THRESHOLD="0.7"
+    MAX_WINDOWS="128"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_conf07_smoke.txt}"
     ;;
   lowrisk)
     NGRAM_LAMBDA="0.05"
@@ -59,6 +80,28 @@ case "$CANDIDATE" in
     NGRAM_ADAPT_ENABLED="1"
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_adapt.txt}"
     ;;
+  record659_adapt_last2_smoke)
+    MAX_WINDOWS="128"
+    NGRAM_ADAPT_ENABLED="1"
+    NGRAM_ADAPT_LAST_N_BLOCKS="2"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_adapt_last2_smoke.txt}"
+    ;;
+  record659_adapt_last2)
+    NGRAM_ADAPT_ENABLED="1"
+    NGRAM_ADAPT_LAST_N_BLOCKS="2"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_adapt_last2.txt}"
+    ;;
+  record659_adapt_last4_smoke)
+    MAX_WINDOWS="128"
+    NGRAM_ADAPT_ENABLED="1"
+    NGRAM_ADAPT_LAST_N_BLOCKS="4"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_adapt_last4_smoke.txt}"
+    ;;
+  record659_adapt_last4)
+    NGRAM_ADAPT_ENABLED="1"
+    NGRAM_ADAPT_LAST_N_BLOCKS="4"
+    LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_adapt_last4.txt}"
+    ;;
   lowrisk_adapt)
     NGRAM_LAMBDA="0.05"
     CONFIDENCE_THRESHOLD="0.7"
@@ -70,6 +113,11 @@ case "$CANDIDATE" in
     exit 1
     ;;
 esac
+
+if [[ "$SKIP_COMPLETED" == "1" && -f "$LOG_PATH" ]] && rg -q "final_ngram_eval_exact" "$LOG_PATH"; then
+  echo "skipping completed ngram candidate '$CANDIDATE' at $LOG_PATH"
+  exit 0
+fi
 
 rm -f "$LOG_PATH"
 
@@ -85,6 +133,8 @@ exec python scripts/eval_ngram_cache_artifact.py \
   --confidence-threshold "$CONFIDENCE_THRESHOLD" \
   --min-count "$MIN_COUNT" \
   $( [[ "$NGRAM_ADAPT_ENABLED" == "1" ]] && printf '%s ' --ngram-adapt-enabled ) \
+  $( [[ "$PACKED_CACHE" == "1" ]] && printf '%s ' --packed-cache ) \
   --ngram-adapt-lr "$NGRAM_ADAPT_LR" \
   --ngram-adapt-decay "$NGRAM_ADAPT_DECAY" \
+  --ngram-adapt-last-n-blocks "$NGRAM_ADAPT_LAST_N_BLOCKS" \
   --max-windows "$MAX_WINDOWS"
