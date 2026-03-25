@@ -5,6 +5,10 @@ record_push_apply_arch_candidate() {
   case "$candidate" in
     baseline|"")
       ;;
+    podracing674)
+      export BIGRAM_VOCAB_SIZE="${BIGRAM_VOCAB_SIZE:-1536}"
+      export ROPE_DIMS="${ROPE_DIMS:-24}"
+      ;;
     vr1)
       export VALUE_RESIDUAL="${VALUE_RESIDUAL:-1}"
       ;;
@@ -17,6 +21,9 @@ record_push_apply_arch_candidate() {
       ;;
     rope24)
       export ROPE_DIMS="${ROPE_DIMS:-24}"
+      ;;
+    xsa11)
+      export XSA_LAST_N="${XSA_LAST_N:-11}"
       ;;
     vr1_bg3072)
       export VALUE_RESIDUAL="${VALUE_RESIDUAL:-1}"

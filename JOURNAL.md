@@ -258,6 +258,15 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Decision: Keep this exact long-run VRL recipe running; it is the strongest evidence so far that the promoted lane is moving toward leaderboard-relevant quality when given a more realistic token budget.
 - Next step: Let the long run continue toward its 5400-second stop and inspect the final post-quant score once the GPTQ/export/eval phase completes.
 
+- Timestamp: 2026-03-25 04:44 UTC
+- Commit: uncommitted
+- Lane: h200 proxy frontier
+- Objective: Make the live H200 queue track the newest public first-place recipe more faithfully and stop wasting post-export GPU time on lower-value tails.
+- Command or config: Re-checked PR `#674` via GitHub API and raw `train_gpt.py`, confirmed the public hashed 5-gram lane inherits `EVAL_STRIDE=64`, then patched `record674*` in `scripts/icrn_h200_artifact_ngram_candidate.sh` to default to `STRIDE=64`; added `podracing674` as an architecture candidate (`BIGRAM_VOCAB_SIZE=1536`, `ROPE_DIMS=24`) in `scripts/record_push_candidate_lib.sh`; changed `scripts/after_proxy_train_run_record674_then_conf07.sh` to default to `RUN_CONF07_TAIL=0`; added generic/named handoff scripts so the queue is now baseline proxy -> hashed `record674` -> `podracing674` proxy -> `swiglu` proxy.
+- Result: The active training run stayed uninterrupted, the baseline export watcher was restarted with the new defaults, and the chained architecture watcher is live as `after_baseline_record674_launch_podracing674_then_swiglu.sh`.
+- Decision: Treat PR-674-style hashed eval as the main frontier, drop the full `conf07` tail from the default post-export path, and spend the next architecture shots on the stronger public `podracing` base before the still-unproven SwiGLU hedge.
+- Next step: Let the current `7185`-step proxy train finish, watch the first `record674` exact score on the in-budget artifact, and then compare that baseline hashed result against the queued `podracing674` proxy branch.
+
 - Timestamp: 2026-03-23 22:53 America/Chicago
 - Commit: uncommitted
 - Lane: non-ttt VRL long-run
@@ -3094,3 +3103,41 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Decision:
   - Promote `rope24` to a real H100/H200 hedge rather than leaving it as a manual experiment.
   - Keep the score frontier anchored on hashed `record674` and completed `conf07`, but widen the architecture search behind the active baseline retrain.
+
+- Timestamp: 2026-03-25 04:51 UTC
+- Commit: `working tree`
+- Lane: `8xH100` frontier staging, `xsa11` architecture hedge
+- Objective: Capture the most directly reusable architecture delta hiding in the current PR-`#674` frontier branch while the baseline proxy retrain is still in flight.
+- Research / findings:
+  - Compared `refs/tmp/pr672` and `refs/tmp/pr674` directly.
+  - The strongest architecture delta we have not staged yet is that PR-`#674`'s root trainer defaults **`XSA_LAST_N=11`**.
+  - Our local base lane still uses `XSA_LAST_N=4`, so `xsa11` is a real missing hedge and more faithful to the current frontier branch than another tiny confidence-schedule tweak.
+  - Re-read the finished local `record659_conf07` log with a parser:
+    - best intermediate point: `71.3% -> 1.078684`
+    - finished tail: `99.7% -> 1.080274`
+    - completed exact metric: `1.08035892`
+  - Conclusion:
+    - keep hashed `record674` as the main eval frontier
+    - keep `conf07` as the strongest completed exact-cache baseline
+    - widen the architecture queue with `xsa11`
+- Code / ops:
+  - Added `xsa11` to `scripts/record_push_candidate_lib.sh`.
+    - sets `XSA_LAST_N=11`
+  - Added `xsa11` to `scripts/record_push_status.py` proxy ordering.
+  - Extended `scripts/h100_parallel_candidate_portfolio.sh` with:
+    - `xsa11_ngram674`
+    - `xsa11_ngram659_conf07`
+    - `warmup0_xsa11_ngram674`
+    - `warmup0_xsa11_ngram659_conf07`
+  - Added `scripts/after_rope24_proxy_queue_launch_xsa11.sh`.
+    - waits for the staged `rope24` proxy `conf07` eval to finish
+    - starts the same proxy→artifact `record674`/neighbor-smoke/`conf07` chain for `xsa11`
+    - launches `ARCH_CANDIDATE=xsa11` proxy retrain
+  - Updated `scripts/after_swiglu_proxy_queue_launch_rope24.sh` so the queued architecture ladder is now:
+    - baseline
+    - SwiGLU
+    - rope24
+    - xsa11
+- Decision:
+  - Promote `xsa11` to a first-class H100/H200 hedge immediately.
+  - Treat it as the most directly PR-`#674`-aligned architecture follow-up behind the active baseline proxy retrain.

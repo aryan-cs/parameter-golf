@@ -234,6 +234,7 @@ case "$CANDIDATE" in
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record659_lam20_conf08.txt}"
     ;;
   record674_smoke)
+    STRIDE="${STRIDE:-64}"
     NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.20}"
     CONFIDENCE_THRESHOLD="${CONFIDENCE_THRESHOLD:-1.0}"
     MIN_COUNT="${MIN_COUNT:-2}"
@@ -243,6 +244,7 @@ case "$CANDIDATE" in
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record674_smoke.txt}"
     ;;
   record674)
+    STRIDE="${STRIDE:-64}"
     NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.20}"
     CONFIDENCE_THRESHOLD="${CONFIDENCE_THRESHOLD:-1.0}"
     MIN_COUNT="${MIN_COUNT:-2}"
@@ -251,6 +253,7 @@ case "$CANDIDATE" in
     LOG_PATH="${LOG_PATH:-$LOG_DIR/h200_artifact_ngram_record674.txt}"
     ;;
   record674_proxy7185)
+    STRIDE="${STRIDE:-64}"
     NGRAM_LAMBDA="${NGRAM_LAMBDA:-0.20}"
     CONFIDENCE_THRESHOLD="${CONFIDENCE_THRESHOLD:-1.0}"
     MIN_COUNT="${MIN_COUNT:-2}"

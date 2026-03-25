@@ -13,6 +13,8 @@ PROXY_RECORD674_LAM18_SMOKE_LOG="${PROXY_RECORD674_LAM18_SMOKE_LOG:-$LOG_DIR/h20
 PROXY_RECORD674_LAM22_SMOKE_LOG="${PROXY_RECORD674_LAM22_SMOKE_LOG:-$LOG_DIR/h200_artifact_ngram_record674_lam22_h100proxy7185_seed1337_smoke.txt}"
 PROXY_RECORD674_MIN3_SMOKE_LOG="${PROXY_RECORD674_MIN3_SMOKE_LOG:-$LOG_DIR/h200_artifact_ngram_record674_min3_h100proxy7185_seed1337_smoke.txt}"
 PROXY_CONF07_LOG="${PROXY_CONF07_LOG:-$LOG_DIR/h200_artifact_ngram_record659_conf07_h100proxy7185_seed1337.txt}"
+RUN_NEARBY_SMOKES="${RUN_NEARBY_SMOKES:-1}"
+RUN_CONF07_TAIL="${RUN_CONF07_TAIL:-0}"
 
 cd "$ROOT_DIR"
 source .venv/bin/activate
@@ -39,38 +41,42 @@ TRAIN_GPT_PATH="$RUN_DIR/train_gpt.py" \
 CANDIDATE="record674_proxy7185" \
 bash "$ROOT_DIR/scripts/icrn_h200_artifact_ngram_candidate.sh"
 
-ARTIFACT_PATH="$PROXY_ARTIFACT_INT6" \
-TEMPLATE_PATH="$PROXY_ARTIFACT_PT" \
-TRAIN_GPT_PATH="$RUN_DIR/train_gpt.py" \
-LOG_PATH="$PROXY_RECORD674_LAM18_SMOKE_LOG" \
-NGRAM_LAMBDA="0.18" \
-MAX_WINDOWS="128" \
-CANDIDATE="record674_proxy7185" \
-bash "$ROOT_DIR/scripts/icrn_h200_artifact_ngram_candidate.sh"
+if [[ "$RUN_NEARBY_SMOKES" == "1" ]]; then
+  ARTIFACT_PATH="$PROXY_ARTIFACT_INT6" \
+  TEMPLATE_PATH="$PROXY_ARTIFACT_PT" \
+  TRAIN_GPT_PATH="$RUN_DIR/train_gpt.py" \
+  LOG_PATH="$PROXY_RECORD674_LAM18_SMOKE_LOG" \
+  NGRAM_LAMBDA="0.18" \
+  MAX_WINDOWS="128" \
+  CANDIDATE="record674_proxy7185" \
+  bash "$ROOT_DIR/scripts/icrn_h200_artifact_ngram_candidate.sh"
 
-ARTIFACT_PATH="$PROXY_ARTIFACT_INT6" \
-TEMPLATE_PATH="$PROXY_ARTIFACT_PT" \
-TRAIN_GPT_PATH="$RUN_DIR/train_gpt.py" \
-LOG_PATH="$PROXY_RECORD674_LAM22_SMOKE_LOG" \
-NGRAM_LAMBDA="0.22" \
-MAX_WINDOWS="128" \
-CANDIDATE="record674_proxy7185" \
-bash "$ROOT_DIR/scripts/icrn_h200_artifact_ngram_candidate.sh"
+  ARTIFACT_PATH="$PROXY_ARTIFACT_INT6" \
+  TEMPLATE_PATH="$PROXY_ARTIFACT_PT" \
+  TRAIN_GPT_PATH="$RUN_DIR/train_gpt.py" \
+  LOG_PATH="$PROXY_RECORD674_LAM22_SMOKE_LOG" \
+  NGRAM_LAMBDA="0.22" \
+  MAX_WINDOWS="128" \
+  CANDIDATE="record674_proxy7185" \
+  bash "$ROOT_DIR/scripts/icrn_h200_artifact_ngram_candidate.sh"
 
-ARTIFACT_PATH="$PROXY_ARTIFACT_INT6" \
-TEMPLATE_PATH="$PROXY_ARTIFACT_PT" \
-TRAIN_GPT_PATH="$RUN_DIR/train_gpt.py" \
-LOG_PATH="$PROXY_RECORD674_MIN3_SMOKE_LOG" \
-MIN_COUNT="3" \
-MAX_WINDOWS="128" \
-CANDIDATE="record674_proxy7185" \
-bash "$ROOT_DIR/scripts/icrn_h200_artifact_ngram_candidate.sh"
+  ARTIFACT_PATH="$PROXY_ARTIFACT_INT6" \
+  TEMPLATE_PATH="$PROXY_ARTIFACT_PT" \
+  TRAIN_GPT_PATH="$RUN_DIR/train_gpt.py" \
+  LOG_PATH="$PROXY_RECORD674_MIN3_SMOKE_LOG" \
+  MIN_COUNT="3" \
+  MAX_WINDOWS="128" \
+  CANDIDATE="record674_proxy7185" \
+  bash "$ROOT_DIR/scripts/icrn_h200_artifact_ngram_candidate.sh"
+fi
 
-ARTIFACT_PATH="$PROXY_ARTIFACT_INT6" \
-TEMPLATE_PATH="$PROXY_ARTIFACT_PT" \
-TRAIN_GPT_PATH="$RUN_DIR/train_gpt.py" \
-LOG_PATH="$PROXY_CONF07_LOG" \
-CANDIDATE="record659_conf07" \
-bash "$ROOT_DIR/scripts/icrn_h200_artifact_ngram_candidate.sh"
+if [[ "$RUN_CONF07_TAIL" == "1" ]]; then
+  ARTIFACT_PATH="$PROXY_ARTIFACT_INT6" \
+  TEMPLATE_PATH="$PROXY_ARTIFACT_PT" \
+  TRAIN_GPT_PATH="$RUN_DIR/train_gpt.py" \
+  LOG_PATH="$PROXY_CONF07_LOG" \
+  CANDIDATE="record659_conf07" \
+  bash "$ROOT_DIR/scripts/icrn_h200_artifact_ngram_candidate.sh"
+fi
 
 python "$ROOT_DIR/scripts/record_push_status.py" --seed 1337
