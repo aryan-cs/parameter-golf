@@ -3580,3 +3580,37 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
   - Treat `pr685_meanprob` as a stronger legal hedge than `pr685_phase1` alone.
   - Keep full PR `#685` tokenwise `min(NLL)` out of the submission path unless the rules are clarified in its favor.
   - Leave the GPU on exact upstream `pr674` and let the new exact-upstream chain fire automatically after it.
+
+- Timestamp: 2026-03-25 06:16 UTC
+- Commit: uncommitted
+- Lane: Exact-upstream frontier / stronger legal PR685 hedge
+- Objective: Push the legalized PR `#685` branch closer to its risky best-of-pass behavior without using tokenwise `min(NLL)`.
+- Command or config:
+  - Generalized [patch_pr685_meanprob.py](/home/aryang9/parameter-golf/scripts/patch_pr685_meanprob.py) to support a fixed probability power mean via `--power`.
+  - Added exact-upstream power-mean launchers:
+    - [icrn_h200_upstream_pr685_powmean4_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr685_powmean4_proxy.sh)
+    - [h100_upstream_pr685_powmean4_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr685_powmean4_exact.sh)
+    - [h100_upstream_pr685_powmean4_exact_3seed.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr685_powmean4_exact_3seed.sh)
+  - Power-mean definition:
+    - accumulate `sum(exp(-beta * nll_pass))`
+    - divide by pass count
+    - score with `-(1 / beta) * log(mean_power_prob)`
+    - current staged hedge uses `beta = 4.0`
+  - Wired `upstream_pr685_powmean4_exact` through:
+    - [h100_parallel_candidate_portfolio.sh](/home/aryang9/parameter-golf/scripts/h100_parallel_candidate_portfolio.sh)
+    - [record_push_status.py](/home/aryang9/parameter-golf/scripts/record_push_status.py)
+    - [rearm_proxy_record674_queue.sh](/home/aryang9/parameter-golf/scripts/rearm_proxy_record674_queue.sh)
+  - Validated:
+    - patched PR `#685` temp copy compiles with `python -m py_compile`
+    - new launchers pass `bash -n`
+    - queue rearmed successfully
+- Result:
+  - We now have a stronger legalized PR `#685` hedge than plain mean-prob:
+    - `upstream_pr685_powmean4_exact`
+  - Exact-upstream queue order is now:
+    - `pr674 -> pr676 -> pr685_powmean4 -> pr685_meanprob -> pr685_phase1 -> pr684`
+  - Live exact-upstream PR `#674` is still healthy and has reached `step:1000/7185 val_bpb:1.3076`.
+- Decision:
+  - Treat `powmean4` as the current best legal approximation to PR `#685`'s multi-pass best-of-token effect.
+  - Keep `meanprob` and `phase1` behind it as progressively more conservative fallbacks.
+  - Continue leaving the GPU on exact upstream `pr674` until it finishes or clearly fails.

@@ -9,6 +9,7 @@ RUN_NEARBY_SMOKES="${RUN_NEARBY_SMOKES:-0}"
 RUN_CONF07_TAIL="${RUN_CONF07_TAIL:-0}"
 UPSTREAM_WAIT_PATTERN="${UPSTREAM_WAIT_PATTERN:-^final_int6_sliding_window_ngram5_exact val_loss:}"
 UPSTREAM_PR676_WAIT_PATTERN="${UPSTREAM_PR676_WAIT_PATTERN:-^legal_ttt_exact val_loss:}"
+UPSTREAM_PR685_POWMEAN4_WAIT_PATTERN="${UPSTREAM_PR685_POWMEAN4_WAIT_PATTERN:-^final_int8_zlib_roundtrip_exact val_loss:}"
 UPSTREAM_PR685_MEANPROB_WAIT_PATTERN="${UPSTREAM_PR685_MEANPROB_WAIT_PATTERN:-^final_int8_zlib_roundtrip_exact val_loss:}"
 UPSTREAM_PR685_PHASE1_WAIT_PATTERN="${UPSTREAM_PR685_PHASE1_WAIT_PATTERN:-^final_int8_zlib_roundtrip_exact val_loss:}"
 UPSTREAM_PR684_WAIT_PATTERN="${UPSTREAM_PR684_WAIT_PATTERN:-^final_int6_sliding_window_exact val_loss:}"
@@ -59,6 +60,7 @@ BASE_RECORD674_MIN3_SMOKE_LOG="$LOG_DIR/h200_artifact_ngram_record674_min3_h100p
 BASE_CONF07_LOG="$LOG_DIR/h200_artifact_ngram_record659_conf07_h100proxy7185_seed${SEED}.txt"
 UPSTREAM_PR674_LOG="$LOG_DIR/h200_upstream_pr674_proxy7185_seed${SEED}.txt"
 UPSTREAM_PR676_LOG="$LOG_DIR/h200_upstream_pr676_proxy7185_seed${SEED}.txt"
+UPSTREAM_PR685_POWMEAN4_LOG="$LOG_DIR/h200_upstream_pr685_powmean4_proxy7185_seed${SEED}.txt"
 UPSTREAM_PR685_MEANPROB_LOG="$LOG_DIR/h200_upstream_pr685_meanprob_proxy7185_seed${SEED}.txt"
 UPSTREAM_PR685_PHASE1_LOG="$LOG_DIR/h200_upstream_pr685_phase1_proxy7185_seed${SEED}.txt"
 UPSTREAM_PR684_LOG="$LOG_DIR/h200_upstream_pr684_proxy6555_seed${SEED}.txt"
@@ -93,19 +95,35 @@ setsid bash "$ROOT_DIR/scripts/after_log_launch_script.sh" >/tmp/h200_after_base
 
 WAIT_LOG="$UPSTREAM_PR676_LOG" \
 WAIT_PATTERN="$UPSTREAM_PR676_WAIT_PATTERN" \
-TARGET_LABEL="upstream_pr685_meanprob_exact" \
-TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr685_meanprob_proxy.sh" \
-TARGET_LOG_PATH="$UPSTREAM_PR685_MEANPROB_LOG" \
-TARGET_RUN_ID="h200_upstream_pr685_meanprob_proxy7185_seed${SEED}" \
+TARGET_LABEL="upstream_pr685_powmean4_exact" \
+TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr685_powmean4_proxy.sh" \
+TARGET_LOG_PATH="$UPSTREAM_PR685_POWMEAN4_LOG" \
+TARGET_RUN_ID="h200_upstream_pr685_powmean4_proxy7185_seed${SEED}" \
 TARGET_SEED="$SEED" \
-NEXT_WAIT_LOG="$UPSTREAM_PR685_MEANPROB_LOG" \
-NEXT_WAIT_PATTERN="$UPSTREAM_PR685_MEANPROB_WAIT_PATTERN" \
-NEXT_TARGET_LABEL="upstream_pr685_phase1_exact" \
-NEXT_TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr685_phase1_proxy.sh" \
-NEXT_LOG_PATH="$UPSTREAM_PR685_PHASE1_LOG" \
-NEXT_RUN_ID="h200_upstream_pr685_phase1_proxy7185_seed${SEED}" \
+NEXT_WAIT_LOG="$UPSTREAM_PR685_POWMEAN4_LOG" \
+NEXT_WAIT_PATTERN="$UPSTREAM_PR685_POWMEAN4_WAIT_PATTERN" \
+NEXT_TARGET_LABEL="upstream_pr685_meanprob_exact" \
+NEXT_TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr685_meanprob_proxy.sh" \
+NEXT_LOG_PATH="$UPSTREAM_PR685_MEANPROB_LOG" \
+NEXT_RUN_ID="h200_upstream_pr685_meanprob_proxy7185_seed${SEED}" \
 NEXT_SEED="$SEED" \
-setsid bash "$ROOT_DIR/scripts/after_log_launch_script.sh" >/tmp/h200_after_upstream_pr676_launch_upstream_pr685_meanprob.log 2>&1 < /dev/null &
+setsid bash "$ROOT_DIR/scripts/after_log_launch_script.sh" >/tmp/h200_after_upstream_pr676_launch_upstream_pr685_powmean4.log 2>&1 < /dev/null &
+
+WAIT_LOG="$UPSTREAM_PR685_MEANPROB_LOG" \
+WAIT_PATTERN="$UPSTREAM_PR685_MEANPROB_WAIT_PATTERN" \
+TARGET_LABEL="upstream_pr685_phase1_exact" \
+TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr685_phase1_proxy.sh" \
+TARGET_LOG_PATH="$UPSTREAM_PR685_PHASE1_LOG" \
+TARGET_RUN_ID="h200_upstream_pr685_phase1_proxy7185_seed${SEED}" \
+TARGET_SEED="$SEED" \
+NEXT_WAIT_LOG="$UPSTREAM_PR685_PHASE1_LOG" \
+NEXT_WAIT_PATTERN="$UPSTREAM_PR685_PHASE1_WAIT_PATTERN" \
+NEXT_TARGET_LABEL="upstream_pr684_exact" \
+NEXT_TARGET_SCRIPT="$ROOT_DIR/scripts/icrn_h200_upstream_pr684_proxy.sh" \
+NEXT_LOG_PATH="$UPSTREAM_PR684_LOG" \
+NEXT_RUN_ID="h200_upstream_pr684_proxy6555_seed${SEED}" \
+NEXT_SEED="$SEED" \
+setsid bash "$ROOT_DIR/scripts/after_log_launch_script.sh" >/tmp/h200_after_upstream_pr685_powmean4_launch_upstream_pr685_meanprob.log 2>&1 < /dev/null &
 
 WAIT_LOG="$UPSTREAM_PR685_PHASE1_LOG" \
 WAIT_PATTERN="$UPSTREAM_PR685_PHASE1_WAIT_PATTERN" \

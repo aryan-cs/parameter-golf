@@ -15,6 +15,9 @@ run_candidate() {
     upstream_pr676_exact)
       exec bash "$ROOT_DIR/scripts/h100_upstream_pr676_exact.sh"
       ;;
+    upstream_pr685_powmean4_exact)
+      exec bash "$ROOT_DIR/scripts/h100_upstream_pr685_powmean4_exact.sh"
+      ;;
     upstream_pr685_meanprob_exact)
       exec bash "$ROOT_DIR/scripts/h100_upstream_pr685_meanprob_exact.sh"
       ;;
@@ -399,6 +402,7 @@ Run one candidate on each 8xH100 node by setting CANDIDATE:
   CANDIDATE=baseline bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr674_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr676_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
+  CANDIDATE=upstream_pr685_powmean4_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr685_meanprob_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=upstream_pr685_phase1_exact bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
   CANDIDATE=vr1 bash $ROOT_DIR/scripts/h100_parallel_candidate_portfolio.sh
@@ -486,6 +490,8 @@ Candidate meanings:
   baseline             recovered winning stack
   upstream_pr674_exact exact upstream PR #674 root-trainer frontier run via worktree
   upstream_pr676_exact exact upstream PR #676 record-folder SwiGLU run via worktree
+  upstream_pr685_powmean4_exact
+                       exact upstream PR #685 record-folder code with legal 4-power probability aggregation across passes
   upstream_pr685_meanprob_exact
                        exact upstream PR #685 record-folder code with legal multi-pass mean-prob aggregation
   upstream_pr685_phase1_exact

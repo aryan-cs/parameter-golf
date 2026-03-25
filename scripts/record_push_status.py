@@ -41,6 +41,7 @@ PROXY_ORDER = [
     "baseline",
     "upstream_pr674_exact",
     "upstream_pr676_exact",
+    "upstream_pr685_powmean4_exact",
     "upstream_pr685_meanprob_exact",
     "upstream_pr685_phase1_exact",
     "upstream_pr684_exact",
@@ -279,6 +280,8 @@ def proxy_log_path(log_dir: Path, arch_candidate: str, ttt_candidate: str, seed:
         return log_dir / f"h200_upstream_pr674_proxy7185_seed{seed}.txt"
     if arch_candidate == "upstream_pr676_exact":
         return log_dir / f"h200_upstream_pr676_proxy7185_seed{seed}.txt"
+    if arch_candidate == "upstream_pr685_powmean4_exact":
+        return log_dir / f"h200_upstream_pr685_powmean4_proxy7185_seed{seed}.txt"
     if arch_candidate == "upstream_pr685_meanprob_exact":
         return log_dir / f"h200_upstream_pr685_meanprob_proxy7185_seed{seed}.txt"
     if arch_candidate == "upstream_pr685_phase1_exact":
@@ -456,6 +459,8 @@ def h100_command(root_dir: Path, arch_candidate: str, ttt_candidate: str, seed: 
         return f"SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr674_exact.sh'}"
     if arch_candidate == "upstream_pr676_exact":
         return f"SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr676_exact.sh'}"
+    if arch_candidate == "upstream_pr685_powmean4_exact":
+        return f"SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr685_powmean4_exact.sh'}"
     if arch_candidate == "upstream_pr685_meanprob_exact":
         return f"SEED={seed} bash {root_dir / 'scripts/h100_upstream_pr685_meanprob_exact.sh'}"
     if arch_candidate == "upstream_pr685_phase1_exact":
@@ -475,6 +480,8 @@ def h100_three_seed_command(root_dir: Path, arch_candidate: str, ttt_candidate: 
         return f"bash {root_dir / 'scripts/h100_upstream_pr674_exact_3seed.sh'}"
     if arch_candidate == "upstream_pr676_exact":
         return f"bash {root_dir / 'scripts/h100_upstream_pr676_exact_3seed.sh'}"
+    if arch_candidate == "upstream_pr685_powmean4_exact":
+        return f"bash {root_dir / 'scripts/h100_upstream_pr685_powmean4_exact_3seed.sh'}"
     if arch_candidate == "upstream_pr685_meanprob_exact":
         return f"bash {root_dir / 'scripts/h100_upstream_pr685_meanprob_exact_3seed.sh'}"
     if arch_candidate == "upstream_pr685_phase1_exact":
