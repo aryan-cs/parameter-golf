@@ -3394,3 +3394,27 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Decision:
   - Keep the current baseline proxy untouched through completion.
   - Use the re-armed queue to spend the next free H200 cycles on the exact upstream frontier families first.
+
+- Timestamp: 2026-03-25 06:45 UTC
+- Commit: uncommitted
+- Lane: submission packaging hardening
+- Objective: Make the future `8xH100` handoff produce a clean, valid submission folder automatically instead of relying on ad hoc manual copying under time pressure.
+- Research:
+  - Pulled and reviewed upstream [PR #683](https://github.com/openai/parameter-golf/pull/683), which adds a standalone pre-submission validator.
+- Code / ops:
+  - Added [validate_submission.py](/home/aryang9/parameter-golf/validate_submission.py), based on PR `#683`, as a local pre-PR validator for record folders.
+  - Added [create_submission_snapshot.py](/home/aryang9/parameter-golf/scripts/create_submission_snapshot.py), which:
+    - copies `README.md`, `submission.json`, `train_gpt*.py`, and selected logs into a clean destination folder
+    - refreshes `submission.json` from the chosen log(s) using [prepare_submission_metadata.py](/home/aryang9/parameter-golf/scripts/prepare_submission_metadata.py)
+    - writes a `snapshot_manifest.json`
+    - optionally runs [validate_submission.py](/home/aryang9/parameter-golf/validate_submission.py) on the result
+  - Documented both helpers in [scripts/README.md](/home/aryang9/parameter-golf/scripts/README.md).
+- Result:
+  - We now have a submission-packaging path that strips raw H200 artifacts and stale dev clutter out of the final folder while preserving the exact logs and trainer we want to submit.
+  - A dry-run snapshot/validation pass succeeded:
+    - `python scripts/create_submission_snapshot.py ... --log .../h200_artifact_ngram_record659_conf07.txt --validate`
+    - validator result: `PASS (6 passed)`
+    - snapshot size: `0.20 MB`
+    - refreshed `submission.json` carried the current `val_bpb=1.08035892`
+- Decision:
+  - Use the new snapshot builder on the first successful `8xH100` record candidate before opening a PR, rather than submitting directly from the dev folder.

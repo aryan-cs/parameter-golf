@@ -30,6 +30,8 @@ This directory mixes stable launchers, current record-push helpers, and explorat
 
 ## Packaging And Analysis
 
+- [`../validate_submission.py`](../validate_submission.py): pre-PR validator for record folders.
+- [`create_submission_snapshot.py`](create_submission_snapshot.py): build a clean submission-style folder from a dev run and selected logs.
 - [`prepare_submission_metadata.py`](prepare_submission_metadata.py): parse logs and build submission-style metadata.
 - [`summarize_record_runs.py`](summarize_record_runs.py): summarize one or more run logs, optionally merged.
 - [`salvage_legal_ttt_eval.py`](salvage_legal_ttt_eval.py): re-score a saved artifact with legal TTT settings.
