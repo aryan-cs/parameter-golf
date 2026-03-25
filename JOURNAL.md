@@ -4226,3 +4226,44 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
     - latest checked point: `step:2500/7185`
 - Decision:
   - Use exact PR688 timed `nocompile` as the first non-artifact downstream read after the current head lane and the artifact-side hedge checks.
+
+## 2026-03-25 19:50 UTC — Add PR688 qTTT budget hedge
+
+- Commit: uncommitted
+- Lane: exact-upstream PR `#688` timed eval variants
+- Objective: add a smaller, more quantization-safe PR688 TTT hedge before spending more H200 slots on PR674 overlay branches.
+- Sources:
+  - PR `#688`:
+    - https://github.com/openai/parameter-golf/pull/688
+  - PR `#692` note on full-weight AdamW TTT harming GPTQ placement:
+    - https://github.com/openai/parameter-golf/pull/692
+- Finding:
+  - PR688 exposes `QTTT`, `TTT_FREEZE_BLOCKS`, `USE_POLYAK`, `TTT_CHUNK_TOKENS`, and other TTT knobs directly.
+  - PR692 explicitly reports that full-weight AdamW TTT can destroy quantized GPTQ placement, which makes a smaller qTTT-only adaptation path worth trying.
+- Command or config:
+  - Added lightweight wrapper launchers:
+    - [icrn_h200_upstream_pr688_qttt_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr688_qttt_proxy.sh)
+    - [h100_upstream_pr688_qttt_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr688_qttt_exact.sh)
+    - [h100_upstream_pr688_qttt_exact_3seed.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr688_qttt_exact_3seed.sh)
+  - Defaults:
+    - `QTTT=1`
+    - `TTT_FREEZE_BLOCKS=4`
+  - Added candidate wiring:
+    - [record_push_status.py](/home/aryang9/parameter-golf/scripts/record_push_status.py)
+    - [h100_parallel_candidate_portfolio.sh](/home/aryang9/parameter-golf/scripts/h100_parallel_candidate_portfolio.sh)
+  - Reordered [rearm_after_current_timed_nocompile_with_hedge.sh](/home/aryang9/parameter-golf/scripts/rearm_after_current_timed_nocompile_with_hedge.sh) so the downstream exact-upstream order is now:
+    - `upstream_pr688_timed_nocompile_exact`
+    - `upstream_pr688_timed_nocompile_qttt_exact`
+    - `upstream_pr674_mixer5_timed_nocompile_exact`
+    - `upstream_pr674_enhattn_mixer5_timed_nocompile_exact`
+    - `upstream_pr674_enhattn_crownq_mixer5_timed_nocompile_exact`
+    - `upstream_pr674_hedgemix_timed_nocompile_exact`
+    - `upstream_pr674_crownq_timed_nocompile_exact`
+    - `upstream_pr674_crownq_mixer5_timed_nocompile_exact`
+- Result:
+  - Verified:
+    - `bash -n` on the updated queue helper and new wrapper scripts
+    - `record_push_status.py` resolves the new proxy log path and H100 commands correctly
+- Decision:
+  - Test exact PR688 plain timed `nocompile` first.
+  - Then immediately test qTTT as the lighter, more conservative quantized-TTT hedge before returning to heavier PR674 compounds.
