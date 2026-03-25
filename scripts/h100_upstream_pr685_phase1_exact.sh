@@ -23,7 +23,18 @@ source .venv/bin/activate
 
 cd "$WORKTREE_DIR/$PR685_RECORD_DIR"
 
-env \
+run_with_timer() {
+  if [[ -x /usr/bin/time ]]; then
+    /usr/bin/time -f 'elapsed=%E' "$@"
+  elif [[ -x /bin/time ]]; then
+    /bin/time -f 'elapsed=%E' "$@"
+  else
+    TIMEFORMAT='elapsed=%R'
+    time "$@"
+  fi
+}
+
+run_with_timer env \
   DATA_PATH="$DATA_PATH" \
   TOKENIZER_PATH="$TOKENIZER_PATH" \
   SEED="$SEED" \
@@ -31,5 +42,4 @@ env \
   TTT_EPOCHS="${TTT_EPOCHS:-20}" \
   TTT_LR="${TTT_LR:-0.0005}" \
   TTT_PASSES="${TTT_PASSES:-1}" \
-  /usr/bin/time -f 'elapsed=%E' \
   torchrun --standalone --nproc_per_node=8 train_gpt.py | tee "$LOG_PATH"

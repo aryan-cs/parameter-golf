@@ -22,7 +22,18 @@ source .venv/bin/activate
 
 cd "$WORKTREE_DIR"
 
-env \
+run_with_timer() {
+  if [[ -x /usr/bin/time ]]; then
+    /usr/bin/time -f 'elapsed=%E' "$@"
+  elif [[ -x /bin/time ]]; then
+    /bin/time -f 'elapsed=%E' "$@"
+  else
+    TIMEFORMAT='elapsed=%R'
+    time "$@"
+  fi
+}
+
+run_with_timer env \
   DATA_PATH="$DATA_PATH" \
   TOKENIZER_PATH="$TOKENIZER_PATH" \
   SEED="$SEED" \
@@ -37,5 +48,4 @@ env \
   NGRAM_EVAL_MIN_COUNT="${NGRAM_EVAL_MIN_COUNT:-2}" \
   NGRAM_EVAL_BUCKETS="${NGRAM_EVAL_BUCKETS:-4194304}" \
   NGRAM_EVAL_MAX_SECONDS="${NGRAM_EVAL_MAX_SECONDS:-0.0}" \
-  /usr/bin/time -f 'elapsed=%E' \
   torchrun --standalone --nproc_per_node=8 train_gpt.py | tee "$LOG_PATH"

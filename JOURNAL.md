@@ -3496,3 +3496,49 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
   - Keep the restarted hashed `record674` proxy eval running.
   - Treat full PR685 as **research only / legality-sensitive** until the competition reviewers make that path clearly acceptable.
   - Treat `pr685_phase1` as the safe exact-upstream hedge to compare against `pr674`, `pr676`, and `pr684` in the next free H200 slots.
+
+- Timestamp: 2026-03-25 08:10 UTC
+- Commit: uncommitted
+- Lane: exact-upstream promotion after dead-lane triage
+- Objective: Decide quickly whether the corrected `record674` proxy-artifact eval was worth more H200 time, then promote the GPU to exact upstream frontier code if it was clearly uncompetitive.
+- Research:
+  - Refreshed the latest open PR list via GitHub API. At this point the important live frontier remained:
+    - [PR #685](https://github.com/openai/parameter-golf/pull/685) `1.0366` claimed, but legality-sensitive because of per-token `min(NLL)` across passes
+    - [PR #684](https://github.com/openai/parameter-golf/pull/684) `1.0573`
+    - [PR #676](https://github.com/openai/parameter-golf/pull/676) clean SwiGLU frontier family
+    - [PR #674](https://github.com/openai/parameter-golf/pull/674) `1.0461`
+  - No newer open PR above `#685` appeared in the latest open-PR list.
+- Findings:
+  - The corrected hashed proxy-artifact `record674` lane was still a dead lane relative to our prior exact-cache runs:
+    - [h200_artifact_ngram_record674_h100proxy7185_seed1337.txt](/home/aryang9/parameter-golf/records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs/h200_artifact_ngram_record674_h100proxy7185_seed1337.txt) reached `9.9% -> 1.605674`
+    - matched against the same progress point:
+      - [h200_artifact_ngram_record659.txt](/home/aryang9/parameter-golf/records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs/h200_artifact_ngram_record659.txt) `9.9% -> 1.090201`
+      - [h200_artifact_ngram_record659_conf07.txt](/home/aryang9/parameter-golf/records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs/h200_artifact_ngram_record659_conf07.txt) `9.9% -> 1.084862`
+    - Conclusion: proxy-artifact `record674` was not worth the GPU.
+  - I also found a stale, finished baseline proxy process still holding the H200:
+    - the old `train_gpt.py` child from the baseline proxy was still using about `24.7 GB` of GPU memory even after the log had already reached its final exact metric and size lines
+    - killing that stale pair freed the H200 for the exact-upstream lane
+- Code / ops:
+  - Patched all exact-upstream launchers to stop assuming `/usr/bin/time` exists:
+    - [icrn_h200_upstream_pr674_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr674_proxy.sh)
+    - [icrn_h200_upstream_pr676_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr676_proxy.sh)
+    - [icrn_h200_upstream_pr684_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr684_proxy.sh)
+    - [icrn_h200_upstream_pr685_phase1_proxy.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr685_phase1_proxy.sh)
+    - [h100_upstream_pr674_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr674_exact.sh)
+    - [h100_upstream_pr676_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr676_exact.sh)
+    - [h100_upstream_pr684_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr684_exact.sh)
+    - [h100_upstream_pr685_phase1_exact.sh](/home/aryang9/parameter-golf/scripts/h100_upstream_pr685_phase1_exact.sh)
+  - Each now uses a `run_with_timer()` helper that prefers `/usr/bin/time`, falls back to `/bin/time`, and otherwise uses the shell `time` keyword. This makes the exact-upstream queue portable across our current H200 box and future H100 boxes.
+  - Killed the dead `record674` proxy-artifact eval and its now-useless watcher chain.
+  - Launched the exact upstream `pr674` H200 proxy directly:
+    - [h200_upstream_pr674_proxy7185_seed1337.txt](/home/aryang9/parameter-golf/records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs/h200_upstream_pr674_proxy7185_seed1337.txt)
+  - Re-armed the exact-upstream queue after it:
+    - `pr674 -> pr676 -> pr685_phase1 -> pr684`
+- Result:
+  - The H200 is now spending time on exact upstream `pr674`, not on the clearly weak proxy-artifact `record674` lane.
+  - The exact-upstream launchers no longer die immediately on missing `/usr/bin/time`.
+  - The new `pr674` log is alive and through startup / compile preamble; it is the current live frontier lane.
+- Decision:
+  - Do not spend more H200 time on proxy-artifact `record674`.
+  - Use exact-upstream `pr674` as the new main dev lane.
+  - Keep `pr676`, `pr685_phase1`, and `pr684` chained behind it as the best current legalizable queue.
