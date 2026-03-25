@@ -2003,3 +2003,12 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Result: The fixed Modal volume mapping works. `verify_data` reported `tokenizer_exists: true`, `train_shards: 80`, and `val_shards: 1` at the correct mounted paths under `/data`. The baseline `8xH100` run no longer crashes at tokenizer load; it now logs `val_bpb:enabled tokenizer_kind=sentencepiece tokenizer_path=/data/tokenizers/fineweb_1024_bpe.model`, `train_loader:dataset:fineweb10B_sp1024 train_shards:80`, `world_size:8 grad_accum_steps:1`, and the normal model/setup banner inside the active Modal run.
 - Decision: Keep the Modal baseline running. The original launch blocker is resolved, and Modal is now a real candidate execution path for the official `8xH100` timing test.
 - Next step: Let the Modal baseline continue until we get warmup/`step:` lines, then read the resulting `train.log` and compare the measured throughput against the 10-minute target.
+
+- Timestamp: 2026-03-25 00:51 UTC
+- Commit: `working tree`
+- Lane: Modal 8xH100 baseline timing
+- Objective: Confirm that the fixed Modal baseline is not only starting correctly but also reaching real warmup and training steps, so we can judge whether Modal is a credible path for the official `8xH100` time budget.
+- Command or config: Continued monitoring the active Modal app `ap-oqnDcDO687RgYLmpnROh1M` after the volume-path fix. Pulled both `modal app logs` and the persisted run log at `parameter-golf-runs-v2:/modal_baseline_seed1337_1774399430/logs/modal_baseline_seed1337_1774399430.txt`.
+- Result: The baseline is now healthy end-to-end on Modal `8xH100`. The first compile-heavy warmup step landed at `00:47:28 UTC`, then warmup steps `2..20` completed almost immediately by `00:49:06 UTC`. After that the run reached real training and logged `step:0/9000 val_bpb:4.1046`, then `step:1/9000 train_time:185ms step_avg:184.72ms`, improving to about `111ms/step` by `step:10/9000 train_time:1113ms step_avg:111.28ms`. This suggests the main Modal penalty is one-time compile/startup overhead, not steady-state throughput.
+- Decision: Keep the Modal baseline running. The original blocker is fully fixed, and Modal now looks viable enough to keep in the `8xH100` execution portfolio while we continue comparing total wallclock behavior against the competition budget.
+- Next step: Let the Modal baseline run further and capture later checkpoints plus any final wallclock summary. If needed, add a no-compile or reduced-warmup timed variant later, but only after preserving this clean baseline behavior.
