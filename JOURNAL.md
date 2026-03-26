@@ -4961,7 +4961,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 
 ## 2026-03-26 03:58 UTC - Re-anchor the gate to the confirmed README leaderboard and relaunch PR755 prep detached
 
-- Commit: `uncommitted`
+- Commit: `6cde86e`
 - Objective:
   - Stop steering against speculative open PR claims and instead target the confirmed competition README leaderboard while keeping long prep jobs alive across terminal interruptions.
 - Findings:
