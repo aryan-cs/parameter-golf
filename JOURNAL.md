@@ -5030,3 +5030,37 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
   - Use the resumable prep path plus a reduced-but-sufficient shard count (`~55-60`) if full 80-shard retokenization becomes the dominant wallclock cost.
 - Next step:
   - Commit and push the resumable PR755 setup changes, then resume the PR755 smoke setup and advance toward a full proxy-budget train on a shard budget that still covers the full published token consumption.
+
+## 2026-03-26 14:12 UTC - Add a true detached launcher and chain PR755 smoke end-to-end
+
+- Commit: `uncommitted`
+- Objective:
+  - Make long-running local jobs survive chat-turn boundaries so H200/CPU work can continue asynchronously.
+- Findings:
+  - Plain interactive runs, `nohup`, and ad-hoc backgrounding were not reliable enough in this environment; long jobs kept disappearing before they finished.
+  - A double-forked detached child does survive independently here:
+    - test job: `sleep 5; echo detached_ok > /tmp/detach_marker.txt`
+    - child was reparented to PID `1`
+    - marker file was written successfully after the parent command returned
+- Command or config:
+  - Added [scripts/detach_run.py](/home/aryang9/parameter-golf/scripts/detach_run.py), a generic double-fork launcher that:
+    - detaches the process into a new session
+    - redirects stdin/stdout/stderr
+    - starts the target command as a PID-1-owned child
+  - Used it to launch the live PR755 smoke setup detached:
+    - stdout: `/tmp/pr755_setup_smoke1.detached.log`
+    - stderr: `/tmp/pr755_setup_smoke1.detached.err`
+  - Also chained a detached watcher using [scripts/after_log_launch_script.sh](/home/aryang9/parameter-golf/scripts/after_log_launch_script.sh):
+    - waits for `Re-tokenization complete|gravity dataset already present` in `h200_upstream_pr755_setup_smoke1.txt`
+    - then launches [scripts/icrn_h200_pr755_record753_ladder.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_pr755_record753_ladder.sh) with `MAX_SHARDS=1 TIMED_MODE=1 SEED=42 RUN_FULL_EVAL=0`
+- Result:
+  - We now have the first end-to-end detached pipeline for PR755:
+    1. resumable gravity-tokenizer smoke setup
+    2. automatic smoke train/eval handoff onto the H200
+  - This is the first ops path in the repo that should keep making progress even if the chat turn ends.
+- Decision:
+  - Keep PR755 as the main next architecture push.
+  - Use detached pipelines for all future long-running prep/train/eval legs.
+- Next step:
+  - Let the detached smoke setup complete and check whether the automatic ladder starts.
+  - If the smoke path is healthy, scale the same detached pattern to the reduced full shard budget (`~55-60` train shards) and then to the full proxy-budget PR755 train.
