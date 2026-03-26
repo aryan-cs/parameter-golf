@@ -4958,3 +4958,39 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
   - PR758 is now the exact-upstream mainline.
   - PR755 is the second serious lane.
   - PR753 remains an eval-idea donor only unless a future hybrid result justifies another branch-specific pass.
+
+## 2026-03-26 03:58 UTC - Re-anchor the gate to the confirmed README leaderboard and relaunch PR755 prep detached
+
+- Commit: `uncommitted`
+- Objective:
+  - Stop steering against speculative open PR claims and instead target the confirmed competition README leaderboard while keeping long prep jobs alive across terminal interruptions.
+- Findings:
+  - The official competition README leaderboard on March 26, 2026 still lists the confirmed #1 score as `1.1194` (`LeakyReLU^2 + Legal Score-First TTT + Parallel Muon`).
+  - Our strongest archived score, `record659_conf07 = 1.08035892`, would beat that leaderboard numerically, but it is not a valid submission path because it rides on a `9000`-step artifact whose underlying train took `7,503,164 ms` on H200 and projects to about `12m31s` on `8xH100`, over the `600s` training cap.
+  - The corrected H200 dev proxy budget remains:
+    - `7,185` steps
+    - `4,615,816 ms`
+    - `~76.9 min`
+    derived from the matched baseline proxy lane (`642.42 ms/step` on `1xH200` vs `83.51 ms/step` reference on `8xH100`).
+  - The timed no-compile PR758 smoke confirmed it is too slow to serve as our `1xH200` dev proxy:
+    - [h200_upstream_pr758_proxy600_timed_nocompile_seed1337.txt](/home/aryang9/parameter-golf/records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/logs/h200_upstream_pr758_proxy600_timed_nocompile_seed1337.txt) reached `step:250/20000` at `train_time:448497ms`, `step_avg:1793.99ms`, implying only about `2.6k` steps inside the `76.9 min` H200 proxy cap.
+  - GitHub push is still blocked here:
+    - `git push origin master` -> `Permission denied (publickey)`
+- Command or config:
+  - Updated [scripts/record_push_status.py](/home/aryang9/parameter-golf/scripts/record_push_status.py) so the human-facing gate is now:
+    - confirmed leaderboard best: `1.1194`
+    - confirmed clear-margin gate: `1.1164`
+    - open PR claims kept only as speculative frontier context
+  - Relaunched PR755 gravity-data smoke prep in a detached shell so it survives user interruptions:
+    - `SEED=42 MAX_SHARDS=1 bash scripts/icrn_h200_upstream_pr755_setup.sh`
+    - detached log: `/tmp/pr755_setup_smoke1.detached.log`
+- Result:
+  - The repo now reports the correct confirmed target instead of the misleading open-claim gate.
+  - No completed local run is yet both under the H200 proxy-train budget and good enough to promote as a confirmed record-ready candidate.
+  - The PR755 smoke prep is back in flight under a more interruption-resistant launch pattern.
+- Decision:
+  - Treat `1.1194` as the submission-worthiness bar until we have our own valid result below it.
+  - Drop PR758 as a serious `1xH200` dev-proxy candidate.
+  - Spend the next serious search effort on PR755 because its published `8xH100` step rate implies a full `11k`-step run should fit inside the `76.9 min` H200 proxy budget if the scaling holds.
+- Next step:
+  - Let the detached PR755 smoke data prep finish, verify the training path on the smoke dataset, then launch the full PR755 H200 proxy-budget run on the full gravity-retokenized corpus.

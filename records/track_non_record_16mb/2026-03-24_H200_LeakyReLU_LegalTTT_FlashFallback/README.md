@@ -16,7 +16,7 @@ The `1.11382777` result is leaderboard-worthy numerically against the public `1.
 For current H200 development, we now treat the empirical proxy for the `8xH100` 600-second train cap as a hard dev-side guardrail:
 
 - `<= 7,185` steps
-- `<= 5,503,469 ms` on `1xH200 NVL` (`~91.7 min`)
+- `<= 4,615,816 ms` on `1xH200 NVL` (`~76.9 min`)
 
 The H200 launchers in `scripts/` default to this proxy budget unless `ALLOW_OUT_OF_BUDGET_DEV_RUN=1` is set intentionally.
 

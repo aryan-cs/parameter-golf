@@ -16,7 +16,7 @@ It is not a mirror of the public challenge repository. The goal here is to keep 
   - `bytes = 15,860,692`
 - Dev-side train proxy limit on `1xH200 NVL` for the `8xH100` 10-minute cap:
   - target `<= 7,185` steps
-  - target `<= 5,503,469 ms` (`~91.7 min`)
+  - target `<= 4,615,816 ms` (`~76.9 min`)
 - Practical acceptance gate against the current public leader:
   - exact `8xH100` seed-1337 run must clear bytes and time caps
   - `legal_ttt_exact <= 1.0751`

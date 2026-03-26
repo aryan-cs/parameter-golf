@@ -9,7 +9,17 @@ from pathlib import Path
 
 from prepare_submission_metadata import merge_summaries, parse_log
 
-# Public frontier snapshot as of 2026-03-25:
+RECORD_DELTA_NAT = 0.005
+APPROX_BPB_PER_NAT = 0.5923
+# Official competition README leaderboard snapshot as of 2026-03-26:
+# - The confirmed #1 score is 1.1194 from the accepted LeakyReLU^2 + legal score-first TTT lane.
+# - Open PR claims below that are useful research signals but are not yet confirmed leaderboard targets.
+OFFICIAL_LEADERBOARD_BEST_BPB = 1.1194
+OFFICIAL_LEADERBOARD_BEST_LABEL = "README leaderboard #1: LeakyReLU^2 + Legal Score-First TTT + Parallel Muon"
+CONFIRMED_WIN_GATE_BPB = OFFICIAL_LEADERBOARD_BEST_BPB
+CONFIRMED_CLEAR_MARGIN_GATE_BPB = OFFICIAL_LEADERBOARD_BEST_BPB - RECORD_DELTA_NAT * APPROX_BPB_PER_NAT
+
+# Open frontier snapshot as of 2026-03-25:
 # - PR #685 claimed 1.0366 but was closed as illegal (multi-pass min-NLL selection).
 # - PR #753 is the newest best open claim at 0.9625 via legal-looking eval-side changes.
 # - PR #758 is the strongest clean exact-upstream family we can plausibly reproduce next.
@@ -19,16 +29,14 @@ CURRENT_PUBLIC_BEST_OPEN_CLAIM_BPB = 0.9625
 CURRENT_PUBLIC_BEST_OPEN_CLAIM_LABEL = "PR #753 (open, unreviewed 7-gram backoff claim)"
 CURRENT_PUBLIC_SECONDARY_OPEN_CLAIM_BPB = 1.0465
 CURRENT_PUBLIC_SECONDARY_OPEN_CLAIM_LABEL = "PR #758 (open 11L XSA-all + 7-gram exact family)"
-RECORD_DELTA_NAT = 0.005
-APPROX_BPB_PER_NAT = 0.5923
-PRACTICAL_WIN_GATE_BPB = CURRENT_PUBLIC_BEST_OPEN_CLAIM_BPB - RECORD_DELTA_NAT * APPROX_BPB_PER_NAT
+PRACTICAL_OPEN_CLAIM_GATE_BPB = CURRENT_PUBLIC_BEST_OPEN_CLAIM_BPB - RECORD_DELTA_NAT * APPROX_BPB_PER_NAT
 COMPETITION_ARTIFACT_LIMIT_BYTES = 16_000_000
 COMPETITION_TRAIN_LIMIT_SECONDS = 600
 COMPETITION_EVAL_LIMIT_SECONDS = 600
 H100_PROXY_REFERENCE_STEPS = 7185
-H100_PROXY_REFERENCE_STEP_AVG_MS = 83.4
-H200_PROXY_STEP_AVG_MS = 765.97
-H200_PROXY_TRAIN_LIMIT_MS = 5_503_469
+H100_PROXY_REFERENCE_STEP_AVG_MS = 83.51
+H200_PROXY_STEP_AVG_MS = 642.42
+H200_PROXY_TRAIN_LIMIT_MS = 4_615_816
 H200_PROXY_TRAIN_LIMIT_SECONDS = H200_PROXY_TRAIN_LIMIT_MS / 1000.0
 RECORD_DIR_REL = Path("records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback")
 
@@ -1228,10 +1236,13 @@ def build_status(root_dir: Path, seed: int) -> dict[str, object]:
     handoff = None
     if promoted is not None:
         handoff = {
+            "official_leaderboard_best_bpb": OFFICIAL_LEADERBOARD_BEST_BPB,
+            "confirmed_win_gate_bpb": CONFIRMED_WIN_GATE_BPB,
+            "confirmed_clear_margin_gate_bpb": CONFIRMED_CLEAR_MARGIN_GATE_BPB,
             "current_public_best_open_claim_bpb": CURRENT_PUBLIC_BEST_OPEN_CLAIM_BPB,
             "current_public_secondary_open_claim_bpb": CURRENT_PUBLIC_SECONDARY_OPEN_CLAIM_BPB,
             "current_public_illegal_frontier_bpb": CURRENT_PUBLIC_ILLEGAL_FRONTIER_BPB,
-            "practical_win_gate_bpb": PRACTICAL_WIN_GATE_BPB,
+            "practical_open_claim_gate_bpb": PRACTICAL_OPEN_CLAIM_GATE_BPB,
             "winner": promoted,
             "runner_up": runner_up,
             "winner_seed1337_command": h100_command(
@@ -1367,18 +1378,24 @@ def main() -> None:
         )
     print()
     print(
-        "Current public best open claim (2026-03-25): "
+        "Confirmed official leaderboard best (README, 2026-03-26): "
+        f"{OFFICIAL_LEADERBOARD_BEST_BPB:.4f} from {OFFICIAL_LEADERBOARD_BEST_LABEL}"
+    )
+    print(f"Confirmed win gate: <= {CONFIRMED_WIN_GATE_BPB:.4f}")
+    print(f"Confirmed clear-margin gate (0.005 nat better): <= {CONFIRMED_CLEAR_MARGIN_GATE_BPB:.4f}")
+    print(
+        "Open frontier only (not confirmed leaderboard): "
         f"{CURRENT_PUBLIC_BEST_OPEN_CLAIM_BPB:.4f} from {CURRENT_PUBLIC_BEST_OPEN_CLAIM_LABEL}"
     )
     print(
-        "Current secondary open claim: "
+        "Open secondary claim: "
         f"{CURRENT_PUBLIC_SECONDARY_OPEN_CLAIM_BPB:.4f} from {CURRENT_PUBLIC_SECONDARY_OPEN_CLAIM_LABEL}"
     )
     print(
         "Closed illegal frontier (do not target): "
         f"{CURRENT_PUBLIC_ILLEGAL_FRONTIER_BPB:.4f} from {CURRENT_PUBLIC_ILLEGAL_FRONTIER_LABEL}"
     )
-    print(f"Approx open-claim gate (0.005 nat better): <= {PRACTICAL_WIN_GATE_BPB:.4f}")
+    print(f"Approx open-claim gate (0.005 nat better): <= {PRACTICAL_OPEN_CLAIM_GATE_BPB:.4f}")
     print(f"Record folder: {status['record_dir']}")
     print("Constraint guardrails")
     print(f"  competition_artifact_cap_bytes={COMPETITION_ARTIFACT_LIMIT_BYTES}")
@@ -1413,7 +1430,7 @@ def main() -> None:
     print(f"  seed1337: {handoff['winner_seed1337_command']}")
     print(
         "  "
-        f"if the exact 8xH100 seed clears bytes, train/eval time, and <= {handoff['practical_win_gate_bpb']:.4f}: "
+        f"if the exact 8xH100 seed clears bytes, train/eval time, and <= {handoff['confirmed_win_gate_bpb']:.4f}: "
         f"{handoff['winner_three_seed_command']}"
     )
     if handoff.get("runner_up_seed1337_command"):
