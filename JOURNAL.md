@@ -4994,3 +4994,39 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
   - Spend the next serious search effort on PR755 because its published `8xH100` step rate implies a full `11k`-step run should fit inside the `76.9 min` H200 proxy budget if the scaling holds.
 - Next step:
   - Let the detached PR755 smoke data prep finish, verify the training path on the smoke dataset, then launch the full PR755 H200 proxy-budget run on the full gravity-retokenized corpus.
+
+## 2026-03-26 04:15 UTC - Make PR755 gravity-data prep resumable and harden GitHub pushes
+
+- Commit: `uncommitted`
+- Objective:
+  - Remove the two practical blockers that were stopping progress on PR755 from a single H200 workflow:
+    1. interrupted gravity-retokenization jobs losing all progress
+    2. `git push origin master` failing over SSH
+- Findings:
+  - The confirmed valid leaderboard result already in-repo is still `1.1194`, so that remains the current bar to beat.
+  - Repeated user-turn interruptions were killing live PR755 setup jobs before they finished even a single shard, and the original setup path would have restarted from zero on every retry.
+  - PR755 only needs about `5.77B` training tokens for its published `11k`-step schedule:
+    - `524,288` train tokens/step × `11,000` steps = `5,767,168,000`
+    - at the published gravity length ratio (`~1.05x`), that corresponds to only about `55` train shards, not all `80`
+  - `origin` fetch over SSH still fails here, but HTTPS push succeeds via the machine’s askpass path once the push URL is switched.
+- Command or config:
+  - Added [scripts/patch_pr755_retokenize_resume.py](/home/aryang9/parameter-golf/scripts/patch_pr755_retokenize_resume.py), which patches PR755’s `retokenize_corpus.py` to:
+    - detect already-complete output shards
+    - skip them on reruns
+    - report how many were skipped
+  - Updated [scripts/icrn_h200_upstream_pr755_setup.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr755_setup.sh) to:
+    - apply the new patch automatically to the PR755 worktree
+    - count the expected number of train shards correctly
+    - treat partial output directories as resumable instead of “already done”
+  - Switched the push URL for `origin` to HTTPS while keeping fetch on SSH:
+    - fetch: `git@github.com:aryan-cs/parameter-golf.git`
+    - push: `https://github.com/aryan-cs/parameter-golf.git`
+  - Verified push health with `git push origin master`.
+- Result:
+  - Future PR755 retokenization progress can now accumulate shard-by-shard instead of being lost after every interruption.
+  - The repo can be pushed frequently again with the standard `git push origin master` command.
+- Decision:
+  - Keep PR755 as the main next frontier lane.
+  - Use the resumable prep path plus a reduced-but-sufficient shard count (`~55-60`) if full 80-shard retokenization becomes the dominant wallclock cost.
+- Next step:
+  - Commit and push the resumable PR755 setup changes, then resume the PR755 smoke setup and advance toward a full proxy-budget train on a shard budget that still covers the full published token consumption.

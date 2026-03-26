@@ -36,6 +36,7 @@ cd "$ROOT_DIR"
 source .venv/bin/activate
 
 PATCH_RECORD_DIR="$WORKTREE_DIR/$RECORD_DIR_REL"
+python "$ROOT_DIR/scripts/patch_pr755_retokenize_resume.py" "$PATCH_RECORD_DIR/retokenize_corpus.py"
 
 if [[ ! -f "$STOCK_TOKENIZER_PATH" ]] || [[ ! -d "$STOCK_DIR" ]] || ! ls "$STOCK_DIR"/fineweb_train_*.bin >/dev/null 2>&1; then
   python3 data/cached_challenge_fineweb.py --variant sp1024
@@ -43,11 +44,21 @@ fi
 
 cp "$PATCH_RECORD_DIR/gravity_beta_1.0.model" "$GRAVITY_TOKENIZER_PATH"
 
-if [[ -d "$GRAVITY_DATA_PATH" ]] && ls "$GRAVITY_DATA_PATH"/fineweb_val_*.bin >/dev/null 2>&1; then
-  if [[ "$MAX_SHARDS" == "0" ]] || ls "$GRAVITY_DATA_PATH"/fineweb_train_*.bin >/dev/null 2>&1; then
-    echo "gravity dataset already present at $GRAVITY_DATA_PATH" | tee -a "$LOG_PATH"
-    exit 0
-  fi
+expected_train_shards=$(find "$STOCK_DIR" -maxdepth 1 -name 'fineweb_train_*.bin' | wc -l)
+if [[ "$MAX_SHARDS" != "0" ]] && [[ "$MAX_SHARDS" -lt "$expected_train_shards" ]]; then
+  expected_train_shards="$MAX_SHARDS"
+fi
+existing_train_shards=0
+existing_val_shards=0
+if [[ -d "$GRAVITY_DATA_PATH" ]]; then
+  existing_train_shards=$(find "$GRAVITY_DATA_PATH" -maxdepth 1 -name 'fineweb_train_*.bin' | wc -l)
+  existing_val_shards=$(find "$GRAVITY_DATA_PATH" -maxdepth 1 -name 'fineweb_val_*.bin' | wc -l)
+fi
+
+if [[ "$existing_train_shards" -ge "$expected_train_shards" && "$existing_val_shards" -ge 1 ]]; then
+  echo "gravity dataset already present at $GRAVITY_DATA_PATH" | tee -a "$LOG_PATH"
+  echo "existing_train_shards=${existing_train_shards} expected_train_shards=${expected_train_shards} existing_val_shards=${existing_val_shards}" | tee -a "$LOG_PATH"
+  exit 0
 fi
 
 cmd=(
