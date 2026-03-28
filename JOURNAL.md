@@ -5067,7 +5067,7 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 
 ## 2026-03-28 12:58 UTC - Re-anchor submission validity to organizer-approved 1xH200 equivalence and chunk PR755 setup
 
-- Commit: `uncommitted`
+- Commit: `e21e752`
 - Objective:
   - Stop treating `8xH100` reruns as a hard local blocker after the user reported organizer approval to submit from `1xH200`, provided the run fits an empirically equivalent training-time budget.
   - Make PR755 gravity-data prep recoverable in small shard-range chunks so interruptions stop resetting progress to zero.
