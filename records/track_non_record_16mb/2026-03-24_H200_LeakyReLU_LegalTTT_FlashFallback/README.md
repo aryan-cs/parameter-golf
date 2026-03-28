@@ -4,14 +4,14 @@
 
 ## H200 Status
 
-This folder is our ICRN H200 reproduction and submission-prep copy of the public March 23 record stack. It is **not** itself an official record submission, but it now contains a strong under-cap local recovery of the lane:
+This folder is our ICRN H200 reproduction and submission-prep copy of the public March 23 record stack. It is **not** itself a submit-ready record package, but it now contains a strong local recovery of the lane:
 
 | Hardware | Lane | Metric | Value | Bytes | Notes |
 |----------|------|--------|-------|-------|-------|
 | 1×H200 NVL | Exact 80-shard run | `final_int6_sliding_window_exact` | `1.11623907` | `15,860,692` | Full train + quant + sliding eval completed |
 | 1×H200 NVL | Resumed legal TTT on saved artifact | `legal_ttt_exact` | `1.11382777` | `15,860,692` | TTT completed in a resumed eval-only pass |
 
-The `1.11382777` result is leaderboard-worthy numerically against the public `1.1194` score, but it is **not yet an officially valid record** under challenge rules because we still need the required `8xH100` reproduction and significance evidence.
+The `1.11382777` result is leaderboard-worthy numerically against the public `1.1194` score, but it is **not yet a valid submission candidate on the organizer-approved H200 path** because the underlying training run took `7,503,164 ms`, which is well over the `4,615,816 ms` H200-equivalent train cap. Unless organizers explicitly waive it, significance evidence would still be needed for a new SOTA claim.
 
 For current H200 development, we now treat the empirical proxy for the `8xH100` 600-second train cap as a hard dev-side guardrail:
 

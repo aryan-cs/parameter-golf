@@ -5064,3 +5064,44 @@ This file is append-only. Every meaningful code change, run, hypothesis kill, pr
 - Next step:
   - Let the detached smoke setup complete and check whether the automatic ladder starts.
   - If the smoke path is healthy, scale the same detached pattern to the reduced full shard budget (`~55-60` train shards) and then to the full proxy-budget PR755 train.
+
+## 2026-03-28 12:58 UTC - Re-anchor submission validity to organizer-approved 1xH200 equivalence and chunk PR755 setup
+
+- Commit: `uncommitted`
+- Objective:
+  - Stop treating `8xH100` reruns as a hard local blocker after the user reported organizer approval to submit from `1xH200`, provided the run fits an empirically equivalent training-time budget.
+  - Make PR755 gravity-data prep recoverable in small shard-range chunks so interruptions stop resetting progress to zero.
+- Findings:
+  - Per user report, organizers approved a `1xH200 NVL` submission path as long as training stays within the empirical equivalent of the challenge’s `10 minute` `8xH100 SXM` train cap.
+  - We keep the same empirical conversion already derived from the matched baseline proxy lane:
+    - challenge reference: `600s` on `8xH100`
+    - local proxy cap: `4,615,816 ms` on `1xH200`
+    - conversion factor: `4,615.816 / 600 = 7.6930x`
+  - On that conversion, PR755’s published `53.72 ms/step` maps to about `413.27 ms/step` on our H200 proxy:
+    - `53.72 * 7.6930 = 413.27 ms/step`
+    - `11,000` steps would then take about `4,545,963 ms` (`75.77 min`)
+    - slack versus the H200-equivalent cap is only about `69.9s`, so PR755 still fits on paper but with very little margin
+  - The recovered local `1.11382777 @ 15,860,692 bytes` lane remains numerically strong but is still invalid for submission on this new path because its underlying train took `7,503,164 ms`, well above the H200-equivalent cap.
+- Command or config:
+  - Updated [README.md](/home/aryang9/parameter-golf/README.md) so the repo’s live operating assumptions now reflect the organizer-approved `1xH200` submission path instead of treating `8xH100` reruns as mandatory.
+  - Updated [records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/README.md](/home/aryang9/parameter-golf/records/track_non_record_16mb/2026-03-24_H200_LeakyReLU_LegalTTT_FlashFallback/README.md) so the current recovered lane’s blocker is described correctly: over-budget training time on H200-equivalent submission rules, not missing `8xH100` reproduction.
+  - Updated [scripts/record_push_status.py](/home/aryang9/parameter-golf/scripts/record_push_status.py) to print the organizer-approved local submission path explicitly and demote the printed `8xH100` commands to optional legacy cross-checks.
+  - Extended [scripts/icrn_h200_upstream_pr755_setup.sh](/home/aryang9/parameter-golf/scripts/icrn_h200_upstream_pr755_setup.sh) so gravity retokenization can now be run in selected shard ranges:
+    - `SHARD_OFFSET` chooses the first train shard to process
+    - `MAX_SHARDS` limits the count from that offset
+    - `INCLUDE_VAL=0` skips rebuilding validation during train-only chunks
+    - completion checks now validate shard headers and file sizes before counting an output as done
+  - Test-launched a real one-shard, no-val PR755 prep chunk with:
+    - `MAX_SHARDS=1 SHARD_OFFSET=4 INCLUDE_VAL=0 bash scripts/icrn_h200_upstream_pr755_setup.sh`
+    - the run reached `Processing 1 training shards + 0 val shards` and entered the live `Re-tokenizing` loop before the next interruption
+- Result:
+  - The repo now remembers the new acceptance policy in the journal, top-level README, record-lane README, and status output.
+  - PR755 setup no longer has to be all-or-nothing; we can build the gravity dataset incrementally over shard ranges and reuse completed outputs safely.
+  - We still do not have a submit-ready local winner yet; the main path remains to finish enough PR755 gravity shards, launch the full proxy-budget H200 train, and package the first under-cap result that beats `1.1194`.
+- Decision:
+  - Treat the H200-equivalent cap as the submission train gate from here forward unless the user reports another organizer clarification.
+  - Keep all other challenge constraints unchanged by default: bytes, eval legality, tokenizer-correctness burden, and significance expectations where applicable.
+  - Keep PR755 as the top-priority architecture because it is the clearest known leaderboard-worthy family that appears to fit this H200-equivalent budget.
+- Next step:
+  - Commit and push the organizer-approval bookkeeping plus the chunked PR755 setup script.
+  - Use detached shard-range PR755 setup jobs to accumulate roughly `55-60` gravity train shards plus the val shard, then launch the full `76.9 min` H200 proxy-budget PR755 train.

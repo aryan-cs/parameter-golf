@@ -1407,13 +1407,17 @@ def main() -> None:
         f"(~{H200_PROXY_TRAIN_LIMIT_SECONDS / 60.0:.1f} min) "
         f"at <= {H100_PROXY_REFERENCE_STEPS} steps"
     )
+    print(
+        "  organizer-approved local submission path: "
+        "1xH200 runs that fit the proxy cap are submission candidates"
+    )
     print()
     handoff = status.get("handoff")
     if handoff is None:
-        print("8xH100 handoff")
+        print("Legacy 8xH100 cross-check handoff")
         print("  no completed candidates yet")
         return
-    print("8xH100 handoff")
+    print("Legacy 8xH100 cross-check handoff")
     winner = handoff["winner"]
     print(
         "  "
@@ -1430,7 +1434,7 @@ def main() -> None:
     print(f"  seed1337: {handoff['winner_seed1337_command']}")
     print(
         "  "
-        f"if the exact 8xH100 seed clears bytes, train/eval time, and <= {handoff['confirmed_win_gate_bpb']:.4f}: "
+        f"if the optional exact 8xH100 cross-check clears bytes, train/eval time, and <= {handoff['confirmed_win_gate_bpb']:.4f}: "
         f"{handoff['winner_three_seed_command']}"
     )
     if handoff.get("runner_up_seed1337_command"):
